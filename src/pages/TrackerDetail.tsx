@@ -5,13 +5,14 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { IntelligenceBadge } from "@/components/IntelligenceBadge";
+import { BuyerCard } from "@/components/BuyerCard";
 import { CSVImport } from "@/components/CSVImport";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, LayoutGrid, List } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 export default function TrackerDetail() {
   const { id } = useParams();
@@ -22,6 +23,7 @@ export default function TrackerDetail() {
   const [deals, setDeals] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [buyerView, setBuyerView] = useState<"compact" | "expanded">("compact");
   const [newBuyer, setNewBuyer] = useState({ pe_firm_name: "", platform_company_name: "" });
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -73,8 +75,15 @@ export default function TrackerDetail() {
           <TabsList><TabsTrigger value="buyers"><Users className="w-4 h-4 mr-2" />Buyers ({buyers.length})</TabsTrigger><TabsTrigger value="deals"><FileText className="w-4 h-4 mr-2" />Deals ({deals.length})</TabsTrigger></TabsList>
           
           <TabsContent value="buyers" className="mt-4 space-y-4">
-            <div className="flex gap-4">
-              <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /><Input placeholder="Search buyers..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" /></div>
+            <div className="flex gap-4 items-center">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input placeholder="Search buyers..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+              </div>
+              <ToggleGroup type="single" value={buyerView} onValueChange={(v) => v && setBuyerView(v as "compact" | "expanded")}>
+                <ToggleGroupItem value="compact" aria-label="Compact view"><List className="w-4 h-4" /></ToggleGroupItem>
+                <ToggleGroupItem value="expanded" aria-label="Expanded view"><LayoutGrid className="w-4 h-4" /></ToggleGroupItem>
+              </ToggleGroup>
               <CSVImport trackerId={id!} onComplete={loadData} />
               <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                 <DialogTrigger asChild><Button><Plus className="w-4 h-4 mr-2" />Add Buyer</Button></DialogTrigger>
@@ -89,20 +98,18 @@ export default function TrackerDetail() {
               </Dialog>
             </div>
             
-            <div className="bg-card rounded-lg border divide-y">
+            <div className="bg-card rounded-lg border">
               {filteredBuyers.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">
                   {search ? "No buyers match your search" : "No buyers yet. Add buyers manually or import from CSV."}
                 </div>
-              ) : filteredBuyers.map((buyer) => (
-                <Link key={buyer.id} to={`/buyers/${buyer.id}`} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
-                  <div>
-                    <p className="font-medium">{buyer.pe_firm_name}</p>
-                    {buyer.platform_company_name && <p className="text-sm text-muted-foreground">{buyer.platform_company_name}</p>}
-                  </div>
-                  <IntelligenceBadge buyer={buyer} />
-                </Link>
-              ))}
+              ) : (
+                <div className="divide-y">
+                  {filteredBuyers.map((buyer) => (
+                    <BuyerCard key={buyer.id} buyer={buyer} view={buyerView} />
+                  ))}
+                </div>
+              )}
             </div>
           </TabsContent>
 
