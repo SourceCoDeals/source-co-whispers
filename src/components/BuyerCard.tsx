@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
-import { MapPin, DollarSign } from "lucide-react";
+import { MapPin, DollarSign, ExternalLink, Building2 } from "lucide-react";
 
 interface BuyerCardProps {
   buyer: any;
@@ -21,19 +21,77 @@ export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
     return null;
   };
 
+  const getPlatformWebsite = () => {
+    if (buyer.platform_website) {
+      return buyer.platform_website.startsWith('http') ? buyer.platform_website : `https://${buyer.platform_website}`;
+    }
+    // Fallback to Google search
+    return `https://www.google.com/search?q=${encodeURIComponent(buyer.platform_company_name || buyer.pe_firm_name)}`;
+  };
+
+  const getPEFirmWebsite = () => {
+    // Google search for PE firm
+    return `https://www.google.com/search?q=${encodeURIComponent(buyer.pe_firm_name + ' private equity')}`;
+  };
+
+  // Truncate services to first sentence or 80 chars
+  const getServicesSummary = () => {
+    if (!buyer.services_offered) return null;
+    const text = buyer.services_offered;
+    const firstSentence = text.split(/[.;]/)[0];
+    if (firstSentence.length > 100) {
+      return firstSentence.substring(0, 100) + '...';
+    }
+    return firstSentence;
+  };
+
   if (view === "compact") {
     return (
-      <Link 
-        to={`/buyers/${buyer.id}`} 
-        className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
-      >
+      <div className="flex items-start justify-between p-4 hover:bg-muted/50 transition-colors group">
         <div className="flex-1 min-w-0">
+          {/* Platform Company - Primary */}
           <div className="flex items-center gap-2">
-            <p className="font-semibold">{buyer.pe_firm_name}</p>
+            <Link to={`/buyers/${buyer.id}`} className="font-semibold hover:text-primary transition-colors">
+              {buyer.platform_company_name || buyer.pe_firm_name}
+            </Link>
+            <a 
+              href={getPlatformWebsite()} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
+              title="Visit platform website"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
           </div>
+          
+          {/* PE Firm - Secondary */}
           {buyer.platform_company_name && (
-            <p className="text-sm text-muted-foreground">{buyer.platform_company_name}</p>
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Building2 className="w-3 h-3" />
+              <span>{buyer.pe_firm_name}</span>
+              <a 
+                href={getPEFirmWebsite()} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="opacity-0 group-hover:opacity-100 transition-opacity hover:text-primary"
+                title="Search PE firm"
+              >
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
           )}
+          
+          {/* Services Summary */}
+          {buyer.services_offered && (
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
+              {getServicesSummary()}
+            </p>
+          )}
+          
+          {/* Location & Revenue */}
           <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground">
             {geography && (
               <span className="flex items-center gap-1">
@@ -49,32 +107,68 @@ export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
             )}
           </div>
         </div>
-        <IntelligenceBadge buyer={buyer} />
-      </Link>
+        <Link to={`/buyers/${buyer.id}`}>
+          <IntelligenceBadge buyer={buyer} />
+        </Link>
+      </div>
     );
   }
 
   // Expanded view
   return (
-    <Link 
-      to={`/buyers/${buyer.id}`} 
-      className="block p-4 hover:bg-muted/50 transition-colors"
-    >
+    <div className="p-4 hover:bg-muted/50 transition-colors group">
       <div className="flex items-start justify-between mb-2">
         <div>
+          {/* Platform Company - Primary */}
           <div className="flex items-center gap-2">
-            <p className="font-semibold">{buyer.pe_firm_name}</p>
+            <Link to={`/buyers/${buyer.id}`} className="font-semibold text-lg hover:text-primary transition-colors">
+              {buyer.platform_company_name || buyer.pe_firm_name}
+            </Link>
+            <a 
+              href={getPlatformWebsite()} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="text-muted-foreground hover:text-primary"
+              title="Visit platform website"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </a>
             {buyer.addon_only && <Badge variant="outline" className="text-xs">Add-on Only</Badge>}
             {buyer.platform_only && <Badge variant="outline" className="text-xs">Platform Only</Badge>}
           </div>
+          
+          {/* PE Firm - Secondary */}
           {buyer.platform_company_name && (
-            <p className="text-sm text-muted-foreground">{buyer.platform_company_name}</p>
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
+              <Building2 className="w-3.5 h-3.5" />
+              <span>{buyer.pe_firm_name}</span>
+              <a 
+                href={getPEFirmWebsite()} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="hover:text-primary"
+                title="Search PE firm"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
           )}
         </div>
-        <IntelligenceBadge buyer={buyer} />
+        <Link to={`/buyers/${buyer.id}`}>
+          <IntelligenceBadge buyer={buyer} />
+        </Link>
       </div>
       
-      <div className="flex items-center gap-4 text-sm text-muted-foreground mb-2">
+      {/* Services Summary */}
+      {buyer.services_offered && (
+        <p className="text-sm text-muted-foreground mb-2">
+          {buyer.services_offered}
+        </p>
+      )}
+      
+      <div className="flex items-center gap-4 text-sm text-muted-foreground">
         {geography && (
           <span className="flex items-center gap-1">
             <MapPin className="w-3.5 h-3.5" />
@@ -93,7 +187,9 @@ export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
       </div>
 
       {buyer.thesis_summary && (
-        <p className="text-sm text-muted-foreground line-clamp-2">{buyer.thesis_summary}</p>
+        <p className="text-sm text-muted-foreground mt-2 italic border-l-2 border-primary/30 pl-3">
+          "{buyer.thesis_summary}"
+        </p>
       )}
       
       {buyer.deal_breakers?.length > 0 && (
@@ -103,6 +199,6 @@ export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
           ))}
         </div>
       )}
-    </Link>
+    </div>
   );
 }
