@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
 import { BuyerDataSection, DataField, DataListField, DataGrid } from "@/components/BuyerDataSection";
-import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck } from "lucide-react";
+import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export default function BuyerDetail() {
   const { id } = useParams();
@@ -19,21 +20,89 @@ export default function BuyerDetail() {
   const { toast } = useToast();
   const [buyer, setBuyer] = useState<any>(null);
   const [contacts, setContacts] = useState<any[]>([]);
+  const [transcripts, setTranscripts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<any>({});
+  const [transcriptDialogOpen, setTranscriptDialogOpen] = useState(false);
+  const [newTranscript, setNewTranscript] = useState({ title: "", url: "", notes: "", call_date: "", transcript_type: "link" });
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => { loadData(); }, [id]);
 
   const loadData = async () => {
-    const [buyerRes, contactsRes] = await Promise.all([
+    const [buyerRes, contactsRes, transcriptsRes] = await Promise.all([
       supabase.from("buyers").select("*").eq("id", id).single(),
       supabase.from("buyer_contacts").select("*").eq("buyer_id", id),
+      supabase.from("buyer_transcripts").select("*").eq("buyer_id", id).order("call_date", { ascending: false }),
     ]);
     setBuyer(buyerRes.data);
     setContacts(contactsRes.data || []);
+    setTranscripts(transcriptsRes.data || []);
     setEditData(buyerRes.data || {});
     setIsLoading(false);
+  };
+
+  const addTranscriptLink = async () => {
+    if (!newTranscript.title.trim()) return;
+    const { error } = await supabase.from("buyer_transcripts").insert({
+      buyer_id: id,
+      title: newTranscript.title,
+      url: newTranscript.url,
+      notes: newTranscript.notes,
+      call_date: newTranscript.call_date || null,
+      transcript_type: "link"
+    });
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Transcript link added" });
+    setNewTranscript({ title: "", url: "", notes: "", call_date: "", transcript_type: "link" });
+    setTranscriptDialogOpen(false);
+    loadData();
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    
+    const fileName = `${id}/${Date.now()}-${file.name}`;
+    const { error: uploadError } = await supabase.storage.from("call-transcripts").upload(fileName, file);
+    
+    if (uploadError) {
+      toast({ title: "Upload failed", description: uploadError.message, variant: "destructive" });
+      setIsUploading(false);
+      return;
+    }
+
+    const { error: dbError } = await supabase.from("buyer_transcripts").insert({
+      buyer_id: id,
+      title: file.name,
+      url: fileName,
+      transcript_type: "file",
+      call_date: newTranscript.call_date || null,
+    });
+    
+    if (dbError) { toast({ title: "Error", description: dbError.message, variant: "destructive" }); }
+    else { toast({ title: "Transcript uploaded" }); }
+    
+    setIsUploading(false);
+    setTranscriptDialogOpen(false);
+    loadData();
+  };
+
+  const deleteTranscript = async (transcript: any) => {
+    if (transcript.transcript_type === "file") {
+      await supabase.storage.from("call-transcripts").remove([transcript.url]);
+    }
+    await supabase.from("buyer_transcripts").delete().eq("id", transcript.id);
+    toast({ title: "Transcript removed" });
+    loadData();
+  };
+
+  const getTranscriptUrl = (transcript: any) => {
+    if (transcript.transcript_type === "link") return transcript.url;
+    const { data } = supabase.storage.from("call-transcripts").getPublicUrl(transcript.url);
+    return data.publicUrl;
   };
 
   const saveIntelligence = async () => {
@@ -251,6 +320,129 @@ export default function BuyerDetail() {
                   </div>
                 </BuyerDataSection>
               )}
+
+              {/* Call Transcripts Section */}
+              <BuyerDataSection 
+                title="Call Transcripts" 
+                icon={<FileText className="w-4 h-4 text-muted-foreground" />}
+                className="lg:col-span-2"
+              >
+                <div className="space-y-4">
+                  <div className="flex justify-end">
+                    <Dialog open={transcriptDialogOpen} onOpenChange={setTranscriptDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button size="sm"><Plus className="w-4 h-4 mr-2" />Add Transcript</Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader><DialogTitle>Add Call Transcript</DialogTitle></DialogHeader>
+                        <div className="space-y-4 pt-4">
+                          <div>
+                            <Label>Title *</Label>
+                            <Input 
+                              value={newTranscript.title} 
+                              onChange={(e) => setNewTranscript({ ...newTranscript, title: e.target.value })} 
+                              placeholder="e.g., Q1 2024 Buyer Call" 
+                              className="mt-1" 
+                            />
+                          </div>
+                          <div>
+                            <Label>Call Date</Label>
+                            <Input 
+                              type="date" 
+                              value={newTranscript.call_date} 
+                              onChange={(e) => setNewTranscript({ ...newTranscript, call_date: e.target.value })} 
+                              className="mt-1" 
+                            />
+                          </div>
+                          <div>
+                            <Label>Transcript Link</Label>
+                            <Input 
+                              value={newTranscript.url} 
+                              onChange={(e) => setNewTranscript({ ...newTranscript, url: e.target.value })} 
+                              placeholder="https://..." 
+                              className="mt-1" 
+                            />
+                          </div>
+                          <div>
+                            <Label>Notes</Label>
+                            <Textarea 
+                              value={newTranscript.notes} 
+                              onChange={(e) => setNewTranscript({ ...newTranscript, notes: e.target.value })} 
+                              placeholder="Key takeaways from this call..." 
+                              className="mt-1" 
+                              rows={2}
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button onClick={addTranscriptLink} disabled={!newTranscript.title.trim()} className="flex-1">
+                              <Link2 className="w-4 h-4 mr-2" />Add Link
+                            </Button>
+                          </div>
+                          <div className="relative">
+                            <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+                            <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or upload file</span></div>
+                          </div>
+                          <div>
+                            <Label htmlFor="transcript-upload" className="cursor-pointer">
+                              <div className="border-2 border-dashed rounded-lg p-4 text-center hover:border-primary/50 transition-colors">
+                                {isUploading ? (
+                                  <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+                                ) : (
+                                  <>
+                                    <Upload className="w-6 h-6 mx-auto text-muted-foreground mb-2" />
+                                    <p className="text-sm text-muted-foreground">Click to upload transcript file</p>
+                                  </>
+                                )}
+                              </div>
+                            </Label>
+                            <input 
+                              id="transcript-upload" 
+                              type="file" 
+                              className="hidden" 
+                              onChange={handleFileUpload}
+                              accept=".pdf,.doc,.docx,.txt,.md"
+                            />
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                  
+                  {transcripts.length === 0 ? (
+                    <p className="text-sm text-muted-foreground italic">No transcripts linked yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {transcripts.map((t) => (
+                        <div key={t.id} className="flex items-center justify-between bg-muted/50 rounded-lg px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <FileText className="w-4 h-4 text-muted-foreground" />
+                            <div>
+                              <a 
+                                href={getTranscriptUrl(t)} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="font-medium hover:text-primary hover:underline"
+                              >
+                                {t.title}
+                              </a>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                {t.call_date && <span>{new Date(t.call_date).toLocaleDateString()}</span>}
+                                <Badge variant="outline" className="text-xs">
+                                  {t.transcript_type === "file" ? "Uploaded" : "Link"}
+                                </Badge>
+                              </div>
+                              {t.notes && <p className="text-xs text-muted-foreground mt-1">{t.notes}</p>}
+                            </div>
+                          </div>
+                          <Button variant="ghost" size="icon" onClick={() => deleteTranscript(t)} className="text-muted-foreground hover:text-destructive">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </BuyerDataSection>
             </div>
           </TabsContent>
 
