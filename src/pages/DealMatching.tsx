@@ -195,7 +195,12 @@ export default function DealMatching() {
             <h1 className="text-2xl font-display font-bold">Buyer Matches</h1>
             <p className="text-muted-foreground">{deal?.deal_name} · {buyers.length} buyers scored</p>
           </div>
-          <Button onClick={approveBuyers} disabled={selected.size === 0}>Approve Buyers as Fit ({selected.size})</Button>
+          <div className="flex gap-2">
+            <Button onClick={approveBuyers} disabled={selected.size === 0}>Approve Buyers as Fit ({selected.size})</Button>
+            {approvedBuyers.length > 0 && (
+              <Button variant="outline" onClick={() => navigate(`/deals/${id}/introductions`)}>Track Outreach</Button>
+            )}
+          </div>
         </div>
 
         <div className="bg-accent/10 rounded-lg border border-accent/20 p-4 flex gap-6 text-sm">
