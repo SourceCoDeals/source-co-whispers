@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
 import { BuyerDataSection, DataField, DataListField, DataGrid } from "@/components/BuyerDataSection";
-import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote } from "lucide-react";
+import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -69,14 +69,27 @@ export default function BuyerDetail() {
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div className="flex-1">
+            {/* Platform Company - Primary */}
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl font-display font-bold">{buyer.pe_firm_name}</h1>
+              <h1 className="text-2xl font-display font-bold">
+                {buyer.platform_company_name || buyer.pe_firm_name}
+              </h1>
               <IntelligenceBadge buyer={buyer} showPercentage />
+              {buyer.fee_agreement_status && buyer.fee_agreement_status !== 'None' && (
+                <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">
+                  <FileCheck className="w-3 h-3 mr-1" />
+                  {buyer.fee_agreement_status}
+                </Badge>
+              )}
             </div>
+            {/* PE Firm - Secondary */}
             {buyer.platform_company_name && (
-              <p className="text-lg text-muted-foreground">{buyer.platform_company_name}</p>
+              <div className="flex items-center gap-2 text-lg text-muted-foreground">
+                <Building2 className="w-4 h-4" />
+                {buyer.pe_firm_name}
+              </div>
             )}
-            <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground flex-wrap">
               {buyer.platform_website && (
                 <a 
                   href={buyer.platform_website.startsWith("http") ? buyer.platform_website : `https://${buyer.platform_website}`}
@@ -85,11 +98,20 @@ export default function BuyerDetail() {
                   className="flex items-center gap-1 hover:text-primary"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  Website
+                  Platform Website
                 </a>
               )}
-              {buyer.num_platforms && (
-                <span>{buyer.num_platforms} platform{buyer.num_platforms > 1 ? "s" : ""}</span>
+              {buyer.hq_city || buyer.hq_state ? (
+                <span className="flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5" />
+                  HQ: {[buyer.hq_city, buyer.hq_state].filter(Boolean).join(", ")}
+                </span>
+              ) : null}
+              {(buyer.service_regions?.length || buyer.geographic_footprint?.length) && (
+                <span className="flex items-center gap-1">
+                  <Globe className="w-3.5 h-3.5" />
+                  Services: {(buyer.service_regions || buyer.geographic_footprint).join(", ")}
+                </span>
               )}
             </div>
           </div>
@@ -111,10 +133,11 @@ export default function BuyerDetail() {
                 icon={<Building2 className="w-4 h-4 text-muted-foreground" />}
               >
                 <DataGrid columns={2}>
-                  <DataField label="PE Firm" value={buyer.pe_firm_name} />
                   <DataField label="Platform Company" value={buyer.platform_company_name} />
-                  <DataField label="Website" value={buyer.platform_website} type="url" />
+                  <DataField label="PE Firm" value={buyer.pe_firm_name} />
+                  <DataField label="Platform Website" value={buyer.platform_website} type="url" />
                   <DataField label="Business Model" value={buyer.business_model} />
+                  <DataField label="Fee Agreement" value={buyer.fee_agreement_status !== 'None' ? buyer.fee_agreement_status : null} />
                 </DataGrid>
               </BuyerDataSection>
 
@@ -122,11 +145,14 @@ export default function BuyerDetail() {
               <BuyerDataSection 
                 title="Location & Geography" 
                 icon={<MapPin className="w-4 h-4 text-muted-foreground" />}
-                isEmpty={!buyer.geographic_footprint?.length && !geoPrefs.target_regions?.length}
+                isEmpty={!buyer.hq_city && !buyer.hq_state && !buyer.geographic_footprint?.length && !buyer.service_regions?.length}
                 emptyMessage="No geographic data available"
               >
                 <div className="space-y-4">
-                  <DataListField label="Current Footprint" items={buyer.geographic_footprint} />
+                  <DataGrid columns={2}>
+                    <DataField label="Headquarters" value={[buyer.hq_city, buyer.hq_state].filter(Boolean).join(", ") || null} />
+                  </DataGrid>
+                  <DataListField label="Service Regions" items={buyer.service_regions?.length ? buyer.service_regions : buyer.geographic_footprint} />
                   <DataListField label="Target Geographies" items={geoPrefs.target_regions} variant="default" />
                   <DataListField label="Geographic Exclusions" items={geoPrefs.exclusions} variant="destructive" />
                 </div>

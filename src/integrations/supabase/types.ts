@@ -151,8 +151,11 @@ export type Database = {
           created_at: string
           data_last_updated: string
           deal_breakers: string[] | null
+          fee_agreement_status: string | null
           geo_preferences: Json | null
           geographic_footprint: string[] | null
+          hq_city: string | null
+          hq_state: string | null
           id: string
           key_quotes: string[] | null
           last_call_date: string | null
@@ -167,6 +170,7 @@ export type Database = {
           preferred_ebitda: number | null
           recent_acquisitions: Json | null
           service_mix_prefs: string | null
+          service_regions: string[] | null
           services_offered: string | null
           thesis_confidence: string | null
           thesis_summary: string | null
@@ -180,8 +184,11 @@ export type Database = {
           created_at?: string
           data_last_updated?: string
           deal_breakers?: string[] | null
+          fee_agreement_status?: string | null
           geo_preferences?: Json | null
           geographic_footprint?: string[] | null
+          hq_city?: string | null
+          hq_state?: string | null
           id?: string
           key_quotes?: string[] | null
           last_call_date?: string | null
@@ -196,6 +203,7 @@ export type Database = {
           preferred_ebitda?: number | null
           recent_acquisitions?: Json | null
           service_mix_prefs?: string | null
+          service_regions?: string[] | null
           services_offered?: string | null
           thesis_confidence?: string | null
           thesis_summary?: string | null
@@ -209,8 +217,11 @@ export type Database = {
           created_at?: string
           data_last_updated?: string
           deal_breakers?: string[] | null
+          fee_agreement_status?: string | null
           geo_preferences?: Json | null
           geographic_footprint?: string[] | null
+          hq_city?: string | null
+          hq_state?: string | null
           id?: string
           key_quotes?: string[] | null
           last_call_date?: string | null
@@ -225,6 +236,7 @@ export type Database = {
           preferred_ebitda?: number | null
           recent_acquisitions?: Json | null
           service_mix_prefs?: string | null
+          service_regions?: string[] | null
           services_offered?: string | null
           thesis_confidence?: string | null
           thesis_summary?: string | null
