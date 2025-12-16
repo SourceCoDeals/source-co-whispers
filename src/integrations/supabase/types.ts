@@ -185,24 +185,48 @@ export type Database = {
       }
       buyers: {
         Row: {
+          acquisition_appetite: string | null
+          acquisition_frequency: string | null
+          acquisition_geography: string[] | null
+          acquisition_timeline: string | null
           addon_only: boolean | null
           business_model: string | null
+          business_model_exclusions: string[] | null
           business_model_prefs: string | null
+          business_summary: string | null
+          business_type: string | null
+          buyer_linkedin: string | null
           call_history: Json | null
           created_at: string
+          customer_geographic_reach: string | null
+          customer_industries: string[] | null
           data_last_updated: string
           deal_breakers: string[] | null
+          ebitda_sweet_spot: number | null
           fee_agreement_status: string | null
           geo_preferences: Json | null
+          geographic_exclusions: string[] | null
           geographic_footprint: string[] | null
+          go_to_market_strategy: string | null
           hq_city: string | null
+          hq_country: string | null
+          hq_region: string | null
           hq_state: string | null
           id: string
+          industry_exclusions: string[] | null
+          industry_vertical: string | null
           key_quotes: string[] | null
+          last_acquisition_date: string | null
           last_call_date: string | null
+          max_ebitda: number | null
           max_revenue: number | null
+          min_ebitda: number | null
           min_revenue: number | null
           num_platforms: number | null
+          other_office_locations: string[] | null
+          owner_roll_requirement: string | null
+          owner_transition_goals: string | null
+          pe_firm_linkedin: string | null
           pe_firm_name: string
           pe_firm_website: string | null
           platform_company_name: string | null
@@ -210,33 +234,72 @@ export type Database = {
           platform_website: string | null
           portfolio_companies: string[] | null
           preferred_ebitda: number | null
+          primary_customer_size: string | null
           recent_acquisitions: Json | null
+          required_capabilities: string[] | null
+          revenue_model: string | null
+          revenue_sweet_spot: number | null
           service_mix_prefs: string | null
           service_regions: string[] | null
           services_offered: string | null
+          specialized_focus: string | null
+          strategic_priorities: string | null
+          target_business_model: string | null
+          target_customer_geography: string | null
+          target_customer_industries: string[] | null
+          target_customer_profile: string | null
+          target_customer_size: string | null
+          target_geographies: string[] | null
+          target_industries: string[] | null
+          target_services: string[] | null
           thesis_confidence: string | null
           thesis_summary: string | null
+          total_acquisitions: number | null
           tracker_id: string
         }
         Insert: {
+          acquisition_appetite?: string | null
+          acquisition_frequency?: string | null
+          acquisition_geography?: string[] | null
+          acquisition_timeline?: string | null
           addon_only?: boolean | null
           business_model?: string | null
+          business_model_exclusions?: string[] | null
           business_model_prefs?: string | null
+          business_summary?: string | null
+          business_type?: string | null
+          buyer_linkedin?: string | null
           call_history?: Json | null
           created_at?: string
+          customer_geographic_reach?: string | null
+          customer_industries?: string[] | null
           data_last_updated?: string
           deal_breakers?: string[] | null
+          ebitda_sweet_spot?: number | null
           fee_agreement_status?: string | null
           geo_preferences?: Json | null
+          geographic_exclusions?: string[] | null
           geographic_footprint?: string[] | null
+          go_to_market_strategy?: string | null
           hq_city?: string | null
+          hq_country?: string | null
+          hq_region?: string | null
           hq_state?: string | null
           id?: string
+          industry_exclusions?: string[] | null
+          industry_vertical?: string | null
           key_quotes?: string[] | null
+          last_acquisition_date?: string | null
           last_call_date?: string | null
+          max_ebitda?: number | null
           max_revenue?: number | null
+          min_ebitda?: number | null
           min_revenue?: number | null
           num_platforms?: number | null
+          other_office_locations?: string[] | null
+          owner_roll_requirement?: string | null
+          owner_transition_goals?: string | null
+          pe_firm_linkedin?: string | null
           pe_firm_name: string
           pe_firm_website?: string | null
           platform_company_name?: string | null
@@ -244,33 +307,72 @@ export type Database = {
           platform_website?: string | null
           portfolio_companies?: string[] | null
           preferred_ebitda?: number | null
+          primary_customer_size?: string | null
           recent_acquisitions?: Json | null
+          required_capabilities?: string[] | null
+          revenue_model?: string | null
+          revenue_sweet_spot?: number | null
           service_mix_prefs?: string | null
           service_regions?: string[] | null
           services_offered?: string | null
+          specialized_focus?: string | null
+          strategic_priorities?: string | null
+          target_business_model?: string | null
+          target_customer_geography?: string | null
+          target_customer_industries?: string[] | null
+          target_customer_profile?: string | null
+          target_customer_size?: string | null
+          target_geographies?: string[] | null
+          target_industries?: string[] | null
+          target_services?: string[] | null
           thesis_confidence?: string | null
           thesis_summary?: string | null
+          total_acquisitions?: number | null
           tracker_id: string
         }
         Update: {
+          acquisition_appetite?: string | null
+          acquisition_frequency?: string | null
+          acquisition_geography?: string[] | null
+          acquisition_timeline?: string | null
           addon_only?: boolean | null
           business_model?: string | null
+          business_model_exclusions?: string[] | null
           business_model_prefs?: string | null
+          business_summary?: string | null
+          business_type?: string | null
+          buyer_linkedin?: string | null
           call_history?: Json | null
           created_at?: string
+          customer_geographic_reach?: string | null
+          customer_industries?: string[] | null
           data_last_updated?: string
           deal_breakers?: string[] | null
+          ebitda_sweet_spot?: number | null
           fee_agreement_status?: string | null
           geo_preferences?: Json | null
+          geographic_exclusions?: string[] | null
           geographic_footprint?: string[] | null
+          go_to_market_strategy?: string | null
           hq_city?: string | null
+          hq_country?: string | null
+          hq_region?: string | null
           hq_state?: string | null
           id?: string
+          industry_exclusions?: string[] | null
+          industry_vertical?: string | null
           key_quotes?: string[] | null
+          last_acquisition_date?: string | null
           last_call_date?: string | null
+          max_ebitda?: number | null
           max_revenue?: number | null
+          min_ebitda?: number | null
           min_revenue?: number | null
           num_platforms?: number | null
+          other_office_locations?: string[] | null
+          owner_roll_requirement?: string | null
+          owner_transition_goals?: string | null
+          pe_firm_linkedin?: string | null
           pe_firm_name?: string
           pe_firm_website?: string | null
           platform_company_name?: string | null
@@ -278,12 +380,27 @@ export type Database = {
           platform_website?: string | null
           portfolio_companies?: string[] | null
           preferred_ebitda?: number | null
+          primary_customer_size?: string | null
           recent_acquisitions?: Json | null
+          required_capabilities?: string[] | null
+          revenue_model?: string | null
+          revenue_sweet_spot?: number | null
           service_mix_prefs?: string | null
           service_regions?: string[] | null
           services_offered?: string | null
+          specialized_focus?: string | null
+          strategic_priorities?: string | null
+          target_business_model?: string | null
+          target_customer_geography?: string | null
+          target_customer_industries?: string[] | null
+          target_customer_profile?: string | null
+          target_customer_size?: string | null
+          target_geographies?: string[] | null
+          target_industries?: string[] | null
+          target_services?: string[] | null
           thesis_confidence?: string | null
           thesis_summary?: string | null
+          total_acquisitions?: number | null
           tracker_id?: string
         }
         Relationships: [

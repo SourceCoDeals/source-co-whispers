@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
 import { BuyerDataSection, DataField, DataListField, DataGrid } from "@/components/BuyerDataSection";
-import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2 } from "lucide-react";
+import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2, Briefcase, DollarSign, TrendingUp, Linkedin } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -107,14 +107,61 @@ export default function BuyerDetail() {
 
   const saveIntelligence = async () => {
     const { error } = await supabase.from("buyers").update({
-      thesis_summary: editData.thesis_summary,
+      // A. Company & Firm Identification
+      buyer_linkedin: editData.buyer_linkedin,
+      pe_firm_linkedin: editData.pe_firm_linkedin,
+      // B. Location & Geography
+      hq_country: editData.hq_country,
+      hq_region: editData.hq_region,
+      other_office_locations: editData.other_office_locations?.split?.(",").map((s: string) => s.trim()).filter(Boolean) || editData.other_office_locations || [],
+      acquisition_geography: editData.acquisition_geography?.split?.(",").map((s: string) => s.trim()).filter(Boolean) || editData.acquisition_geography || [],
+      target_geographies: editData.target_geographies?.split?.(",").map((s: string) => s.trim()).filter(Boolean) || editData.target_geographies || [],
+      geographic_exclusions: editData.geographic_exclusions?.split?.(",").map((s: string) => s.trim()).filter(Boolean) || editData.geographic_exclusions || [],
+      // C. Business Description
+      industry_vertical: editData.industry_vertical,
+      business_summary: editData.business_summary,
+      specialized_focus: editData.specialized_focus,
+      // D. Customer Profile
+      primary_customer_size: editData.primary_customer_size,
+      customer_industries: editData.customer_industries?.split?.(",").map((s: string) => s.trim()).filter(Boolean) || editData.customer_industries || [],
+      customer_geographic_reach: editData.customer_geographic_reach,
+      target_customer_profile: editData.target_customer_profile,
+      target_customer_size: editData.target_customer_size,
+      target_customer_industries: editData.target_customer_industries?.split?.(",").map((s: string) => s.trim()).filter(Boolean) || editData.target_customer_industries || [],
+      target_customer_geography: editData.target_customer_geography,
+      // E. Business Model
+      business_type: editData.business_type,
+      revenue_model: editData.revenue_model,
+      go_to_market_strategy: editData.go_to_market_strategy,
+      target_business_model: editData.target_business_model,
+      business_model_exclusions: editData.business_model_exclusions?.split?.(",").map((s: string) => s.trim()).filter(Boolean) || editData.business_model_exclusions || [],
+      business_model_prefs: editData.business_model_prefs,
+      // F. Size Criteria
       min_revenue: editData.min_revenue,
       max_revenue: editData.max_revenue,
+      revenue_sweet_spot: editData.revenue_sweet_spot,
+      min_ebitda: editData.min_ebitda,
+      max_ebitda: editData.max_ebitda,
+      ebitda_sweet_spot: editData.ebitda_sweet_spot,
       preferred_ebitda: editData.preferred_ebitda,
+      // G. Acquisition History
+      total_acquisitions: editData.total_acquisitions,
+      acquisition_frequency: editData.acquisition_frequency,
+      last_acquisition_date: editData.last_acquisition_date || null,
+      // H. Investment Criteria
+      thesis_summary: editData.thesis_summary,
       service_mix_prefs: editData.service_mix_prefs,
+      target_services: editData.target_services?.split?.(",").map((s: string) => s.trim()).filter(Boolean) || editData.target_services || [],
+      required_capabilities: editData.required_capabilities?.split?.(",").map((s: string) => s.trim()).filter(Boolean) || editData.required_capabilities || [],
+      target_industries: editData.target_industries?.split?.(",").map((s: string) => s.trim()).filter(Boolean) || editData.target_industries || [],
+      industry_exclusions: editData.industry_exclusions?.split?.(",").map((s: string) => s.trim()).filter(Boolean) || editData.industry_exclusions || [],
       deal_breakers: editData.deal_breakers?.split?.(",").map((s: string) => s.trim()).filter(Boolean) || editData.deal_breakers || [],
+      strategic_priorities: editData.strategic_priorities,
+      acquisition_appetite: editData.acquisition_appetite,
+      acquisition_timeline: editData.acquisition_timeline,
+      owner_roll_requirement: editData.owner_roll_requirement,
+      owner_transition_goals: editData.owner_transition_goals,
       thesis_confidence: editData.thesis_confidence,
-      business_model_prefs: editData.business_model_prefs,
       key_quotes: editData.key_quotes?.split?.("\n").filter(Boolean) || editData.key_quotes || [],
     }).eq("id", id);
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
@@ -126,7 +173,6 @@ export default function BuyerDetail() {
   if (isLoading) return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
   if (!buyer) return <AppLayout><div className="text-center py-12">Buyer not found</div></AppLayout>;
 
-  const geoPrefs = typeof buyer.geo_preferences === 'object' ? buyer.geo_preferences : {};
   const recentAcqs = Array.isArray(buyer.recent_acquisitions) ? buyer.recent_acquisitions : [];
 
   return (
@@ -138,7 +184,6 @@ export default function BuyerDetail() {
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div className="flex-1">
-            {/* Platform Company - Primary */}
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-display font-bold">
                 {buyer.platform_company_name || buyer.pe_firm_name}
@@ -151,7 +196,6 @@ export default function BuyerDetail() {
                 </Badge>
               )}
             </div>
-            {/* PE Firm - Secondary */}
             {buyer.platform_company_name && (
               <div className="flex items-center gap-2 text-lg text-muted-foreground">
                 <Building2 className="w-4 h-4" />
@@ -160,28 +204,13 @@ export default function BuyerDetail() {
             )}
             <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground flex-wrap">
               {buyer.platform_website && (
-                <a 
-                  href={buyer.platform_website.startsWith("http") ? buyer.platform_website : `https://${buyer.platform_website}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 hover:text-primary"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Platform Website
+                <a href={buyer.platform_website.startsWith("http") ? buyer.platform_website : `https://${buyer.platform_website}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-primary">
+                  <ExternalLink className="w-3.5 h-3.5" />Platform Website
                 </a>
               )}
               {buyer.hq_city || buyer.hq_state ? (
-                <span className="flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5" />
-                  HQ: {[buyer.hq_city, buyer.hq_state].filter(Boolean).join(", ")}
-                </span>
+                <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />HQ: {[buyer.hq_city, buyer.hq_state, buyer.hq_country].filter(Boolean).join(", ")}</span>
               ) : null}
-              {(buyer.service_regions?.length || buyer.geographic_footprint?.length) && (
-                <span className="flex items-center gap-1">
-                  <Globe className="w-3.5 h-3.5" />
-                  Services: {(buyer.service_regions || buyer.geographic_footprint).join(", ")}
-                </span>
-              )}
             </div>
           </div>
         </div>
@@ -189,69 +218,125 @@ export default function BuyerDetail() {
         <Tabs defaultValue="overview" className="space-y-4">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="intelligence">Intelligence</TabsTrigger>
+            <TabsTrigger value="intelligence">Edit Intelligence</TabsTrigger>
             <TabsTrigger value="contacts">Contacts ({contacts.length})</TabsTrigger>
           </TabsList>
           
-          {/* Overview Tab */}
+          {/* Overview Tab - All 8 Categories */}
           <TabsContent value="overview" className="space-y-4">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Company Identification */}
-              <BuyerDataSection 
-                title="Company Identification" 
-                icon={<Building2 className="w-4 h-4 text-muted-foreground" />}
-              >
+              
+              {/* A. Company & Firm Identification */}
+              <BuyerDataSection title="A. Company & Firm Identification" icon={<Building2 className="w-4 h-4 text-muted-foreground" />}>
                 <DataGrid columns={2}>
-                  <DataField label="Platform Company" value={buyer.platform_company_name} />
-                  <DataField label="PE Firm" value={buyer.pe_firm_name} />
-                  <DataField label="Platform Website" value={buyer.platform_website} type="url" />
-                  <DataField label="Business Model" value={buyer.business_model} />
+                  <DataField label="Buyer Company Name" value={buyer.platform_company_name} />
+                  <DataField label="PE / Parent Firm" value={buyer.pe_firm_name} />
+                  <DataField label="Buyer Website" value={buyer.platform_website} type="url" />
+                  <DataField label="PE Firm Website" value={buyer.pe_firm_website} type="url" />
+                  <DataField label="Buyer LinkedIn" value={buyer.buyer_linkedin} type="url" />
+                  <DataField label="PE Firm LinkedIn" value={buyer.pe_firm_linkedin} type="url" />
                   <DataField label="Fee Agreement" value={buyer.fee_agreement_status !== 'None' ? buyer.fee_agreement_status : null} />
                 </DataGrid>
               </BuyerDataSection>
 
-              {/* Location & Geography */}
-              <BuyerDataSection 
-                title="Location & Geography" 
-                icon={<MapPin className="w-4 h-4 text-muted-foreground" />}
-                isEmpty={!buyer.hq_city && !buyer.hq_state && !buyer.geographic_footprint?.length && !buyer.service_regions?.length}
-                emptyMessage="No geographic data available"
-              >
+              {/* B. Location & Geography */}
+              <BuyerDataSection title="B. Location & Geography" icon={<MapPin className="w-4 h-4 text-muted-foreground" />}>
                 <div className="space-y-4">
                   <DataGrid columns={2}>
-                    <DataField label="Headquarters" value={[buyer.hq_city, buyer.hq_state].filter(Boolean).join(", ") || null} />
+                    <DataField label="HQ City" value={buyer.hq_city} />
+                    <DataField label="HQ State" value={buyer.hq_state} />
+                    <DataField label="HQ Country" value={buyer.hq_country} />
+                    <DataField label="HQ Region" value={buyer.hq_region} />
                   </DataGrid>
-                  <DataListField label="Service Regions" items={buyer.service_regions?.length ? buyer.service_regions : buyer.geographic_footprint} />
-                  <DataListField label="Target Geographies" items={geoPrefs.target_regions} variant="default" />
-                  <DataListField label="Geographic Exclusions" items={geoPrefs.exclusions} variant="destructive" />
+                  <DataListField label="Other Office Locations" items={buyer.other_office_locations} />
+                  <DataListField label="States/Regions with Operations" items={buyer.service_regions?.length ? buyer.service_regions : buyer.geographic_footprint} />
+                  <DataListField label="Acquisition Geography" items={buyer.acquisition_geography} variant="default" />
+                  <DataListField label="Target Geographies" items={buyer.target_geographies} variant="default" />
+                  <DataListField label="Geographic Exclusions" items={buyer.geographic_exclusions} variant="destructive" />
                 </div>
               </BuyerDataSection>
 
-              {/* Size Metrics */}
-              <BuyerDataSection 
-                title="Size Metrics" 
-                icon={<BarChart3 className="w-4 h-4 text-muted-foreground" />}
-                isEmpty={!buyer.min_revenue && !buyer.max_revenue && !buyer.preferred_ebitda}
-                emptyMessage="No size metrics available"
-              >
-                <DataGrid columns={3}>
-                  <DataField label="Min Revenue" value={buyer.min_revenue} type="currency" />
-                  <DataField label="Max Revenue" value={buyer.max_revenue} type="currency" />
-                  <DataField label="Target EBITDA" value={buyer.preferred_ebitda} type="percentage" />
-                </DataGrid>
+              {/* C. Business Description */}
+              <BuyerDataSection title="C. Business Description" icon={<Briefcase className="w-4 h-4 text-muted-foreground" />}>
+                <div className="space-y-4">
+                  <DataField label="Primary Services / Products" value={buyer.services_offered} />
+                  <DataField label="Industry Vertical" value={buyer.industry_vertical} />
+                  <DataField label="Business Summary" value={buyer.business_summary} />
+                  <DataField label="Specialized Focus" value={buyer.specialized_focus} />
+                </div>
               </BuyerDataSection>
 
-              {/* Acquisition History */}
-              <BuyerDataSection 
-                title="Acquisition History" 
-                icon={<History className="w-4 h-4 text-muted-foreground" />}
-                isEmpty={recentAcqs.length === 0 && !buyer.last_call_date}
-                emptyMessage="No acquisition history available"
-              >
+              {/* D. Customer Profile */}
+              <BuyerDataSection title="D. Customer Profile" icon={<Users className="w-4 h-4 text-muted-foreground" />}>
+                <div className="space-y-4">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Current Customers</p>
+                  <DataGrid columns={2}>
+                    <DataField label="Primary Customer Size" value={buyer.primary_customer_size} />
+                    <DataField label="Customer Geographic Reach" value={buyer.customer_geographic_reach} />
+                  </DataGrid>
+                  <DataListField label="Customer Industries" items={buyer.customer_industries} />
+                  
+                  <div className="border-t pt-4">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground mb-3">Target Customer Profile (Acquisitions)</p>
+                    <DataField label="Target Customer Profile" value={buyer.target_customer_profile} />
+                    <DataGrid columns={2}>
+                      <DataField label="Target Customer Size" value={buyer.target_customer_size} />
+                      <DataField label="Target Customer Geography" value={buyer.target_customer_geography} />
+                    </DataGrid>
+                    <DataListField label="Target Customer Industries" items={buyer.target_customer_industries} />
+                  </div>
+                </div>
+              </BuyerDataSection>
+
+              {/* E. Business Model */}
+              <BuyerDataSection title="E. Business Model" icon={<TrendingUp className="w-4 h-4 text-muted-foreground" />}>
+                <div className="space-y-4">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Current</p>
+                  <DataGrid columns={2}>
+                    <DataField label="Business Type" value={buyer.business_type || buyer.business_model} />
+                    <DataField label="Revenue Model" value={buyer.revenue_model} />
+                  </DataGrid>
+                  <DataField label="Go-to-Market Strategy" value={buyer.go_to_market_strategy} />
+                  
+                  <div className="border-t pt-4">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground mb-3">Acquisition Preferences</p>
+                    <DataField label="Target Business Model" value={buyer.target_business_model} />
+                    <DataField label="Business Model Preferences" value={buyer.business_model_prefs} />
+                    <DataListField label="Business Model Exclusions" items={buyer.business_model_exclusions} variant="destructive" />
+                  </div>
+                </div>
+              </BuyerDataSection>
+
+              {/* F. Size Criteria */}
+              <BuyerDataSection title="F. Size Criteria (Acquisition Targets)" icon={<DollarSign className="w-4 h-4 text-muted-foreground" />}>
+                <div className="space-y-4">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Revenue</p>
+                  <DataGrid columns={3}>
+                    <DataField label="Min Revenue" value={buyer.min_revenue} type="currency" />
+                    <DataField label="Max Revenue" value={buyer.max_revenue} type="currency" />
+                    <DataField label="Revenue Sweet Spot" value={buyer.revenue_sweet_spot} type="currency" />
+                  </DataGrid>
+                  
+                  <div className="border-t pt-4">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground mb-3">EBITDA</p>
+                    <DataGrid columns={3}>
+                      <DataField label="Min EBITDA" value={buyer.min_ebitda} type="currency" />
+                      <DataField label="Max EBITDA" value={buyer.max_ebitda} type="currency" />
+                      <DataField label="EBITDA Sweet Spot" value={buyer.ebitda_sweet_spot} type="currency" />
+                    </DataGrid>
+                    <DataField label="Target EBITDA %" value={buyer.preferred_ebitda} type="percentage" />
+                  </div>
+                </div>
+              </BuyerDataSection>
+
+              {/* G. Acquisition History */}
+              <BuyerDataSection title="G. Acquisition History" icon={<History className="w-4 h-4 text-muted-foreground" />}>
                 <div className="space-y-4">
                   <DataGrid columns={2}>
-                    <DataField label="Last Call Date" value={buyer.last_call_date} />
-                    <DataField label="Data Last Updated" value={new Date(buyer.data_last_updated).toLocaleDateString()} />
+                    <DataField label="Total Acquisitions" value={buyer.total_acquisitions} />
+                    <DataField label="Acquisition Frequency" value={buyer.acquisition_frequency} />
+                    <DataField label="Last Acquisition Date" value={buyer.last_acquisition_date} />
+                    <DataField label="Number of Platforms" value={buyer.num_platforms} />
                   </DataGrid>
                   {recentAcqs.length > 0 && (
                     <div className="space-y-2">
@@ -261,22 +346,21 @@ export default function BuyerDetail() {
                           <div key={i} className="text-sm p-2 bg-muted/50 rounded">
                             <p className="font-medium">{acq.name || acq.company || "Unknown"}</p>
                             {acq.date && <p className="text-xs text-muted-foreground">{acq.date}</p>}
+                            {acq.description && <p className="text-xs text-muted-foreground">{acq.description}</p>}
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
+                  <DataGrid columns={2}>
+                    <DataField label="Last Call Date" value={buyer.last_call_date} />
+                    <DataField label="Data Last Updated" value={new Date(buyer.data_last_updated).toLocaleDateString()} />
+                  </DataGrid>
                 </div>
               </BuyerDataSection>
 
-              {/* Investment Criteria */}
-              <BuyerDataSection 
-                title="Investment Criteria" 
-                icon={<Target className="w-4 h-4 text-muted-foreground" />}
-                className="lg:col-span-2"
-                isEmpty={!buyer.thesis_summary && !buyer.service_mix_prefs && !buyer.deal_breakers?.length}
-                emptyMessage="No investment criteria captured yet. Add intelligence data to populate this section."
-              >
+              {/* H. Investment Criteria */}
+              <BuyerDataSection title="H. Investment Criteria" icon={<Target className="w-4 h-4 text-muted-foreground" />} className="lg:col-span-2">
                 <div className="space-y-4">
                   {buyer.thesis_summary && (
                     <div className="space-y-1">
@@ -284,15 +368,32 @@ export default function BuyerDetail() {
                       <p className="text-sm">{buyer.thesis_summary}</p>
                     </div>
                   )}
-                  <DataGrid columns={2}>
-                    <DataField label="Service Mix Preferences" value={buyer.service_mix_prefs} />
-                    <DataField label="Business Model Preferences" value={buyer.business_model_prefs} />
-                  </DataGrid>
+                  
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <DataListField label="Target Services / Products" items={buyer.target_services} />
+                    <DataListField label="Required Capabilities" items={buyer.required_capabilities} />
+                    <DataListField label="Target Industries" items={buyer.target_industries} />
+                    <DataListField label="Industry Exclusions" items={buyer.industry_exclusions} variant="destructive" />
                     <DataListField label="Deal Breakers" items={buyer.deal_breakers} variant="destructive" />
                     <DataListField label="Portfolio Companies" items={buyer.portfolio_companies} />
                   </div>
-                  <div className="flex gap-4">
+                  
+                  <DataGrid columns={2}>
+                    <DataField label="Service Mix Preferences" value={buyer.service_mix_prefs} />
+                    <DataField label="Strategic Priorities" value={buyer.strategic_priorities} />
+                    <DataField label="Acquisition Appetite" value={buyer.acquisition_appetite} />
+                    <DataField label="Acquisition Timeline / Goals" value={buyer.acquisition_timeline} />
+                  </DataGrid>
+
+                  <div className="border-t pt-4">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground mb-3">Ownership</p>
+                    <DataGrid columns={2}>
+                      <DataField label="Owner Roll Requirement" value={buyer.owner_roll_requirement} />
+                      <DataField label="Owner Transition Goals" value={buyer.owner_transition_goals} />
+                    </DataGrid>
+                  </div>
+                  
+                  <div className="flex gap-4 flex-wrap">
                     {buyer.addon_only && <Badge>Add-on Only</Badge>}
                     {buyer.platform_only && <Badge>Platform Only</Badge>}
                     {buyer.thesis_confidence && (
@@ -306,11 +407,7 @@ export default function BuyerDetail() {
 
               {/* Key Quotes */}
               {buyer.key_quotes?.length > 0 && (
-                <BuyerDataSection 
-                  title="Key Quotes" 
-                  icon={<Quote className="w-4 h-4 text-muted-foreground" />}
-                  className="lg:col-span-2"
-                >
+                <BuyerDataSection title="Key Quotes" icon={<Quote className="w-4 h-4 text-muted-foreground" />} className="lg:col-span-2">
                   <div className="space-y-3">
                     {buyer.key_quotes.map((quote: string, i: number) => (
                       <blockquote key={i} className="border-l-2 border-primary/50 pl-4 py-1 text-sm italic text-muted-foreground">
@@ -321,12 +418,8 @@ export default function BuyerDetail() {
                 </BuyerDataSection>
               )}
 
-              {/* Call Transcripts Section */}
-              <BuyerDataSection 
-                title="Call Transcripts" 
-                icon={<FileText className="w-4 h-4 text-muted-foreground" />}
-                className="lg:col-span-2"
-              >
+              {/* Call Transcripts */}
+              <BuyerDataSection title="Call Transcripts" icon={<FileText className="w-4 h-4 text-muted-foreground" />} className="lg:col-span-2">
                 <div className="space-y-4">
                   <div className="flex justify-end">
                     <Dialog open={transcriptDialogOpen} onOpenChange={setTranscriptDialogOpen}>
@@ -338,40 +431,19 @@ export default function BuyerDetail() {
                         <div className="space-y-4 pt-4">
                           <div>
                             <Label>Title *</Label>
-                            <Input 
-                              value={newTranscript.title} 
-                              onChange={(e) => setNewTranscript({ ...newTranscript, title: e.target.value })} 
-                              placeholder="e.g., Q1 2024 Buyer Call" 
-                              className="mt-1" 
-                            />
+                            <Input value={newTranscript.title} onChange={(e) => setNewTranscript({ ...newTranscript, title: e.target.value })} placeholder="e.g., Q1 2024 Buyer Call" className="mt-1" />
                           </div>
                           <div>
                             <Label>Call Date</Label>
-                            <Input 
-                              type="date" 
-                              value={newTranscript.call_date} 
-                              onChange={(e) => setNewTranscript({ ...newTranscript, call_date: e.target.value })} 
-                              className="mt-1" 
-                            />
+                            <Input type="date" value={newTranscript.call_date} onChange={(e) => setNewTranscript({ ...newTranscript, call_date: e.target.value })} className="mt-1" />
                           </div>
                           <div>
                             <Label>Transcript Link</Label>
-                            <Input 
-                              value={newTranscript.url} 
-                              onChange={(e) => setNewTranscript({ ...newTranscript, url: e.target.value })} 
-                              placeholder="https://..." 
-                              className="mt-1" 
-                            />
+                            <Input value={newTranscript.url} onChange={(e) => setNewTranscript({ ...newTranscript, url: e.target.value })} placeholder="https://..." className="mt-1" />
                           </div>
                           <div>
                             <Label>Notes</Label>
-                            <Textarea 
-                              value={newTranscript.notes} 
-                              onChange={(e) => setNewTranscript({ ...newTranscript, notes: e.target.value })} 
-                              placeholder="Key takeaways from this call..." 
-                              className="mt-1" 
-                              rows={2}
-                            />
+                            <Textarea value={newTranscript.notes} onChange={(e) => setNewTranscript({ ...newTranscript, notes: e.target.value })} placeholder="Key takeaways from this call..." className="mt-1" rows={2} />
                           </div>
                           <div className="flex gap-2">
                             <Button onClick={addTranscriptLink} disabled={!newTranscript.title.trim()} className="flex-1">
@@ -385,23 +457,12 @@ export default function BuyerDetail() {
                           <div>
                             <Label htmlFor="transcript-upload" className="cursor-pointer">
                               <div className="border-2 border-dashed rounded-lg p-4 text-center hover:border-primary/50 transition-colors">
-                                {isUploading ? (
-                                  <Loader2 className="w-6 h-6 animate-spin mx-auto" />
-                                ) : (
-                                  <>
-                                    <Upload className="w-6 h-6 mx-auto text-muted-foreground mb-2" />
-                                    <p className="text-sm text-muted-foreground">Click to upload transcript file</p>
-                                  </>
+                                {isUploading ? (<Loader2 className="w-6 h-6 animate-spin mx-auto" />) : (
+                                  <><Upload className="w-6 h-6 mx-auto text-muted-foreground mb-2" /><p className="text-sm text-muted-foreground">Click to upload transcript file</p></>
                                 )}
                               </div>
                             </Label>
-                            <input 
-                              id="transcript-upload" 
-                              type="file" 
-                              className="hidden" 
-                              onChange={handleFileUpload}
-                              accept=".pdf,.doc,.docx,.txt,.md"
-                            />
+                            <input id="transcript-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".pdf,.doc,.docx,.txt,.md" />
                           </div>
                         </div>
                       </DialogContent>
@@ -417,19 +478,10 @@ export default function BuyerDetail() {
                           <div className="flex items-center gap-3">
                             <FileText className="w-4 h-4 text-muted-foreground" />
                             <div>
-                              <a 
-                                href={getTranscriptUrl(t)} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="font-medium hover:text-primary hover:underline"
-                              >
-                                {t.title}
-                              </a>
+                              <a href={getTranscriptUrl(t)} target="_blank" rel="noopener noreferrer" className="font-medium hover:text-primary hover:underline">{t.title}</a>
                               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 {t.call_date && <span>{new Date(t.call_date).toLocaleDateString()}</span>}
-                                <Badge variant="outline" className="text-xs">
-                                  {t.transcript_type === "file" ? "Uploaded" : "Link"}
-                                </Badge>
+                                <Badge variant="outline" className="text-xs">{t.transcript_type === "file" ? "Uploaded" : "Link"}</Badge>
                               </div>
                               {t.notes && <p className="text-xs text-muted-foreground mt-1">{t.notes}</p>}
                             </div>
@@ -450,96 +502,128 @@ export default function BuyerDetail() {
           <TabsContent value="intelligence" className="space-y-4">
             <div className="bg-card rounded-lg border p-6 space-y-6">
               <div className="flex justify-between items-center">
-                <h2 className="font-semibold">Buyer Intelligence</h2>
-                <Button variant="outline" size="sm" onClick={() => setIsEditing(!isEditing)}>
-                  <Edit className="w-4 h-4 mr-2" />{isEditing ? "Cancel" : "Edit"}
-                </Button>
+                <h2 className="font-semibold">Edit Buyer Intelligence</h2>
+                {isEditing && <Button onClick={saveIntelligence}>Save All Changes</Button>}
+                {!isEditing && <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}><Edit className="w-4 h-4 mr-2" />Start Editing</Button>}
               </div>
               
-              {isEditing ? (
-                <div className="space-y-4">
-                  <div>
-                    <Label>Investment Thesis Summary</Label>
-                    <Textarea 
-                      value={editData.thesis_summary || ""} 
-                      onChange={(e) => setEditData({ ...editData, thesis_summary: e.target.value })} 
-                      placeholder="What is this buyer looking for? Their acquisition strategy and goals..."
-                      className="mt-1"
-                      rows={4}
-                    />
-                  </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <Label>Min Revenue ($M)</Label>
-                      <Input type="number" value={editData.min_revenue || ""} onChange={(e) => setEditData({ ...editData, min_revenue: e.target.value })} className="mt-1" />
-                    </div>
-                    <div>
-                      <Label>Max Revenue ($M)</Label>
-                      <Input type="number" value={editData.max_revenue || ""} onChange={(e) => setEditData({ ...editData, max_revenue: e.target.value })} className="mt-1" />
-                    </div>
-                    <div>
-                      <Label>Target EBITDA (%)</Label>
-                      <Input type="number" value={editData.preferred_ebitda || ""} onChange={(e) => setEditData({ ...editData, preferred_ebitda: e.target.value })} className="mt-1" />
-                    </div>
-                  </div>
-                  <div>
-                    <Label>Service Mix Preferences</Label>
-                    <Input value={editData.service_mix_prefs || ""} onChange={(e) => setEditData({ ...editData, service_mix_prefs: e.target.value })} placeholder="e.g., Residential only, commercial a plus" className="mt-1" />
-                  </div>
-                  <div>
-                    <Label>Business Model Preferences</Label>
-                    <Input value={editData.business_model_prefs || ""} onChange={(e) => setEditData({ ...editData, business_model_prefs: e.target.value })} placeholder="e.g., Recurring revenue, service contracts" className="mt-1" />
-                  </div>
-                  <div>
-                    <Label>Deal Breakers (comma-separated)</Label>
-                    <Input 
-                      value={Array.isArray(editData.deal_breakers) ? editData.deal_breakers.join(", ") : editData.deal_breakers || ""} 
-                      onChange={(e) => setEditData({ ...editData, deal_breakers: e.target.value })} 
-                      placeholder="e.g., No franchise, No West Coast, Union shops"
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label>Key Quotes (one per line)</Label>
-                    <Textarea 
-                      value={Array.isArray(editData.key_quotes) ? editData.key_quotes.join("\n") : editData.key_quotes || ""} 
-                      onChange={(e) => setEditData({ ...editData, key_quotes: e.target.value })} 
-                      placeholder="Direct quotes from calls that capture their criteria..."
-                      className="mt-1"
-                      rows={4}
-                    />
-                  </div>
-                  <Button onClick={saveIntelligence}>Save Intelligence</Button>
-                </div>
+              {!isEditing ? (
+                <p className="text-muted-foreground">Click "Start Editing" to update buyer intelligence across all categories.</p>
               ) : (
-                <div className="space-y-6">
-                  {buyer.thesis_summary && (
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Investment Thesis</p>
-                      <p>{buyer.thesis_summary}</p>
+                <div className="space-y-8">
+                  {/* A. Company & Firm Identification */}
+                  <div className="space-y-4">
+                    <h3 className="font-semibold border-b pb-2">A. Company & Firm Identification</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div><Label>Buyer LinkedIn</Label><Input value={editData.buyer_linkedin || ""} onChange={(e) => setEditData({ ...editData, buyer_linkedin: e.target.value })} placeholder="https://linkedin.com/company/..." className="mt-1" /></div>
+                      <div><Label>PE Firm LinkedIn</Label><Input value={editData.pe_firm_linkedin || ""} onChange={(e) => setEditData({ ...editData, pe_firm_linkedin: e.target.value })} placeholder="https://linkedin.com/company/..." className="mt-1" /></div>
                     </div>
-                  )}
-                  <div className="grid grid-cols-3 gap-4">
-                    <DataField label="Min Revenue" value={buyer.min_revenue} type="currency" />
-                    <DataField label="Max Revenue" value={buyer.max_revenue} type="currency" />
-                    <DataField label="Target EBITDA" value={buyer.preferred_ebitda} type="percentage" />
                   </div>
-                  <DataField label="Service Mix Preferences" value={buyer.service_mix_prefs} />
-                  <DataField label="Business Model Preferences" value={buyer.business_model_prefs} />
-                  <DataListField label="Deal Breakers" items={buyer.deal_breakers} variant="destructive" />
-                  {buyer.key_quotes?.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Key Quotes</p>
-                      {buyer.key_quotes.map((quote: string, i: number) => (
-                        <blockquote key={i} className="border-l-2 border-primary/50 pl-4 py-1 text-sm italic text-muted-foreground">
-                          "{quote}"
-                        </blockquote>
-                      ))}
+
+                  {/* B. Location & Geography */}
+                  <div className="space-y-4">
+                    <h3 className="font-semibold border-b pb-2">B. Location & Geography</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div><Label>HQ Country</Label><Input value={editData.hq_country || ""} onChange={(e) => setEditData({ ...editData, hq_country: e.target.value })} className="mt-1" /></div>
+                      <div><Label>HQ Region</Label><Input value={editData.hq_region || ""} onChange={(e) => setEditData({ ...editData, hq_region: e.target.value })} placeholder="e.g., Southeast, Midwest" className="mt-1" /></div>
                     </div>
-                  )}
-                  {!buyer.thesis_summary && !buyer.min_revenue && !buyer.deal_breakers?.length && (
-                    <p className="text-muted-foreground">No intelligence captured yet. Click Edit to add buyer preferences.</p>
-                  )}
+                    <div><Label>Other Office Locations (comma-separated)</Label><Input value={Array.isArray(editData.other_office_locations) ? editData.other_office_locations.join(", ") : editData.other_office_locations || ""} onChange={(e) => setEditData({ ...editData, other_office_locations: e.target.value })} className="mt-1" /></div>
+                    <div><Label>Acquisition Geography (comma-separated)</Label><Input value={Array.isArray(editData.acquisition_geography) ? editData.acquisition_geography.join(", ") : editData.acquisition_geography || ""} onChange={(e) => setEditData({ ...editData, acquisition_geography: e.target.value })} className="mt-1" /></div>
+                    <div><Label>Target Geographies (comma-separated)</Label><Input value={Array.isArray(editData.target_geographies) ? editData.target_geographies.join(", ") : editData.target_geographies || ""} onChange={(e) => setEditData({ ...editData, target_geographies: e.target.value })} className="mt-1" /></div>
+                    <div><Label>Geographic Exclusions (comma-separated)</Label><Input value={Array.isArray(editData.geographic_exclusions) ? editData.geographic_exclusions.join(", ") : editData.geographic_exclusions || ""} onChange={(e) => setEditData({ ...editData, geographic_exclusions: e.target.value })} className="mt-1" /></div>
+                  </div>
+
+                  {/* C. Business Description */}
+                  <div className="space-y-4">
+                    <h3 className="font-semibold border-b pb-2">C. Business Description</h3>
+                    <div><Label>Industry Vertical</Label><Input value={editData.industry_vertical || ""} onChange={(e) => setEditData({ ...editData, industry_vertical: e.target.value })} className="mt-1" /></div>
+                    <div><Label>Business Summary</Label><Textarea value={editData.business_summary || ""} onChange={(e) => setEditData({ ...editData, business_summary: e.target.value })} rows={3} className="mt-1" /></div>
+                    <div><Label>Specialized Focus</Label><Input value={editData.specialized_focus || ""} onChange={(e) => setEditData({ ...editData, specialized_focus: e.target.value })} className="mt-1" /></div>
+                  </div>
+
+                  {/* D. Customer Profile */}
+                  <div className="space-y-4">
+                    <h3 className="font-semibold border-b pb-2">D. Customer Profile</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div><Label>Primary Customer Size</Label><Input value={editData.primary_customer_size || ""} onChange={(e) => setEditData({ ...editData, primary_customer_size: e.target.value })} placeholder="e.g., SMB, Mid-market, Enterprise" className="mt-1" /></div>
+                      <div><Label>Customer Geographic Reach</Label><Input value={editData.customer_geographic_reach || ""} onChange={(e) => setEditData({ ...editData, customer_geographic_reach: e.target.value })} className="mt-1" /></div>
+                    </div>
+                    <div><Label>Customer Industries (comma-separated)</Label><Input value={Array.isArray(editData.customer_industries) ? editData.customer_industries.join(", ") : editData.customer_industries || ""} onChange={(e) => setEditData({ ...editData, customer_industries: e.target.value })} className="mt-1" /></div>
+                    <div><Label>Target Customer Profile</Label><Textarea value={editData.target_customer_profile || ""} onChange={(e) => setEditData({ ...editData, target_customer_profile: e.target.value })} rows={2} className="mt-1" /></div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div><Label>Target Customer Size</Label><Input value={editData.target_customer_size || ""} onChange={(e) => setEditData({ ...editData, target_customer_size: e.target.value })} className="mt-1" /></div>
+                      <div><Label>Target Customer Geography</Label><Input value={editData.target_customer_geography || ""} onChange={(e) => setEditData({ ...editData, target_customer_geography: e.target.value })} className="mt-1" /></div>
+                    </div>
+                    <div><Label>Target Customer Industries (comma-separated)</Label><Input value={Array.isArray(editData.target_customer_industries) ? editData.target_customer_industries.join(", ") : editData.target_customer_industries || ""} onChange={(e) => setEditData({ ...editData, target_customer_industries: e.target.value })} className="mt-1" /></div>
+                  </div>
+
+                  {/* E. Business Model */}
+                  <div className="space-y-4">
+                    <h3 className="font-semibold border-b pb-2">E. Business Model</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div><Label>Business Type</Label><Input value={editData.business_type || ""} onChange={(e) => setEditData({ ...editData, business_type: e.target.value })} className="mt-1" /></div>
+                      <div><Label>Revenue Model</Label><Input value={editData.revenue_model || ""} onChange={(e) => setEditData({ ...editData, revenue_model: e.target.value })} placeholder="e.g., Recurring, Project-based" className="mt-1" /></div>
+                    </div>
+                    <div><Label>Go-to-Market Strategy</Label><Textarea value={editData.go_to_market_strategy || ""} onChange={(e) => setEditData({ ...editData, go_to_market_strategy: e.target.value })} rows={2} className="mt-1" /></div>
+                    <div><Label>Target Business Model</Label><Input value={editData.target_business_model || ""} onChange={(e) => setEditData({ ...editData, target_business_model: e.target.value })} className="mt-1" /></div>
+                    <div><Label>Business Model Preferences</Label><Input value={editData.business_model_prefs || ""} onChange={(e) => setEditData({ ...editData, business_model_prefs: e.target.value })} className="mt-1" /></div>
+                    <div><Label>Business Model Exclusions (comma-separated)</Label><Input value={Array.isArray(editData.business_model_exclusions) ? editData.business_model_exclusions.join(", ") : editData.business_model_exclusions || ""} onChange={(e) => setEditData({ ...editData, business_model_exclusions: e.target.value })} className="mt-1" /></div>
+                  </div>
+
+                  {/* F. Size Criteria */}
+                  <div className="space-y-4">
+                    <h3 className="font-semibold border-b pb-2">F. Size Criteria</h3>
+                    <p className="text-sm text-muted-foreground">Revenue (in $M)</p>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div><Label>Min Revenue</Label><Input type="number" value={editData.min_revenue || ""} onChange={(e) => setEditData({ ...editData, min_revenue: e.target.value })} className="mt-1" /></div>
+                      <div><Label>Max Revenue</Label><Input type="number" value={editData.max_revenue || ""} onChange={(e) => setEditData({ ...editData, max_revenue: e.target.value })} className="mt-1" /></div>
+                      <div><Label>Revenue Sweet Spot</Label><Input type="number" value={editData.revenue_sweet_spot || ""} onChange={(e) => setEditData({ ...editData, revenue_sweet_spot: e.target.value })} className="mt-1" /></div>
+                    </div>
+                    <p className="text-sm text-muted-foreground">EBITDA (in $M or %)</p>
+                    <div className="grid grid-cols-4 gap-4">
+                      <div><Label>Min EBITDA ($M)</Label><Input type="number" value={editData.min_ebitda || ""} onChange={(e) => setEditData({ ...editData, min_ebitda: e.target.value })} className="mt-1" /></div>
+                      <div><Label>Max EBITDA ($M)</Label><Input type="number" value={editData.max_ebitda || ""} onChange={(e) => setEditData({ ...editData, max_ebitda: e.target.value })} className="mt-1" /></div>
+                      <div><Label>EBITDA Sweet Spot ($M)</Label><Input type="number" value={editData.ebitda_sweet_spot || ""} onChange={(e) => setEditData({ ...editData, ebitda_sweet_spot: e.target.value })} className="mt-1" /></div>
+                      <div><Label>Target EBITDA %</Label><Input type="number" value={editData.preferred_ebitda || ""} onChange={(e) => setEditData({ ...editData, preferred_ebitda: e.target.value })} className="mt-1" /></div>
+                    </div>
+                  </div>
+
+                  {/* G. Acquisition History */}
+                  <div className="space-y-4">
+                    <h3 className="font-semibold border-b pb-2">G. Acquisition History</h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div><Label>Total Acquisitions</Label><Input type="number" value={editData.total_acquisitions || ""} onChange={(e) => setEditData({ ...editData, total_acquisitions: e.target.value })} className="mt-1" /></div>
+                      <div><Label>Acquisition Frequency</Label><Input value={editData.acquisition_frequency || ""} onChange={(e) => setEditData({ ...editData, acquisition_frequency: e.target.value })} placeholder="e.g., 2-3 per year" className="mt-1" /></div>
+                      <div><Label>Last Acquisition Date</Label><Input type="date" value={editData.last_acquisition_date || ""} onChange={(e) => setEditData({ ...editData, last_acquisition_date: e.target.value })} className="mt-1" /></div>
+                    </div>
+                  </div>
+
+                  {/* H. Investment Criteria */}
+                  <div className="space-y-4">
+                    <h3 className="font-semibold border-b pb-2">H. Investment Criteria</h3>
+                    <div><Label>Investment Thesis Summary</Label><Textarea value={editData.thesis_summary || ""} onChange={(e) => setEditData({ ...editData, thesis_summary: e.target.value })} placeholder="What is this buyer looking for?" rows={4} className="mt-1" /></div>
+                    <div><Label>Service Mix Preferences</Label><Input value={editData.service_mix_prefs || ""} onChange={(e) => setEditData({ ...editData, service_mix_prefs: e.target.value })} className="mt-1" /></div>
+                    <div><Label>Target Services (comma-separated)</Label><Input value={Array.isArray(editData.target_services) ? editData.target_services.join(", ") : editData.target_services || ""} onChange={(e) => setEditData({ ...editData, target_services: e.target.value })} className="mt-1" /></div>
+                    <div><Label>Required Capabilities (comma-separated)</Label><Input value={Array.isArray(editData.required_capabilities) ? editData.required_capabilities.join(", ") : editData.required_capabilities || ""} onChange={(e) => setEditData({ ...editData, required_capabilities: e.target.value })} className="mt-1" /></div>
+                    <div><Label>Target Industries (comma-separated)</Label><Input value={Array.isArray(editData.target_industries) ? editData.target_industries.join(", ") : editData.target_industries || ""} onChange={(e) => setEditData({ ...editData, target_industries: e.target.value })} className="mt-1" /></div>
+                    <div><Label>Industry Exclusions (comma-separated)</Label><Input value={Array.isArray(editData.industry_exclusions) ? editData.industry_exclusions.join(", ") : editData.industry_exclusions || ""} onChange={(e) => setEditData({ ...editData, industry_exclusions: e.target.value })} className="mt-1" /></div>
+                    <div><Label>Deal Breakers (comma-separated)</Label><Input value={Array.isArray(editData.deal_breakers) ? editData.deal_breakers.join(", ") : editData.deal_breakers || ""} onChange={(e) => setEditData({ ...editData, deal_breakers: e.target.value })} className="mt-1" /></div>
+                    <div><Label>Strategic Priorities</Label><Textarea value={editData.strategic_priorities || ""} onChange={(e) => setEditData({ ...editData, strategic_priorities: e.target.value })} rows={2} className="mt-1" /></div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div><Label>Acquisition Appetite</Label><Input value={editData.acquisition_appetite || ""} onChange={(e) => setEditData({ ...editData, acquisition_appetite: e.target.value })} placeholder="e.g., Aggressive, Selective" className="mt-1" /></div>
+                      <div><Label>Acquisition Timeline / Goals</Label><Input value={editData.acquisition_timeline || ""} onChange={(e) => setEditData({ ...editData, acquisition_timeline: e.target.value })} className="mt-1" /></div>
+                    </div>
+                    
+                    <p className="text-sm font-semibold text-muted-foreground pt-2">Ownership</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div><Label>Owner Roll Requirement</Label><Input value={editData.owner_roll_requirement || ""} onChange={(e) => setEditData({ ...editData, owner_roll_requirement: e.target.value })} placeholder="e.g., Required, Preferred, Optional" className="mt-1" /></div>
+                      <div><Label>Owner Transition Goals</Label><Input value={editData.owner_transition_goals || ""} onChange={(e) => setEditData({ ...editData, owner_transition_goals: e.target.value })} className="mt-1" /></div>
+                    </div>
+                    
+                    <div><Label>Key Quotes (one per line)</Label><Textarea value={Array.isArray(editData.key_quotes) ? editData.key_quotes.join("\n") : editData.key_quotes || ""} onChange={(e) => setEditData({ ...editData, key_quotes: e.target.value })} placeholder="Direct quotes from calls..." rows={4} className="mt-1" /></div>
+                  </div>
+
+                  <Button onClick={saveIntelligence} className="w-full">Save All Changes</Button>
                 </div>
               )}
             </div>
@@ -547,12 +631,7 @@ export default function BuyerDetail() {
 
           {/* Contacts Tab */}
           <TabsContent value="contacts" className="space-y-4">
-            <BuyerDataSection 
-              title="Contacts" 
-              icon={<User className="w-4 h-4 text-muted-foreground" />}
-              isEmpty={contacts.length === 0}
-              emptyMessage="No contacts added yet."
-            >
+            <BuyerDataSection title="Contacts" icon={<User className="w-4 h-4 text-muted-foreground" />} isEmpty={contacts.length === 0} emptyMessage="No contacts added yet.">
               <div className="divide-y">
                 {contacts.map((c) => (
                   <div key={c.id} className="py-3 first:pt-0 last:pb-0">
@@ -561,18 +640,12 @@ export default function BuyerDetail() {
                         <p className="font-medium">{c.name}</p>
                         <p className="text-sm text-muted-foreground">{c.title}</p>
                       </div>
-                      {c.priority_level && (
-                        <Badge variant="outline">Priority {c.priority_level}</Badge>
-                      )}
+                      {c.priority_level && <Badge variant="outline">Priority {c.priority_level}</Badge>}
                     </div>
                     <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
                       {c.email && <span>{c.email}</span>}
                       {c.phone && <span>{c.phone}</span>}
-                      {c.linkedin_url && (
-                        <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                          LinkedIn
-                        </a>
-                      )}
+                      {c.linkedin_url && <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">LinkedIn</a>}
                     </div>
                   </div>
                 ))}
