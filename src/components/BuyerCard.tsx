@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
-import { Building2, MapPin, DollarSign, TrendingUp, Globe } from "lucide-react";
+import { MapPin, DollarSign } from "lucide-react";
 
 interface BuyerCardProps {
   buyer: any;
@@ -9,9 +9,18 @@ interface BuyerCardProps {
 }
 
 export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
-  const hasInvestmentCriteria = buyer.min_revenue || buyer.max_revenue || buyer.preferred_ebitda;
-  const hasGeography = buyer.geographic_footprint?.length > 0 || buyer.geo_preferences;
+  const geography = buyer.geographic_footprint?.[0] || null;
+  const hasRevenue = buyer.min_revenue || buyer.max_revenue;
   
+  const formatRevenue = () => {
+    if (buyer.min_revenue && buyer.max_revenue) {
+      return `$${buyer.min_revenue}M-$${buyer.max_revenue}M`;
+    }
+    if (buyer.min_revenue) return `$${buyer.min_revenue}M+`;
+    if (buyer.max_revenue) return `Up to $${buyer.max_revenue}M`;
+    return null;
+  };
+
   if (view === "compact") {
     return (
       <Link 
@@ -20,30 +29,22 @@ export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <p className="font-medium truncate">{buyer.pe_firm_name}</p>
-            {buyer.addon_only && <Badge variant="outline" className="text-xs">Add-on Only</Badge>}
-            {buyer.platform_only && <Badge variant="outline" className="text-xs">Platform Only</Badge>}
+            <p className="font-semibold">{buyer.pe_firm_name}</p>
           </div>
           {buyer.platform_company_name && (
-            <p className="text-sm text-muted-foreground truncate">{buyer.platform_company_name}</p>
+            <p className="text-sm text-muted-foreground">{buyer.platform_company_name}</p>
           )}
-          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-            {buyer.geographic_footprint?.length > 0 && (
+          <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground">
+            {geography && (
               <span className="flex items-center gap-1">
-                <MapPin className="w-3 h-3" />
-                {buyer.geographic_footprint.slice(0, 2).join(", ")}
-                {buyer.geographic_footprint.length > 2 && ` +${buyer.geographic_footprint.length - 2}`}
+                <MapPin className="w-3.5 h-3.5" />
+                {geography}
               </span>
             )}
-            {(buyer.min_revenue || buyer.max_revenue) && (
+            {hasRevenue && (
               <span className="flex items-center gap-1">
-                <DollarSign className="w-3 h-3" />
-                {buyer.min_revenue && buyer.max_revenue 
-                  ? `$${buyer.min_revenue}M-$${buyer.max_revenue}M`
-                  : buyer.min_revenue 
-                    ? `$${buyer.min_revenue}M+`
-                    : `Up to $${buyer.max_revenue}M`
-                }
+                <DollarSign className="w-3.5 h-3.5" />
+                {formatRevenue()}
               </span>
             )}
           </div>
@@ -53,12 +54,13 @@ export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
     );
   }
 
+  // Expanded view
   return (
     <Link 
       to={`/buyers/${buyer.id}`} 
-      className="block p-4 hover:bg-muted/50 transition-colors border-b last:border-b-0"
+      className="block p-4 hover:bg-muted/50 transition-colors"
     >
-      <div className="flex items-start justify-between mb-3">
+      <div className="flex items-start justify-between mb-2">
         <div>
           <div className="flex items-center gap-2">
             <p className="font-semibold">{buyer.pe_firm_name}</p>
@@ -72,72 +74,33 @@ export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
         <IntelligenceBadge buyer={buyer} />
       </div>
       
-      {buyer.thesis_summary && (
-        <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{buyer.thesis_summary}</p>
-      )}
-      
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-        {hasGeography && (
-          <div className="flex items-start gap-2">
-            <MapPin className="w-3.5 h-3.5 mt-0.5 text-muted-foreground flex-shrink-0" />
-            <div>
-              <p className="text-muted-foreground">Geography</p>
-              <p className="font-medium">
-                {buyer.geographic_footprint?.slice(0, 2).join(", ")}
-                {buyer.geographic_footprint?.length > 2 && ` +${buyer.geographic_footprint.length - 2}`}
-              </p>
-            </div>
-          </div>
+      <div className="flex items-center gap-4 text-sm text-muted-foreground mb-2">
+        {geography && (
+          <span className="flex items-center gap-1">
+            <MapPin className="w-3.5 h-3.5" />
+            {buyer.geographic_footprint?.join(", ")}
+          </span>
         )}
-        
-        {hasInvestmentCriteria && (
-          <div className="flex items-start gap-2">
-            <DollarSign className="w-3.5 h-3.5 mt-0.5 text-muted-foreground flex-shrink-0" />
-            <div>
-              <p className="text-muted-foreground">Revenue Target</p>
-              <p className="font-medium">
-                {buyer.min_revenue && buyer.max_revenue 
-                  ? `$${buyer.min_revenue}M-$${buyer.max_revenue}M`
-                  : buyer.min_revenue 
-                    ? `$${buyer.min_revenue}M+`
-                    : buyer.max_revenue
-                      ? `Up to $${buyer.max_revenue}M`
-                      : "—"
-                }
-              </p>
-            </div>
-          </div>
+        {hasRevenue && (
+          <span className="flex items-center gap-1">
+            <DollarSign className="w-3.5 h-3.5" />
+            {formatRevenue()}
+          </span>
         )}
-        
         {buyer.preferred_ebitda && (
-          <div className="flex items-start gap-2">
-            <TrendingUp className="w-3.5 h-3.5 mt-0.5 text-muted-foreground flex-shrink-0" />
-            <div>
-              <p className="text-muted-foreground">EBITDA</p>
-              <p className="font-medium">{buyer.preferred_ebitda}%+</p>
-            </div>
-          </div>
-        )}
-        
-        {buyer.services_offered && (
-          <div className="flex items-start gap-2">
-            <Building2 className="w-3.5 h-3.5 mt-0.5 text-muted-foreground flex-shrink-0" />
-            <div>
-              <p className="text-muted-foreground">Services</p>
-              <p className="font-medium truncate">{buyer.services_offered}</p>
-            </div>
-          </div>
+          <span>{buyer.preferred_ebitda}% EBITDA</span>
         )}
       </div>
+
+      {buyer.thesis_summary && (
+        <p className="text-sm text-muted-foreground line-clamp-2">{buyer.thesis_summary}</p>
+      )}
       
       {buyer.deal_breakers?.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-3">
+        <div className="flex flex-wrap gap-1.5 mt-2">
           {buyer.deal_breakers.slice(0, 3).map((db: string, i: number) => (
             <Badge key={i} variant="destructive" className="text-xs">{db}</Badge>
           ))}
-          {buyer.deal_breakers.length > 3 && (
-            <Badge variant="outline" className="text-xs">+{buyer.deal_breakers.length - 3} more</Badge>
-          )}
         </div>
       )}
     </Link>
