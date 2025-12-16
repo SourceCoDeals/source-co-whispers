@@ -142,6 +142,47 @@ export type Database = {
           },
         ]
       }
+      buyer_transcripts: {
+        Row: {
+          buyer_id: string
+          call_date: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          title: string
+          transcript_type: string
+          url: string | null
+        }
+        Insert: {
+          buyer_id: string
+          call_date?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          title: string
+          transcript_type?: string
+          url?: string | null
+        }
+        Update: {
+          buyer_id?: string
+          call_date?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          title?: string
+          transcript_type?: string
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "buyer_transcripts_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "buyers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       buyers: {
         Row: {
           addon_only: boolean | null
