@@ -163,6 +163,7 @@ export type Database = {
           min_revenue: number | null
           num_platforms: number | null
           pe_firm_name: string
+          pe_firm_website: string | null
           platform_company_name: string | null
           platform_only: boolean | null
           platform_website: string | null
@@ -196,6 +197,7 @@ export type Database = {
           min_revenue?: number | null
           num_platforms?: number | null
           pe_firm_name: string
+          pe_firm_website?: string | null
           platform_company_name?: string | null
           platform_only?: boolean | null
           platform_website?: string | null
@@ -229,6 +231,7 @@ export type Database = {
           min_revenue?: number | null
           num_platforms?: number | null
           pe_firm_name?: string
+          pe_firm_website?: string | null
           platform_company_name?: string | null
           platform_only?: boolean | null
           platform_website?: string | null

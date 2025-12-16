@@ -24,7 +24,7 @@ export default function TrackerDetail() {
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [buyerView, setBuyerView] = useState<"compact" | "expanded">("compact");
-  const [newBuyer, setNewBuyer] = useState({ pe_firm_name: "", platform_company_name: "" });
+  const [newBuyer, setNewBuyer] = useState({ pe_firm_name: "", pe_firm_website: "", platform_company_name: "", platform_website: "" });
   const [dialogOpen, setDialogOpen] = useState(false);
 
   useEffect(() => { loadData(); }, [id]);
@@ -46,7 +46,7 @@ export default function TrackerDetail() {
     const { error } = await supabase.from("buyers").insert({ tracker_id: id, ...newBuyer });
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
     toast({ title: "Buyer added" });
-    setNewBuyer({ pe_firm_name: "", platform_company_name: "" });
+    setNewBuyer({ pe_firm_name: "", pe_firm_website: "", platform_company_name: "", platform_website: "" });
     setDialogOpen(false);
     loadData();
   };
@@ -91,7 +91,9 @@ export default function TrackerDetail() {
                   <DialogHeader><DialogTitle>Add New Buyer</DialogTitle></DialogHeader>
                   <div className="space-y-4 pt-4">
                     <div><Label>PE Firm Name *</Label><Input value={newBuyer.pe_firm_name} onChange={(e) => setNewBuyer({ ...newBuyer, pe_firm_name: e.target.value })} placeholder="e.g., Blackstone" className="mt-1" /></div>
+                    <div><Label>PE Firm Website</Label><Input value={newBuyer.pe_firm_website} onChange={(e) => setNewBuyer({ ...newBuyer, pe_firm_website: e.target.value })} placeholder="e.g., https://blackstone.com" className="mt-1" /></div>
                     <div><Label>Platform Company</Label><Input value={newBuyer.platform_company_name} onChange={(e) => setNewBuyer({ ...newBuyer, platform_company_name: e.target.value })} placeholder="e.g., ABC Services" className="mt-1" /></div>
+                    <div><Label>Platform Company Website</Label><Input value={newBuyer.platform_website} onChange={(e) => setNewBuyer({ ...newBuyer, platform_website: e.target.value })} placeholder="e.g., https://abcservices.com" className="mt-1" /></div>
                     <Button onClick={addBuyer} disabled={!newBuyer.pe_firm_name.trim()} className="w-full">Add Buyer</Button>
                   </div>
                 </DialogContent>
