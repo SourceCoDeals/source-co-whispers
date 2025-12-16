@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { ScoreBadge, ScoreBreakdown } from "@/components/ScoreBadge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
-import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2 } from "lucide-react";
+import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -19,6 +19,7 @@ export default function DealMatching() {
   const [deal, setDeal] = useState<any>(null);
   const [buyers, setBuyers] = useState<any[]>([]);
   const [scores, setScores] = useState<any[]>([]);
+  const [contacts, setContacts] = useState<Record<string, any[]>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -31,6 +32,19 @@ export default function DealMatching() {
     if (dealData) {
       const { data: buyersData } = await supabase.from("buyers").select("*").eq("tracker_id", dealData.tracker_id);
       setBuyers(buyersData || []);
+      
+      // Fetch contacts for all buyers
+      const buyerIds = (buyersData || []).map(b => b.id);
+      if (buyerIds.length > 0) {
+        const { data: contactsData } = await supabase.from("buyer_contacts").select("*").in("buyer_id", buyerIds);
+        const contactsByBuyer: Record<string, any[]> = {};
+        (contactsData || []).forEach(c => {
+          if (!contactsByBuyer[c.buyer_id]) contactsByBuyer[c.buyer_id] = [];
+          contactsByBuyer[c.buyer_id].push(c);
+        });
+        setContacts(contactsByBuyer);
+      }
+      
       const { data: scoresData } = await supabase.from("buyer_deal_scores").select("*").eq("deal_id", id);
       if (scoresData?.length) {
         setScores(scoresData);
@@ -109,10 +123,87 @@ export default function DealMatching() {
 
   const hasFeeAgreement = (buyer: any) => buyer.fee_agreement_status && buyer.fee_agreement_status !== 'None';
 
+  const getBuyerContacts = (buyerId: string) => contacts[buyerId] || [];
+  
+  const getContactsByType = (buyerId: string, companyType: string) => {
+    return getBuyerContacts(buyerId).filter(c => c.company_type === companyType);
+  };
+
+  const renderContactSection = (buyer: any, companyType: string, companyName: string) => {
+    const typeContacts = getContactsByType(buyer.id, companyType);
+    
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+            <Building2 className="w-3.5 h-3.5" />
+            {companyName}
+          </span>
+          {typeContacts.length === 0 && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="h-7 text-xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                toast({ title: "Contact discovery", description: `Finding contacts for ${companyName}...` });
+              }}
+            >
+              <UserSearch className="w-3 h-3 mr-1" />
+              Find Contacts
+            </Button>
+          )}
+        </div>
+        {typeContacts.length > 0 ? (
+          <div className="space-y-1.5">
+            {typeContacts.map((contact) => (
+              <div key={contact.id} className="flex items-center justify-between bg-muted/50 rounded px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <User className="w-3.5 h-3.5 text-muted-foreground" />
+                  <div>
+                    <span className="text-sm font-medium">{contact.name}</span>
+                    {contact.title && <span className="text-xs text-muted-foreground ml-2">{contact.title}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {contact.email && (
+                    <a 
+                      href={`mailto:${contact.email}`} 
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-muted-foreground hover:text-primary"
+                      title={contact.email}
+                    >
+                      <Mail className="w-4 h-4" />
+                    </a>
+                  )}
+                  {contact.linkedin_url && (
+                    <a 
+                      href={contact.linkedin_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-muted-foreground hover:text-primary"
+                      title="LinkedIn"
+                    >
+                      <Linkedin className="w-4 h-4" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground italic">No contacts found</p>
+        )}
+      </div>
+    );
+  };
+
   const renderBuyerRow = (buyer: any, showCheckbox = true) => {
     const score = buyer.score;
     const isExpanded = expanded.has(buyer.id);
     const isApproved = score?.selected_for_outreach;
+    const buyerContacts = getBuyerContacts(buyer.id);
 
     return (
       <div key={buyer.id} className="p-4">
@@ -138,6 +229,11 @@ export default function DealMatching() {
                   {hasFeeAgreement(buyer) && (
                     <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/30">
                       <FileCheck className="w-3 h-3 mr-1" />Fee Agreement
+                    </Badge>
+                  )}
+                  {buyerContacts.length > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      <User className="w-3 h-3 mr-1" />{buyerContacts.length} contact{buyerContacts.length !== 1 ? 's' : ''}
                     </Badge>
                   )}
                 </div>
@@ -173,6 +269,18 @@ export default function DealMatching() {
             </div>
             <CollapsibleContent className="mt-4 pl-0 space-y-4">
               <ScoreBreakdown scores={{ geography: score?.geography_score, service: score?.service_score, acquisition: score?.acquisition_score, portfolio: score?.portfolio_score, businessModel: score?.business_model_score, thesisBonus: score?.thesis_bonus || 0 }} />
+              
+              {/* Contacts Section */}
+              <div className="border rounded-lg p-4 space-y-4 bg-muted/20">
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <User className="w-4 h-4" /> Contacts
+                </h4>
+                <div className="grid md:grid-cols-2 gap-4">
+                  {renderContactSection(buyer, "PE Firm", buyer.pe_firm_name)}
+                  {buyer.platform_company_name && renderContactSection(buyer, "Platform", buyer.platform_company_name)}
+                </div>
+              </div>
+              
               {buyer.thesis_summary && (
                 <p className="text-sm text-muted-foreground italic border-l-2 border-primary/30 pl-3">"{buyer.thesis_summary}"</p>
               )}
