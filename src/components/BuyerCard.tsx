@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
-import { MapPin, DollarSign, ExternalLink, Building2 } from "lucide-react";
+import { MapPin, DollarSign, ExternalLink, Building2, Globe, FileCheck } from "lucide-react";
 
 interface BuyerCardProps {
   buyer: any;
@@ -9,7 +9,6 @@ interface BuyerCardProps {
 }
 
 export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
-  const geography = buyer.geographic_footprint?.[0] || null;
   const hasRevenue = buyer.min_revenue || buyer.max_revenue;
   
   const formatRevenue = () => {
@@ -25,16 +24,13 @@ export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
     if (buyer.platform_website) {
       return buyer.platform_website.startsWith('http') ? buyer.platform_website : `https://${buyer.platform_website}`;
     }
-    // Fallback to Google search
     return `https://www.google.com/search?q=${encodeURIComponent(buyer.platform_company_name || buyer.pe_firm_name)}`;
   };
 
   const getPEFirmWebsite = () => {
-    // Google search for PE firm
     return `https://www.google.com/search?q=${encodeURIComponent(buyer.pe_firm_name + ' private equity')}`;
   };
 
-  // Truncate services to first sentence or 80 chars
   const getServicesSummary = () => {
     if (!buyer.services_offered) return null;
     const text = buyer.services_offered;
@@ -45,12 +41,28 @@ export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
     return firstSentence;
   };
 
+  const getHQ = () => {
+    if (buyer.hq_city && buyer.hq_state) return `${buyer.hq_city}, ${buyer.hq_state}`;
+    if (buyer.hq_state) return buyer.hq_state;
+    if (buyer.hq_city) return buyer.hq_city;
+    return null;
+  };
+
+  const getServiceLocations = () => {
+    // Prefer service_regions, fallback to geographic_footprint
+    const regions = buyer.service_regions?.length ? buyer.service_regions : buyer.geographic_footprint;
+    if (!regions?.length) return null;
+    return regions;
+  };
+
+  const hasFeeAgreement = buyer.fee_agreement_status && buyer.fee_agreement_status !== 'None';
+
   if (view === "compact") {
     return (
       <div className="flex items-start justify-between p-4 hover:bg-muted/50 transition-colors group">
         <div className="flex-1 min-w-0">
           {/* Platform Company - Primary */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Link to={`/buyers/${buyer.id}`} className="font-semibold hover:text-primary transition-colors">
               {buyer.platform_company_name || buyer.pe_firm_name}
             </Link>
@@ -64,6 +76,12 @@ export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
             >
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
+            {hasFeeAgreement && (
+              <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/30">
+                <FileCheck className="w-3 h-3 mr-1" />
+                Fee Agreement
+              </Badge>
+            )}
           </div>
           
           {/* PE Firm - Secondary */}
@@ -91,14 +109,23 @@ export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
             </p>
           )}
           
-          {/* Location & Revenue */}
-          <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground">
-            {geography && (
-              <span className="flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5" />
-                {geography}
+          {/* Location Info */}
+          <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground flex-wrap">
+            {/* HQ */}
+            {getHQ() && (
+              <span className="flex items-center gap-1" title="Headquarters">
+                <Building2 className="w-3.5 h-3.5" />
+                HQ: {getHQ()}
               </span>
             )}
+            {/* Service Locations */}
+            {getServiceLocations() && (
+              <span className="flex items-center gap-1" title="Service regions">
+                <Globe className="w-3.5 h-3.5" />
+                {getServiceLocations().join(", ")}
+              </span>
+            )}
+            {/* Revenue */}
             {hasRevenue && (
               <span className="flex items-center gap-1">
                 <DollarSign className="w-3.5 h-3.5" />
@@ -120,7 +147,7 @@ export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
       <div className="flex items-start justify-between mb-2">
         <div>
           {/* Platform Company - Primary */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Link to={`/buyers/${buyer.id}`} className="font-semibold text-lg hover:text-primary transition-colors">
               {buyer.platform_company_name || buyer.pe_firm_name}
             </Link>
@@ -134,6 +161,12 @@ export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
             >
               <ExternalLink className="w-4 h-4" />
             </a>
+            {hasFeeAgreement && (
+              <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/30">
+                <FileCheck className="w-3 h-3 mr-1" />
+                {buyer.fee_agreement_status}
+              </Badge>
+            )}
             {buyer.addon_only && <Badge variant="outline" className="text-xs">Add-on Only</Badge>}
             {buyer.platform_only && <Badge variant="outline" className="text-xs">Platform Only</Badge>}
           </div>
@@ -168,11 +201,18 @@ export function BuyerCard({ buyer, view = "compact" }: BuyerCardProps) {
         </p>
       )}
       
-      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-        {geography && (
-          <span className="flex items-center gap-1">
-            <MapPin className="w-3.5 h-3.5" />
-            {buyer.geographic_footprint?.join(", ")}
+      {/* Location & Metrics */}
+      <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+        {getHQ() && (
+          <span className="flex items-center gap-1" title="Headquarters">
+            <Building2 className="w-3.5 h-3.5" />
+            HQ: {getHQ()}
+          </span>
+        )}
+        {getServiceLocations() && (
+          <span className="flex items-center gap-1" title="Service regions">
+            <Globe className="w-3.5 h-3.5" />
+            Services: {getServiceLocations().join(", ")}
           </span>
         )}
         {hasRevenue && (
