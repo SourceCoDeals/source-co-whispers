@@ -254,48 +254,60 @@ export type Database = {
       }
       deals: {
         Row: {
+          additional_info: string | null
           business_model: string | null
+          company_website: string | null
           created_at: string
           deal_name: string
           ebitda_percentage: number | null
           geography: string[] | null
           id: string
           industry_type: string | null
+          owner_goals: string | null
           revenue: number | null
           service_mix: string | null
           special_requirements: string | null
           status: string | null
           tracker_id: string
+          transcript_link: string | null
           updated_at: string
         }
         Insert: {
+          additional_info?: string | null
           business_model?: string | null
+          company_website?: string | null
           created_at?: string
           deal_name: string
           ebitda_percentage?: number | null
           geography?: string[] | null
           id?: string
           industry_type?: string | null
+          owner_goals?: string | null
           revenue?: number | null
           service_mix?: string | null
           special_requirements?: string | null
           status?: string | null
           tracker_id: string
+          transcript_link?: string | null
           updated_at?: string
         }
         Update: {
+          additional_info?: string | null
           business_model?: string | null
+          company_website?: string | null
           created_at?: string
           deal_name?: string
           ebitda_percentage?: number | null
           geography?: string[] | null
           id?: string
           industry_type?: string | null
+          owner_goals?: string | null
           revenue?: number | null
           service_mix?: string | null
           special_requirements?: string | null
           status?: string | null
           tracker_id?: string
+          transcript_link?: string | null
           updated_at?: string
         }
         Relationships: [
