@@ -5,7 +5,6 @@ import {
   LayoutDashboard, 
   FileText, 
   Users, 
-  LogOut, 
   ChevronLeft,
   ChevronRight,
   Menu,
@@ -14,8 +13,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -33,28 +30,14 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { toast } = useToast();
-
-  const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      toast({
-        title: "Error signing out",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      navigate("/auth");
-    }
-  };
 
   return (
     <div className="min-h-screen bg-background">
       {/* Mobile header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 bg-sidebar border-b border-sidebar-border">
         <Link to="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg gradient-teal flex items-center justify-center">
-            <Building2 className="w-5 h-5 text-sidebar-primary-foreground" />
+          <div className="w-8 h-8 rounded-lg gradient-gold flex items-center justify-center">
+            <Building2 className="w-5 h-5 text-sidebar" />
           </div>
           <span className="text-lg font-display font-bold text-sidebar-foreground">SourceCo</span>
         </Link>
@@ -99,15 +82,6 @@ export function AppLayout({ children }: AppLayoutProps) {
               );
             })}
           </div>
-          <div className="mt-auto pt-4 border-t border-sidebar-border">
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent w-full"
-            >
-              <LogOut className="w-5 h-5" />
-              Sign Out
-            </button>
-          </div>
         </nav>
       </aside>
 
@@ -119,8 +93,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         {/* Logo */}
         <div className="flex items-center justify-between px-4 py-5 border-b border-sidebar-border">
           <Link to="/" className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg gradient-teal flex items-center justify-center flex-shrink-0">
-              <Building2 className="w-6 h-6 text-sidebar-primary-foreground" />
+            <div className="w-10 h-10 rounded-lg gradient-gold flex items-center justify-center flex-shrink-0">
+              <Building2 className="w-6 h-6 text-sidebar" />
             </div>
             {sidebarOpen && (
               <span className="text-xl font-display font-bold text-sidebar-foreground">SourceCo</span>
@@ -165,7 +139,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             <div className="mt-6">
               <Button
                 variant="outline"
-                className="w-full justify-start gap-2 border-sidebar-border text-sidebar-foreground hover:bg-sidebar-accent"
+                className="w-full justify-start gap-2 border-sidebar-border text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-primary"
                 onClick={() => navigate("/trackers/new")}
               >
                 <Plus className="w-4 h-4" />
@@ -175,19 +149,14 @@ export function AppLayout({ children }: AppLayoutProps) {
           )}
         </nav>
 
-        {/* User section */}
+        {/* Footer */}
         <div className="p-4 border-t border-sidebar-border">
-          <button
-            onClick={handleLogout}
-            className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent w-full transition-colors",
-              !sidebarOpen && "justify-center"
-            )}
-            title={!sidebarOpen ? "Sign Out" : undefined}
-          >
-            <LogOut className="w-5 h-5 flex-shrink-0" />
-            {sidebarOpen && "Sign Out"}
-          </button>
+          <p className={cn(
+            "text-xs text-sidebar-foreground/50",
+            !sidebarOpen && "text-center"
+          )}>
+            {sidebarOpen ? "SourceCo Deal Platform" : "SC"}
+          </p>
         </div>
       </aside>
 

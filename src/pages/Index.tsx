@@ -12,58 +12,38 @@ import {
   Users, 
   Brain, 
   TrendingUp, 
-  Clock,
   Plus,
   ArrowRight,
-  Loader2
+  Loader2,
+  Sparkles
 } from "lucide-react";
-import type { IndustryTracker, Buyer, Deal } from "@/lib/types";
 import { getIntelligenceCoverage } from "@/lib/types";
-import type { User } from "@supabase/supabase-js";
+import { seedSampleData } from "@/lib/seedData";
+import { useToast } from "@/hooks/use-toast";
 
-interface TrackerWithStats extends IndustryTracker {
+interface TrackerWithStats {
+  id: string;
+  industry_name: string;
   buyer_count: number;
   deal_count: number;
   intelligent_buyer_count: number;
 }
 
 export default function Dashboard() {
-  const [user, setUser] = useState<User | null>(null);
   const [trackers, setTrackers] = useState<TrackerWithStats[]>([]);
   const [recentActivity, setRecentActivity] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSeeding, setIsSeeding] = useState(false);
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setUser(session?.user ?? null);
-        if (!session?.user) {
-          navigate("/auth");
-        }
-      }
-    );
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (!session?.user) {
-        navigate("/auth");
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
-
-  useEffect(() => {
-    if (user) {
-      loadDashboardData();
-    }
-  }, [user]);
+    loadDashboardData();
+  }, []);
 
   const loadDashboardData = async () => {
     setIsLoading(true);
     try {
-      // Load trackers
       const { data: trackersData, error: trackersError } = await supabase
         .from("industry_trackers")
         .select("*")
@@ -71,7 +51,6 @@ export default function Dashboard() {
 
       if (trackersError) throw trackersError;
 
-      // Load buyers and deals for each tracker
       const trackersWithStats: TrackerWithStats[] = await Promise.all(
         (trackersData || []).map(async (tracker) => {
           const [buyersResult, dealsResult] = await Promise.all([
@@ -95,7 +74,6 @@ export default function Dashboard() {
 
       setTrackers(trackersWithStats);
 
-      // Generate activity feed
       const activities: string[] = [];
       trackersWithStats.forEach((t) => {
         if (t.intelligent_buyer_count > 0) {
@@ -114,6 +92,19 @@ export default function Dashboard() {
       console.error("Error loading dashboard:", error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSeedData = async () => {
+    setIsSeeding(true);
+    try {
+      await seedSampleData();
+      toast({ title: "Sample data loaded!", description: "Residential HVAC buyer universe created with 29 buyers." });
+      loadDashboardData();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setIsSeeding(false);
     }
   };
 
@@ -144,9 +135,12 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => navigate("/trackers")}>
-              View All Universes
-            </Button>
+            {trackers.length === 0 && (
+              <Button variant="outline" onClick={handleSeedData} disabled={isSeeding}>
+                {isSeeding ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                Load Sample Data
+              </Button>
+            )}
             <Button onClick={() => navigate("/trackers/new")}>
               <Plus className="w-4 h-4 mr-2" />
               New Buyer Universe
@@ -202,12 +196,18 @@ export default function Dashboard() {
                 <Building2 className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="font-semibold mb-2">No buyer universes yet</h3>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Create your first buyer universe to start matching deals with buyers.
+                  Create your first buyer universe or load sample data to get started.
                 </p>
-                <Button onClick={() => navigate("/trackers/new")}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Buyer Universe
-                </Button>
+                <div className="flex gap-3 justify-center">
+                  <Button variant="outline" onClick={handleSeedData} disabled={isSeeding}>
+                    {isSeeding ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                    Load Sample Data
+                  </Button>
+                  <Button onClick={() => navigate("/trackers/new")}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Universe
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="grid gap-4">
@@ -220,7 +220,7 @@ export default function Dashboard() {
                     <Link
                       key={tracker.id}
                       to={`/trackers/${tracker.id}`}
-                      className="bg-card rounded-lg border p-5 hover:border-primary/30 hover:shadow-md transition-all"
+                      className="bg-card rounded-lg border p-5 hover:border-accent/50 hover:shadow-md transition-all"
                     >
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
@@ -270,22 +270,22 @@ export default function Dashboard() {
             </div>
 
             {/* Quick Tips */}
-            <div className="bg-accent/5 rounded-lg border border-accent/20 p-5">
+            <div className="bg-accent/10 rounded-lg border border-accent/20 p-5">
               <h3 className="font-semibold flex items-center gap-2 mb-3">
                 <TrendingUp className="w-4 h-4 text-accent" />
                 Improving Match Quality
               </h3>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li className="flex items-start gap-2">
-                  <span className="text-accent">•</span>
+                  <span className="text-accent font-bold">•</span>
                   Capture buyer intelligence after every call
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-accent">•</span>
+                  <span className="text-accent font-bold">•</span>
                   Update thesis data when buyers share preferences
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-accent">•</span>
+                  <span className="text-accent font-bold">•</span>
                   Track introduction outcomes to validate matching
                 </li>
               </ul>
