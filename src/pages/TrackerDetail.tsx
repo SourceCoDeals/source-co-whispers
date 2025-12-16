@@ -130,14 +130,13 @@ export default function TrackerDetail() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
-                      <TableHead className="w-[200px]">
+                      <TableHead className="w-[220px]">
                         <div className="flex items-center gap-1">Platform Company <ArrowUpDown className="w-3 h-3 text-muted-foreground" /></div>
                       </TableHead>
                       <TableHead className="w-[180px]">
                         <div className="flex items-center gap-1">PE Firm <ArrowUpDown className="w-3 h-3 text-muted-foreground" /></div>
                       </TableHead>
-                      <TableHead className="w-[250px]">Services</TableHead>
-                      <TableHead className="w-[120px]">Location</TableHead>
+                      <TableHead className="w-[300px]">Services</TableHead>
                       <TableHead className="w-[120px] text-center">Intelligence</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -149,43 +148,47 @@ export default function TrackerDetail() {
                         onClick={() => navigate(`/buyers/${buyer.id}`)}
                       >
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{buyer.platform_company_name || "—"}</span>
-                            {buyer.platform_website && (
-                              <a 
-                                href={getWebsiteUrl(buyer.platform_website)!} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-muted-foreground hover:text-primary"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              {buyer.platform_website ? (
+                                <a 
+                                  href={getWebsiteUrl(buyer.platform_website)!} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="font-medium text-primary hover:underline"
+                                >
+                                  {buyer.platform_company_name || "—"}
+                                </a>
+                              ) : (
+                                <span className="font-medium">{buyer.platform_company_name || "—"}</span>
+                              )}
+                            </div>
+                            {getHQ(buyer) && (
+                              <span className="text-xs text-muted-foreground">{getHQ(buyer)}</span>
                             )}
                           </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
-                            <span>{buyer.pe_firm_name}</span>
-                            {buyer.pe_firm_website && (
+                            {buyer.pe_firm_website ? (
                               <a 
                                 href={getWebsiteUrl(buyer.pe_firm_website)!} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
-                                className="text-muted-foreground hover:text-primary"
+                                className="text-primary hover:underline"
                               >
-                                <ExternalLink className="w-3.5 h-3.5" />
+                                {buyer.pe_firm_name}
                               </a>
+                            ) : (
+                              <span>{buyer.pe_firm_name}</span>
                             )}
                           </div>
                         </TableCell>
                         <TableCell>
                           <span className="text-sm text-muted-foreground">{getServicesSummary(buyer) || "—"}</span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm">{getHQ(buyer) || "—"}</span>
                         </TableCell>
                         <TableCell className="text-center">
                           <IntelligenceBadge buyer={buyer} />
