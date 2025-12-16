@@ -2,112 +2,113 @@
 @tailwind components;
 @tailwind utilities;
 
-/* SourceCo Design System - Professional M&A Platform */
+/* SourceCo Brand Design System */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
 
 @layer base {
   :root {
-    /* SourceCo Brand Colors - Navy/Slate Professional */
-    --background: 220 20% 97%;
-    --foreground: 222 47% 11%;
+    /* SourceCo Brand Colors */
+    /* Primary: Black, Gold, White */
+    --background: 0 0% 98%;
+    --foreground: 0 0% 9%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 0 0% 9%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 0 0% 9%;
 
-    /* Primary - Deep Navy */
-    --primary: 222 47% 15%;
-    --primary-foreground: 210 40% 98%;
+    /* Primary - SourceCo Black */
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 100%;
 
-    /* Secondary - Slate */
-    --secondary: 215 20% 93%;
-    --secondary-foreground: 222 47% 11%;
+    /* Secondary - Cool Grey */
+    --secondary: 0 0% 95%;
+    --secondary-foreground: 0 0% 9%;
 
-    --muted: 215 20% 93%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 0 0% 93%;
+    --muted-foreground: 0 0% 45%;
 
-    /* Accent - Teal for intelligence indicators */
-    --accent: 180 50% 40%;
-    --accent-foreground: 0 0% 100%;
+    /* Accent - SourceCo Gold #DEC66A */
+    --accent: 47 62% 64%;
+    --accent-foreground: 0 0% 9%;
 
     --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 222 47% 15%;
+    --border: 0 0% 89%;
+    --input: 0 0% 89%;
+    --ring: 47 62% 64%;
 
     --radius: 0.5rem;
 
     /* SourceCo Status Colors */
     --success: 142 76% 36%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
+    --warning: 47 92% 60%;
+    --warning-foreground: 0 0% 9%;
     --danger: 0 72% 51%;
     --danger-foreground: 0 0% 100%;
 
     /* Match Quality Colors */
     --match-high: 142 76% 36%;
-    --match-medium: 38 92% 50%;
+    --match-medium: 47 92% 55%;
     --match-low: 0 72% 51%;
-    --match-neutral: 215 16% 47%;
+    --match-neutral: 0 0% 45%;
 
     /* Intelligence Indicators */
     --intelligence-high: 142 76% 36%;
-    --intelligence-medium: 38 92% 50%;
-    --intelligence-low: 215 16% 70%;
+    --intelligence-medium: 47 92% 55%;
+    --intelligence-low: 0 0% 70%;
 
-    /* Sidebar */
-    --sidebar-background: 222 47% 11%;
-    --sidebar-foreground: 215 20% 85%;
-    --sidebar-primary: 180 50% 50%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 222 47% 18%;
-    --sidebar-accent-foreground: 215 20% 85%;
-    --sidebar-border: 222 30% 20%;
-    --sidebar-ring: 180 50% 50%;
+    /* Sidebar - SourceCo Dark */
+    --sidebar-background: 0 0% 7%;
+    --sidebar-foreground: 0 0% 85%;
+    --sidebar-primary: 47 62% 64%;
+    --sidebar-primary-foreground: 0 0% 9%;
+    --sidebar-accent: 0 0% 14%;
+    --sidebar-accent-foreground: 0 0% 85%;
+    --sidebar-border: 0 0% 18%;
+    --sidebar-ring: 47 62% 64%;
   }
 
   .dark {
-    --background: 222 47% 8%;
-    --foreground: 210 40% 98%;
+    --background: 0 0% 7%;
+    --foreground: 0 0% 98%;
 
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 98%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 98%;
 
-    --primary: 180 50% 50%;
-    --primary-foreground: 222 47% 11%;
+    --primary: 47 62% 64%;
+    --primary-foreground: 0 0% 9%;
 
-    --secondary: 222 30% 18%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 98%;
 
-    --muted: 222 30% 18%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 65%;
 
-    --accent: 180 50% 40%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 47 62% 64%;
+    --accent-foreground: 0 0% 9%;
 
     --destructive: 0 62% 45%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 222 30% 20%;
-    --input: 222 30% 20%;
-    --ring: 180 50% 50%;
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 47 62% 64%;
 
-    --sidebar-background: 222 47% 6%;
-    --sidebar-foreground: 215 20% 85%;
-    --sidebar-primary: 180 50% 50%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 222 47% 12%;
-    --sidebar-accent-foreground: 215 20% 85%;
-    --sidebar-border: 222 30% 15%;
-    --sidebar-ring: 180 50% 50%;
+    --sidebar-background: 0 0% 5%;
+    --sidebar-foreground: 0 0% 85%;
+    --sidebar-primary: 47 62% 64%;
+    --sidebar-primary-foreground: 0 0% 9%;
+    --sidebar-accent: 0 0% 12%;
+    --sidebar-accent-foreground: 0 0% 85%;
+    --sidebar-border: 0 0% 15%;
+    --sidebar-ring: 47 62% 64%;
   }
 }
 
@@ -128,6 +129,16 @@
 }
 
 @layer utilities {
+  /* SourceCo Gold Gradient */
+  .gradient-gold {
+    background: linear-gradient(135deg, hsl(47 62% 64%) 0%, hsl(47 72% 70%) 100%);
+  }
+
+  /* SourceCo Dark Gradient */
+  .gradient-dark {
+    background: linear-gradient(135deg, hsl(0 0% 7%) 0%, hsl(0 0% 14%) 100%);
+  }
+
   /* Score/Match Quality Backgrounds */
   .bg-match-high {
     @apply bg-green-50 dark:bg-green-950/30;
@@ -171,15 +182,6 @@
   /* Score Badge */
   .score-badge {
     @apply inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium;
-  }
-
-  /* Gradient backgrounds */
-  .gradient-navy {
-    background: linear-gradient(135deg, hsl(222 47% 15%) 0%, hsl(222 47% 20%) 100%);
-  }
-
-  .gradient-teal {
-    background: linear-gradient(135deg, hsl(180 50% 35%) 0%, hsl(180 50% 45%) 100%);
   }
 }
 
