@@ -5,14 +5,21 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { BuyerCard } from "@/components/BuyerCard";
 import { CSVImport } from "@/components/CSVImport";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, LayoutGrid, List } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { IntelligenceBadge } from "@/components/IntelligenceBadge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 export default function TrackerDetail() {
   const { id } = useParams();
@@ -23,7 +30,6 @@ export default function TrackerDetail() {
   const [deals, setDeals] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [buyerView, setBuyerView] = useState<"compact" | "expanded">("compact");
   const [newBuyer, setNewBuyer] = useState({ pe_firm_name: "", pe_firm_website: "", platform_company_name: "", platform_website: "" });
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -56,6 +62,25 @@ export default function TrackerDetail() {
     (b.platform_company_name || "").toLowerCase().includes(search.toLowerCase())
   );
 
+  const getWebsiteUrl = (url: string | null) => {
+    if (!url) return null;
+    return url.startsWith('http') ? url : `https://${url}`;
+  };
+
+  const getHQ = (buyer: any) => {
+    if (buyer.hq_city && buyer.hq_state) return `${buyer.hq_city}, ${buyer.hq_state}`;
+    if (buyer.hq_state) return buyer.hq_state;
+    if (buyer.hq_city) return buyer.hq_city;
+    return null;
+  };
+
+  const getServicesSummary = (buyer: any) => {
+    if (!buyer.services_offered) return null;
+    const text = buyer.services_offered;
+    const firstSentence = text.split(/[.;]/)[0];
+    return firstSentence.length > 60 ? firstSentence.substring(0, 60) + '...' : firstSentence;
+  };
+
   if (isLoading) return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
   if (!tracker) return <AppLayout><div className="text-center py-12">Tracker not found</div></AppLayout>;
 
@@ -80,10 +105,6 @@ export default function TrackerDetail() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input placeholder="Search buyers..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
               </div>
-              <ToggleGroup type="single" value={buyerView} onValueChange={(v) => v && setBuyerView(v as "compact" | "expanded")}>
-                <ToggleGroupItem value="compact" aria-label="Compact view"><List className="w-4 h-4" /></ToggleGroupItem>
-                <ToggleGroupItem value="expanded" aria-label="Expanded view"><LayoutGrid className="w-4 h-4" /></ToggleGroupItem>
-              </ToggleGroup>
               <CSVImport trackerId={id!} onComplete={loadData} />
               <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                 <DialogTrigger asChild><Button><Plus className="w-4 h-4 mr-2" />Add Buyer</Button></DialogTrigger>
@@ -100,17 +121,79 @@ export default function TrackerDetail() {
               </Dialog>
             </div>
             
-            <div className="bg-card rounded-lg border">
+            <div className="bg-card rounded-lg border overflow-hidden">
               {filteredBuyers.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">
                   {search ? "No buyers match your search" : "No buyers yet. Add buyers manually or import from CSV."}
                 </div>
               ) : (
-                <div className="divide-y">
-                  {filteredBuyers.map((buyer) => (
-                    <BuyerCard key={buyer.id} buyer={buyer} view={buyerView} />
-                  ))}
-                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="w-[200px]">
+                        <div className="flex items-center gap-1">Platform Company <ArrowUpDown className="w-3 h-3 text-muted-foreground" /></div>
+                      </TableHead>
+                      <TableHead className="w-[180px]">
+                        <div className="flex items-center gap-1">PE Firm <ArrowUpDown className="w-3 h-3 text-muted-foreground" /></div>
+                      </TableHead>
+                      <TableHead className="w-[250px]">Services</TableHead>
+                      <TableHead className="w-[120px]">Location</TableHead>
+                      <TableHead className="w-[120px] text-center">Intelligence</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredBuyers.map((buyer) => (
+                      <TableRow 
+                        key={buyer.id} 
+                        className="cursor-pointer hover:bg-muted/30 transition-colors"
+                        onClick={() => navigate(`/buyers/${buyer.id}`)}
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{buyer.platform_company_name || "—"}</span>
+                            {buyer.platform_website && (
+                              <a 
+                                href={getWebsiteUrl(buyer.platform_website)!} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-muted-foreground hover:text-primary"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span>{buyer.pe_firm_name}</span>
+                            {buyer.pe_firm_website && (
+                              <a 
+                                href={getWebsiteUrl(buyer.pe_firm_website)!} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-muted-foreground hover:text-primary"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-muted-foreground">{getServicesSummary(buyer) || "—"}</span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm">{getHQ(buyer) || "—"}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <IntelligenceBadge buyer={buyer} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               )}
             </div>
           </TabsContent>
