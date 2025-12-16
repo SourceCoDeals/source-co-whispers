@@ -3,11 +3,11 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, FileText } from "lucide-react";
+import { Loader2, FileText, ChevronRight } from "lucide-react";
 
 export default function AllDeals() {
   const [deals, setDeals] = useState<any[]>([]);
-  const [trackers, setTrackers] = useState<Record<string, string>>({});
+  const [trackers, setTrackers] = useState<Record<string, any>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -17,15 +17,23 @@ export default function AllDeals() {
   const loadDeals = async () => {
     const [dealsRes, trackersRes] = await Promise.all([
       supabase.from("deals").select("*").order("created_at", { ascending: false }),
-      supabase.from("industry_trackers").select("id, industry_name"),
+      supabase.from("industry_trackers").select("*"),
     ]);
     
     setDeals(dealsRes.data || []);
-    const trackerMap: Record<string, string> = {};
-    (trackersRes.data || []).forEach((t) => { trackerMap[t.id] = t.industry_name; });
+    const trackerMap: Record<string, any> = {};
+    (trackersRes.data || []).forEach((t) => { trackerMap[t.id] = t; });
     setTrackers(trackerMap);
     setIsLoading(false);
   };
+
+  // Group deals by industry
+  const dealsByIndustry = deals.reduce((acc, deal) => {
+    const trackerId = deal.tracker_id;
+    if (!acc[trackerId]) acc[trackerId] = [];
+    acc[trackerId].push(deal);
+    return acc;
+  }, {} as Record<string, any[]>);
 
   if (isLoading) {
     return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
@@ -36,7 +44,7 @@ export default function AllDeals() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-display font-bold">All Deals</h1>
-          <p className="text-muted-foreground">View all deals across all buyer universes</p>
+          <p className="text-muted-foreground">{deals.length} deals across {Object.keys(dealsByIndustry).length} industries</p>
         </div>
 
         {deals.length === 0 ? (
@@ -46,18 +54,37 @@ export default function AllDeals() {
             <p className="text-muted-foreground">List a deal in a buyer universe to get started.</p>
           </div>
         ) : (
-          <div className="bg-card rounded-lg border divide-y">
-            {deals.map((deal) => (
-              <Link key={deal.id} to={`/deals/${deal.id}`} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
-                <div>
-                  <p className="font-medium">{deal.deal_name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {trackers[deal.tracker_id] || "Unknown"} · {deal.geography?.join(", ")} · ${deal.revenue}M
-                  </p>
+          <div className="space-y-6">
+            {Object.entries(dealsByIndustry).map(([trackerId, industryDeals]: [string, any[]]) => {
+              const tracker = trackers[trackerId];
+              return (
+                <div key={trackerId} className="bg-card rounded-lg border overflow-hidden">
+                  <Link 
+                    to={`/trackers/${trackerId}`} 
+                    className="flex items-center justify-between p-4 bg-muted/30 border-b hover:bg-muted/50 transition-colors"
+                  >
+                    <div>
+                      <h2 className="font-semibold">{tracker?.industry_name || "Unknown Industry"}</h2>
+                      <p className="text-sm text-muted-foreground">{industryDeals.length} deal{industryDeals.length !== 1 ? 's' : ''}</p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                  </Link>
+                  <div className="divide-y">
+                    {industryDeals.map((deal) => (
+                      <Link key={deal.id} to={`/deals/${deal.id}`} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+                        <div>
+                          <p className="font-medium">{deal.deal_name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {deal.geography?.join(", ") || "—"} · {deal.revenue ? `$${deal.revenue}M` : "—"} {deal.ebitda_percentage ? `· ${deal.ebitda_percentage}% EBITDA` : ""}
+                          </p>
+                        </div>
+                        <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
+                      </Link>
+                    ))}
+                  </div>
                 </div>
-                <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
-              </Link>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
