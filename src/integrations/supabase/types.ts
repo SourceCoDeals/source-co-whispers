@@ -367,22 +367,34 @@ export type Database = {
       industry_trackers: {
         Row: {
           created_at: string
+          geography_weight: number
           id: string
           industry_name: string
+          owner_goals_weight: number
+          service_mix_weight: number
+          size_weight: number
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          geography_weight?: number
           id?: string
           industry_name: string
+          owner_goals_weight?: number
+          service_mix_weight?: number
+          size_weight?: number
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
+          geography_weight?: number
           id?: string
           industry_name?: string
+          owner_goals_weight?: number
+          service_mix_weight?: number
+          size_weight?: number
           updated_at?: string
           user_id?: string
         }
