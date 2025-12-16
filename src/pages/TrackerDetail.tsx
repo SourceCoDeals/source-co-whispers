@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
+import { CSVImport } from "@/components/CSVImport";
 import { Loader2, Plus, ArrowLeft, Search, FileText, Users } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -29,7 +30,7 @@ export default function TrackerDetail() {
   const loadData = async () => {
     const [trackerRes, buyersRes, dealsRes] = await Promise.all([
       supabase.from("industry_trackers").select("*").eq("id", id).single(),
-      supabase.from("buyers").select("*").eq("tracker_id", id).order("created_at", { ascending: false }),
+      supabase.from("buyers").select("*").eq("tracker_id", id).order("pe_firm_name"),
       supabase.from("deals").select("*").eq("tracker_id", id).order("created_at", { ascending: false }),
     ]);
     setTracker(trackerRes.data);
@@ -69,19 +70,20 @@ export default function TrackerDetail() {
         </div>
 
         <Tabs defaultValue="buyers">
-          <TabsList><TabsTrigger value="buyers"><Users className="w-4 h-4 mr-2" />Buyers</TabsTrigger><TabsTrigger value="deals"><FileText className="w-4 h-4 mr-2" />Deals</TabsTrigger></TabsList>
+          <TabsList><TabsTrigger value="buyers"><Users className="w-4 h-4 mr-2" />Buyers ({buyers.length})</TabsTrigger><TabsTrigger value="deals"><FileText className="w-4 h-4 mr-2" />Deals ({deals.length})</TabsTrigger></TabsList>
           
           <TabsContent value="buyers" className="mt-4 space-y-4">
             <div className="flex gap-4">
               <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /><Input placeholder="Search buyers..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" /></div>
+              <CSVImport trackerId={id!} onComplete={loadData} />
               <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                 <DialogTrigger asChild><Button><Plus className="w-4 h-4 mr-2" />Add Buyer</Button></DialogTrigger>
                 <DialogContent>
                   <DialogHeader><DialogTitle>Add New Buyer</DialogTitle></DialogHeader>
                   <div className="space-y-4 pt-4">
-                    <div><Label>PE Firm Name *</Label><Input value={newBuyer.pe_firm_name} onChange={(e) => setNewBuyer({ ...newBuyer, pe_firm_name: e.target.value })} placeholder="e.g., Blackstone" /></div>
-                    <div><Label>Platform Company</Label><Input value={newBuyer.platform_company_name} onChange={(e) => setNewBuyer({ ...newBuyer, platform_company_name: e.target.value })} placeholder="e.g., ABC Roofing" /></div>
-                    <Button onClick={addBuyer} disabled={!newBuyer.pe_firm_name.trim()}>Add Buyer</Button>
+                    <div><Label>PE Firm Name *</Label><Input value={newBuyer.pe_firm_name} onChange={(e) => setNewBuyer({ ...newBuyer, pe_firm_name: e.target.value })} placeholder="e.g., Blackstone" className="mt-1" /></div>
+                    <div><Label>Platform Company</Label><Input value={newBuyer.platform_company_name} onChange={(e) => setNewBuyer({ ...newBuyer, platform_company_name: e.target.value })} placeholder="e.g., ABC Services" className="mt-1" /></div>
+                    <Button onClick={addBuyer} disabled={!newBuyer.pe_firm_name.trim()} className="w-full">Add Buyer</Button>
                   </div>
                 </DialogContent>
               </Dialog>
@@ -89,7 +91,9 @@ export default function TrackerDetail() {
             
             <div className="bg-card rounded-lg border divide-y">
               {filteredBuyers.length === 0 ? (
-                <div className="p-8 text-center text-muted-foreground">No buyers yet. Add your first buyer to get started.</div>
+                <div className="p-8 text-center text-muted-foreground">
+                  {search ? "No buyers match your search" : "No buyers yet. Add buyers manually or import from CSV."}
+                </div>
               ) : filteredBuyers.map((buyer) => (
                 <Link key={buyer.id} to={`/buyers/${buyer.id}`} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
                   <div>
@@ -110,7 +114,7 @@ export default function TrackerDetail() {
                 <Link key={deal.id} to={`/deals/${deal.id}`} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
                   <div>
                     <p className="font-medium">{deal.deal_name}</p>
-                    <p className="text-sm text-muted-foreground">{deal.geography?.join(", ")} · ${deal.revenue}M</p>
+                    <p className="text-sm text-muted-foreground">{deal.geography?.join(", ")} · ${deal.revenue}M · {deal.ebitda_percentage}% EBITDA</p>
                   </div>
                   <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
                 </Link>

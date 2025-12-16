@@ -28,7 +28,7 @@ const sampleBuyers = [
   { platform: "Creative Service Partners", location: "Atlanta, GA", description: "Provider of essential home and multifamily services including plumbing, jetting, HVAC, electrical, and mitigation", pe: "Trivest Partners" },
   { platform: "Clarion Home Services Group", location: "Chicago, IL", description: "Multi-brand residential HVAC, electrical, and plumbing services growth platform", pe: "LightBay Capital" },
   { platform: "Goettl", location: "Las Vegas, NV", description: "Provider of residential HVAC and plumbing maintenance, repair, and replacement services", pe: "Cortec Group" },
-  { platform: "Royal House Partners", location: "Dallas, TX", description: "Residential and light commercial home services platform focused on HVAC, plumbing, and electrical services", pe: "N/A" },
+  { platform: "Royal House Partners", location: "Dallas, TX", description: "Residential and light commercial home services platform focused on HVAC, plumbing, and electrical services", pe: "Independent" },
 ];
 
 // Extract state from location string
@@ -86,6 +86,15 @@ function generateIntelligence(index: number) {
   };
 }
 
+// Generate a valid UUID
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 export async function seedSampleData() {
   // Check if data already exists
   const { data: existingTrackers } = await supabase
@@ -99,12 +108,12 @@ export async function seedSampleData() {
     return existingTrackers[0].id;
   }
 
-  // Create the industry tracker
+  // Create the industry tracker with a generated UUID for user_id
   const { data: tracker, error: trackerError } = await supabase
     .from("industry_trackers")
     .insert({
       industry_name: "Residential HVAC",
-      user_id: "00000000-0000-0000-0000-000000000000", // Placeholder for public access
+      user_id: generateUUID(),
     })
     .select()
     .single();

@@ -12,6 +12,8 @@ import DealDetail from "./pages/DealDetail";
 import NewDeal from "./pages/NewDeal";
 import DealMatching from "./pages/DealMatching";
 import IntroductionTracker from "./pages/IntroductionTracker";
+import AllDeals from "./pages/AllDeals";
+import AllBuyers from "./pages/AllBuyers";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,7 +29,9 @@ const App = () => (
           <Route path="/trackers" element={<Trackers />} />
           <Route path="/trackers/new" element={<NewTracker />} />
           <Route path="/trackers/:id" element={<TrackerDetail />} />
+          <Route path="/buyers" element={<AllBuyers />} />
           <Route path="/buyers/:id" element={<BuyerDetail />} />
+          <Route path="/deals" element={<AllDeals />} />
           <Route path="/trackers/:trackerId/deals/new" element={<NewDeal />} />
           <Route path="/deals/:id" element={<DealDetail />} />
           <Route path="/deals/:id/matching" element={<DealMatching />} />
