@@ -4,11 +4,19 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Building2, Loader2, Sparkles } from "lucide-react";
+import { Plus, Building2, Loader2, Sparkles, Users, FileText, ArrowUpDown } from "lucide-react";
 import { IntelligenceCoverageBar } from "@/components/IntelligenceBadge";
 import { getIntelligenceCoverage } from "@/lib/types";
 import { seedSampleData } from "@/lib/seedData";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 export default function Trackers() {
   const [trackers, setTrackers] = useState<any[]>([]);
@@ -92,22 +100,59 @@ export default function Trackers() {
             </div>
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {trackers.map((t) => (
-              <Link key={t.id} to={`/trackers/${t.id}`} className="bg-card rounded-lg border p-5 hover:shadow-md hover:border-accent/50 transition-all">
-                <div className="flex justify-between items-start mb-3">
-                  <h3 className="font-semibold">{t.industry_name}</h3>
-                  <Badge variant={t.intelligent_count / t.buyer_count >= 0.7 ? "success" : "secondary"}>
-                    {t.buyer_count > 0 ? Math.round((t.intelligent_count / t.buyer_count) * 100) : 0}% intelligent
-                  </Badge>
-                </div>
-                <div className="flex gap-4 text-sm text-muted-foreground mb-3">
-                  <span>{t.buyer_count} buyers</span>
-                  <span>{t.deal_count} deals</span>
-                </div>
-                <IntelligenceCoverageBar intelligentCount={t.intelligent_count} totalCount={t.buyer_count} />
-              </Link>
-            ))}
+          <div className="bg-card rounded-lg border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  <TableHead className="w-[250px]">
+                    <div className="flex items-center gap-1">
+                      Industry <ArrowUpDown className="w-3 h-3 text-muted-foreground" />
+                    </div>
+                  </TableHead>
+                  <TableHead className="w-[100px] text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <Users className="w-3.5 h-3.5" /> Buyers
+                    </div>
+                  </TableHead>
+                  <TableHead className="w-[100px] text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <FileText className="w-3.5 h-3.5" /> Deals
+                    </div>
+                  </TableHead>
+                  <TableHead className="w-[200px]">Intelligence Coverage</TableHead>
+                  <TableHead className="w-[120px] text-center">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {trackers.map((t) => {
+                  const intelligencePercent = t.buyer_count > 0 ? Math.round((t.intelligent_count / t.buyer_count) * 100) : 0;
+                  return (
+                    <TableRow 
+                      key={t.id} 
+                      className="cursor-pointer hover:bg-muted/30 transition-colors"
+                      onClick={() => navigate(`/trackers/${t.id}`)}
+                    >
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-accent" />
+                          {t.industry_name}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center">{t.buyer_count}</TableCell>
+                      <TableCell className="text-center">{t.deal_count}</TableCell>
+                      <TableCell>
+                        <IntelligenceCoverageBar intelligentCount={t.intelligent_count} totalCount={t.buyer_count} />
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant={intelligencePercent >= 70 ? "success" : intelligencePercent >= 40 ? "secondary" : "outline"}>
+                          {intelligencePercent}% intel
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
         )}
       </div>
