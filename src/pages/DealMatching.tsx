@@ -5,6 +5,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
 import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send } from "lucide-react";
@@ -23,6 +24,7 @@ export default function DealMatching() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [contactedStatus, setContactedStatus] = useState<Record<string, boolean>>({});
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -221,6 +223,20 @@ export default function DealMatching() {
                     <span className="text-sm font-medium">{contact.name}</span>
                     {contact.title && <span className="text-xs text-muted-foreground ml-2">{contact.title}</span>}
                   </div>
+                </div>
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  <span className="text-xs text-muted-foreground">Contacted</span>
+                  <Switch
+                    checked={contactedStatus[contact.id] || false}
+                    onCheckedChange={(checked) => {
+                      setContactedStatus(prev => ({ ...prev, [contact.id]: checked }));
+                      toast({ 
+                        title: checked ? "Marked as contacted" : "Marked as not contacted",
+                        description: contact.name
+                      });
+                    }}
+                    className="data-[state=checked]:bg-green-500"
+                  />
                 </div>
               </div>
               <div className="flex items-center gap-4 pl-5 text-xs text-muted-foreground">
