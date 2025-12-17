@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { ScoreBadge, ScoreBreakdown } from "@/components/ScoreBadge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
-import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User } from "lucide-react";
+import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -101,6 +101,21 @@ export default function DealMatching() {
     return regions?.length ? regions : null;
   };
 
+  const getOfficeLocations = (buyer: any) => {
+    const locations: string[] = [];
+    if (buyer.hq_city && buyer.hq_state) {
+      locations.push(`${buyer.hq_city}, ${buyer.hq_state}`);
+    } else if (buyer.hq_city) {
+      locations.push(buyer.hq_city);
+    } else if (buyer.hq_state) {
+      locations.push(buyer.hq_state);
+    }
+    if (buyer.other_office_locations?.length) {
+      locations.push(...buyer.other_office_locations);
+    }
+    return locations.length ? locations : null;
+  };
+
   const formatRevenue = (buyer: any) => {
     if (buyer.min_revenue && buyer.max_revenue) return `$${buyer.min_revenue}M-$${buyer.max_revenue}M`;
     if (buyer.min_revenue) return `$${buyer.min_revenue}M+`;
@@ -111,7 +126,15 @@ export default function DealMatching() {
   const getServicesSummary = (buyer: any) => {
     if (!buyer.services_offered) return null;
     const firstSentence = buyer.services_offered.split(/[.;]/)[0];
-    return firstSentence.length > 100 ? firstSentence.substring(0, 100) + '...' : firstSentence;
+    return firstSentence.length > 120 ? firstSentence.substring(0, 120) + '...' : firstSentence;
+  };
+
+  const getPlatformLinkedIn = (buyer: any) => {
+    return buyer.buyer_linkedin || null;
+  };
+
+  const getPEFirmLinkedIn = (buyer: any) => {
+    return buyer.pe_firm_linkedin || null;
   };
 
   const getPlatformWebsite = (buyer: any) => {
@@ -221,6 +244,11 @@ export default function DealMatching() {
                   <a href={getPlatformWebsite(buyer)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary" title="Visit website">
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
+                  {getPlatformLinkedIn(buyer) && (
+                    <a href={getPlatformLinkedIn(buyer)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-[#0077b5]" title="LinkedIn">
+                      <Linkedin className="w-3.5 h-3.5" />
+                    </a>
+                  )}
                   {isApproved && (
                     <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
                       <CheckCircle2 className="w-3 h-3 mr-1" />Approved
@@ -231,33 +259,65 @@ export default function DealMatching() {
                       <FileCheck className="w-3 h-3 mr-1" />Fee Agreement
                     </Badge>
                   )}
-                  {buyerContacts.length > 0 && (
-                    <Badge variant="secondary" className="text-xs">
-                      <User className="w-3 h-3 mr-1" />{buyerContacts.length} contact{buyerContacts.length !== 1 ? 's' : ''}
-                    </Badge>
-                  )}
                 </div>
                 
+                {/* Website URL display */}
+                {buyer.platform_website && (
+                  <a 
+                    href={getPlatformWebsite(buyer)} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-sm text-muted-foreground hover:text-primary flex items-center gap-1"
+                  >
+                    <Globe className="w-3 h-3" />
+                    {buyer.platform_website.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                  </a>
+                )}
+                
+                {/* PE Firm info with LinkedIn */}
                 {buyer.platform_company_name && (
                   <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                     <Building2 className="w-3 h-3" />
                     <span>{buyer.pe_firm_name}</span>
+                    {buyer.pe_firm_website && (
+                      <a href={buyer.pe_firm_website.startsWith('http') ? buyer.pe_firm_website : `https://${buyer.pe_firm_website}`} target="_blank" rel="noopener noreferrer" className="hover:text-primary" title="PE Firm Website">
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                    {getPEFirmLinkedIn(buyer) && (
+                      <a href={getPEFirmLinkedIn(buyer)} target="_blank" rel="noopener noreferrer" className="hover:text-[#0077b5]" title="PE Firm LinkedIn">
+                        <Linkedin className="w-3 h-3" />
+                      </a>
+                    )}
                   </div>
                 )}
                 
+                {/* Services summary */}
                 {buyer.services_offered && (
-                  <p className="text-sm text-muted-foreground mt-1 line-clamp-1">{getServicesSummary(buyer)}</p>
+                  <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{getServicesSummary(buyer)}</p>
                 )}
                 
+                {/* Locations */}
                 <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground flex-wrap">
-                  {getHQ(buyer) && (
-                    <span className="flex items-center gap-1"><Building2 className="w-3.5 h-3.5" />HQ: {getHQ(buyer)}</span>
+                  {getOfficeLocations(buyer) && (
+                    <span className="flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span className="line-clamp-1">{getOfficeLocations(buyer).slice(0, 5).join(" · ")}{getOfficeLocations(buyer).length > 5 ? ` +${getOfficeLocations(buyer).length - 5} more` : ''}</span>
+                    </span>
                   )}
                   {getServiceLocations(buyer) && (
-                    <span className="flex items-center gap-1"><Globe className="w-3.5 h-3.5" />{getServiceLocations(buyer).join(", ")}</span>
+                    <span className="flex items-center gap-1">
+                      <Globe className="w-3.5 h-3.5" />
+                      <span>Serves: {getServiceLocations(buyer).slice(0, 4).join(", ")}{getServiceLocations(buyer).length > 4 ? ` +${getServiceLocations(buyer).length - 4} more` : ''}</span>
+                    </span>
                   )}
                   {formatRevenue(buyer) && (
                     <span className="flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" />{formatRevenue(buyer)}</span>
+                  )}
+                  {buyerContacts.length > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      <User className="w-3 h-3 mr-1" />{buyerContacts.length} contact{buyerContacts.length !== 1 ? 's' : ''}
+                    </Badge>
                   )}
                 </div>
               </div>
