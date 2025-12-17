@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
-import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users } from "lucide-react";
+import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -152,8 +152,43 @@ export default function DealMatching() {
     return getBuyerContacts(buyerId).filter(c => c.company_type === companyType);
   };
 
+  // Mock contacts for demo purposes
+  const getMockContacts = (companyType: string) => {
+    if (companyType === "PE Firm") {
+      return [
+        { id: 'mock-1', name: 'Sarah Mitchell', title: 'Managing Director', email: 'smitchell@pegroup.com', phone: '(312) 555-0147', linkedin_url: 'https://linkedin.com/in/sarah-mitchell' },
+        { id: 'mock-2', name: 'David Chen', title: 'Vice President', email: 'dchen@pegroup.com', phone: '(312) 555-0198', linkedin_url: 'https://linkedin.com/in/david-chen' },
+      ];
+    }
+    return [
+      { id: 'mock-3', name: 'Michael Torres', title: 'CEO', email: 'mtorres@platformco.com', phone: '(847) 555-0234', linkedin_url: 'https://linkedin.com/in/michael-torres' },
+      { id: 'mock-4', name: 'Jennifer Park', title: 'VP Business Development', email: 'jpark@platformco.com', phone: '(847) 555-0312', linkedin_url: 'https://linkedin.com/in/jennifer-park' },
+    ];
+  };
+
+  const generateEmailBody = (buyer: any, contactName: string) => {
+    const subject = encodeURIComponent(`Introduction: ${deal?.deal_name || 'Acquisition Opportunity'}`);
+    const body = encodeURIComponent(
+      `Hi ${contactName.split(' ')[0]},\n\n` +
+      `I wanted to reach out regarding a potential acquisition opportunity that may align with ${buyer.platform_company_name || buyer.pe_firm_name}'s investment thesis.\n\n` +
+      `Deal Overview:\n` +
+      `• Company: ${deal?.deal_name || 'Confidential'}\n` +
+      `• Industry: ${deal?.industry_type || 'Professional Services'}\n` +
+      `• Geography: ${deal?.geography?.join(', ') || 'TBD'}\n` +
+      `• Revenue: $${deal?.revenue || 'TBD'}M\n` +
+      `• EBITDA Margin: ${deal?.ebitda_percentage || 'TBD'}%\n` +
+      `• Services: ${deal?.service_mix || 'TBD'}\n\n` +
+      `Would you have time for a brief call to discuss?\n\n` +
+      `Best regards`
+    );
+    return `mailto:?subject=${subject}&body=${body}`;
+  };
+
   const renderContactSection = (buyer: any, companyType: string, companyName: string) => {
     const typeContacts = getContactsByType(buyer.id, companyType);
+    // Use mock contacts if no real contacts exist
+    const displayContacts = typeContacts.length > 0 ? typeContacts : getMockContacts(companyType);
+    const isMockData = typeContacts.length === 0;
     
     return (
       <div className="space-y-2">
@@ -161,26 +196,25 @@ export default function DealMatching() {
           <span className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
             <Building2 className="w-3.5 h-3.5" />
             {companyName}
+            {isMockData && <Badge variant="outline" className="text-[10px] h-4 ml-1">Demo Data</Badge>}
           </span>
-          {typeContacts.length === 0 && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="h-7 text-xs"
-              onClick={(e) => {
-                e.stopPropagation();
-                toast({ title: "Contact discovery", description: `Finding contacts for ${companyName}...` });
-              }}
-            >
-              <UserSearch className="w-3 h-3 mr-1" />
-              Find Contacts
-            </Button>
-          )}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="h-7 text-xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              toast({ title: "Contact discovery", description: `Finding contacts for ${companyName}...` });
+            }}
+          >
+            <UserSearch className="w-3 h-3 mr-1" />
+            Find Contacts
+          </Button>
         </div>
-        {typeContacts.length > 0 ? (
-          <div className="space-y-1.5">
-            {typeContacts.map((contact) => (
-              <div key={contact.id} className="flex items-center justify-between bg-muted/50 rounded px-3 py-2">
+        <div className="space-y-2">
+          {displayContacts.map((contact: any) => (
+            <div key={contact.id} className="bg-muted/50 rounded px-3 py-2.5 space-y-2">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <User className="w-3.5 h-3.5 text-muted-foreground" />
                   <div>
@@ -188,36 +222,64 @@ export default function DealMatching() {
                     {contact.title && <span className="text-xs text-muted-foreground ml-2">{contact.title}</span>}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {contact.email && (
-                    <a 
-                      href={`mailto:${contact.email}`} 
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-muted-foreground hover:text-primary"
-                      title={contact.email}
-                    >
-                      <Mail className="w-4 h-4" />
-                    </a>
-                  )}
-                  {contact.linkedin_url && (
-                    <a 
-                      href={contact.linkedin_url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-muted-foreground hover:text-primary"
-                      title="LinkedIn"
-                    >
-                      <Linkedin className="w-4 h-4" />
-                    </a>
-                  )}
-                </div>
               </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground italic">No contacts found</p>
-        )}
+              <div className="flex items-center gap-4 pl-5 text-xs text-muted-foreground">
+                {contact.email && (
+                  <span className="flex items-center gap-1">
+                    <Mail className="w-3 h-3" />
+                    {contact.email}
+                  </span>
+                )}
+                {contact.phone && (
+                  <span className="flex items-center gap-1">
+                    <Phone className="w-3 h-3" />
+                    {contact.phone}
+                  </span>
+                )}
+                {contact.linkedin_url && (
+                  <a 
+                    href={contact.linkedin_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center gap-1 hover:text-primary"
+                  >
+                    <Linkedin className="w-3 h-3" />
+                    LinkedIn
+                  </a>
+                )}
+              </div>
+              <div className="flex gap-2 pl-5">
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-7 text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.location.href = generateEmailBody(buyer, contact.name);
+                  }}
+                >
+                  <Send className="w-3 h-3 mr-1" />
+                  Send Email
+                </Button>
+                {contact.linkedin_url && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open(contact.linkedin_url, '_blank');
+                    }}
+                  >
+                    <Linkedin className="w-3 h-3 mr-1" />
+                    Message
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   };
