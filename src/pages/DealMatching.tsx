@@ -300,7 +300,7 @@ export default function DealMatching() {
     );
   };
 
-  const renderBuyerRow = (buyer: any, showCheckbox = true) => {
+  const renderBuyerRow = (buyer: any, showCheckbox = true, showContacts = false) => {
     const score = buyer.score;
     const isExpanded = expanded.has(buyer.id);
     const isApproved = score?.selected_for_outreach;
@@ -406,16 +406,18 @@ export default function DealMatching() {
               </div>
             </div>
             <CollapsibleContent className="mt-4 pl-0 space-y-4">
-              {/* Contacts Section */}
-              <div className="border rounded-lg p-4 space-y-4 bg-muted/20">
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <User className="w-4 h-4" /> Contacts
-                </h4>
-                <div className="grid md:grid-cols-2 gap-4">
-                  {renderContactSection(buyer, "PE Firm", buyer.pe_firm_name)}
-                  {buyer.platform_company_name && renderContactSection(buyer, "Platform", buyer.platform_company_name)}
+              {/* Contacts Section - Only shown in Approved tab */}
+              {showContacts && (
+                <div className="border rounded-lg p-4 space-y-4 bg-muted/20">
+                  <h4 className="text-sm font-semibold flex items-center gap-2">
+                    <User className="w-4 h-4" /> Contacts
+                  </h4>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {renderContactSection(buyer, "PE Firm", buyer.pe_firm_name)}
+                    {buyer.platform_company_name && renderContactSection(buyer, "Platform", buyer.platform_company_name)}
+                  </div>
                 </div>
-              </div>
+              )}
               
               {buyer.thesis_summary && (
                 <p className="text-sm text-muted-foreground italic border-l-2 border-primary/30 pl-3">"{buyer.thesis_summary}"</p>
@@ -468,7 +470,7 @@ export default function DealMatching() {
               {approvedBuyers.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">No buyers approved yet. Select buyers and click "Approve Buyers as Fit".</div>
               ) : (
-                approvedBuyers.map((buyer) => renderBuyerRow(buyer, false))
+                approvedBuyers.map((buyer) => renderBuyerRow(buyer, false, true))
               )}
             </div>
           </TabsContent>
