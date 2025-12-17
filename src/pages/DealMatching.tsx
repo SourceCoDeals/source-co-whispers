@@ -5,7 +5,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { ScoreBadge, ScoreBreakdown } from "@/components/ScoreBadge";
+import { ScoreBadge } from "@/components/ScoreBadge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
 import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -328,8 +328,6 @@ export default function DealMatching() {
               </div>
             </div>
             <CollapsibleContent className="mt-4 pl-0 space-y-4">
-              <ScoreBreakdown scores={{ geography: score?.geography_score, service: score?.service_score, acquisition: score?.acquisition_score, portfolio: score?.portfolio_score, businessModel: score?.business_model_score, thesisBonus: score?.thesis_bonus || 0 }} />
-              
               {/* Contacts Section */}
               <div className="border rounded-lg p-4 space-y-4 bg-muted/20">
                 <h4 className="text-sm font-semibold flex items-center gap-2">
