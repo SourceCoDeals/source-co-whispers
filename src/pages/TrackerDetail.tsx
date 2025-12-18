@@ -156,19 +156,22 @@ export default function TrackerDetail() {
                         <TableCell>
                           <div>
                             <div className="flex items-center gap-2">
+                              <span className="font-medium">{buyer.platform_company_name || buyer.pe_firm_name}</span>
                               {buyer.platform_website ? (
                                 <a 
                                   href={getWebsiteUrl(buyer.platform_website)!} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()}
-                                  className="font-medium text-primary hover:underline flex items-center gap-1"
+                                  className="text-primary hover:text-primary/80"
+                                  title="Visit website"
                                 >
-                                  {buyer.platform_company_name || buyer.pe_firm_name}
-                                  <ExternalLink className="w-3 h-3" />
+                                  <ExternalLink className="w-3.5 h-3.5" />
                                 </a>
                               ) : (
-                                <span className="font-medium">{buyer.platform_company_name || buyer.pe_firm_name}</span>
+                                <span className="text-muted-foreground/40" title="Website not set">
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </span>
                               )}
                             </div>
                             <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
