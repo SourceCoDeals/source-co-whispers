@@ -339,17 +339,12 @@ export default function DealMatching() {
                   )}
                 </div>
                 
-                {/* Website URL display */}
-                {buyer.platform_website && (
-                  <a 
-                    href={getPlatformWebsite(buyer)} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-sm text-muted-foreground hover:text-primary flex items-center gap-1"
-                  >
-                    <Globe className="w-3 h-3" />
-                    {buyer.platform_website.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-                  </a>
+                {/* HQ City/State below name */}
+                {(buyer.hq_city || buyer.hq_state) && (
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <MapPin className="w-3 h-3" />
+                    {[buyer.hq_city, buyer.hq_state].filter(Boolean).join(", ")}
+                  </p>
                 )}
                 
                 {/* PE Firm info with LinkedIn */}
@@ -370,19 +365,13 @@ export default function DealMatching() {
                   </div>
                 )}
                 
-                {/* Services summary */}
-                {buyer.services_offered && (
-                  <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{getServicesSummary(buyer)}</p>
+                {/* Services/Business description */}
+                {(buyer.services_offered || buyer.business_summary) && (
+                  <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{buyer.services_offered || buyer.business_summary}</p>
                 )}
                 
-                {/* Locations */}
+                {/* Additional Info */}
                 <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground flex-wrap">
-                  {(buyer.hq_city || buyer.hq_state) && (
-                    <span className="flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5" />
-                      <span>HQ: {[buyer.hq_city, buyer.hq_state].filter(Boolean).join(", ")}</span>
-                    </span>
-                  )}
                   {getServiceLocations(buyer) && (
                     <span className="flex items-center gap-1">
                       <Globe className="w-3.5 h-3.5" />
