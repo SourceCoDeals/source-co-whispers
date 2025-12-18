@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { CSVImport } from "@/components/CSVImport";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -21,6 +21,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export default function TrackerDetail() {
   const { id } = useParams();
@@ -33,6 +39,8 @@ export default function TrackerDetail() {
   const [search, setSearch] = useState("");
   const [newBuyer, setNewBuyer] = useState({ pe_firm_name: "", pe_firm_website: "", platform_company_name: "", platform_website: "" });
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [enrichingBuyers, setEnrichingBuyers] = useState<Set<string>>(new Set());
+  const [isBulkEnriching, setIsBulkEnriching] = useState(false);
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -65,6 +73,105 @@ export default function TrackerDetail() {
     loadData();
   };
 
+  const enrichBuyer = async (buyerId: string, buyerName: string) => {
+    setEnrichingBuyers(prev => new Set(prev).add(buyerId));
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('enrich-buyer', {
+        body: { buyerId }
+      });
+
+      if (error) {
+        toast({ 
+          title: "Enrichment failed", 
+          description: error.message, 
+          variant: "destructive" 
+        });
+        return;
+      }
+
+      if (!data.success) {
+        toast({ 
+          title: "Enrichment failed", 
+          description: data.error || "Unknown error", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
+      toast({ 
+        title: "Buyer enriched", 
+        description: `${buyerName}: ${data.message}` 
+      });
+      
+      await loadData();
+    } catch (err) {
+      toast({ 
+        title: "Enrichment failed", 
+        description: err instanceof Error ? err.message : "Unknown error", 
+        variant: "destructive" 
+      });
+    } finally {
+      setEnrichingBuyers(prev => {
+        const next = new Set(prev);
+        next.delete(buyerId);
+        return next;
+      });
+    }
+  };
+
+  const enrichAllBuyers = async () => {
+    const buyersWithWebsites = buyers.filter(b => b.platform_website || b.pe_firm_website);
+    
+    if (buyersWithWebsites.length === 0) {
+      toast({ 
+        title: "No websites to scrape", 
+        description: "Add website URLs to buyers first", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    setIsBulkEnriching(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const buyer of buyersWithWebsites) {
+      setEnrichingBuyers(prev => new Set(prev).add(buyer.id));
+      
+      try {
+        const { data, error } = await supabase.functions.invoke('enrich-buyer', {
+          body: { buyerId: buyer.id }
+        });
+
+        if (error || !data?.success) {
+          errorCount++;
+        } else {
+          successCount++;
+        }
+      } catch {
+        errorCount++;
+      }
+      
+      setEnrichingBuyers(prev => {
+        const next = new Set(prev);
+        next.delete(buyer.id);
+        return next;
+      });
+
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    setIsBulkEnriching(false);
+    await loadData();
+
+    toast({ 
+      title: "Bulk enrichment complete", 
+      description: `${successCount} enriched, ${errorCount} failed` 
+    });
+  };
+
   const filteredBuyers = buyers.filter((b) => 
     b.pe_firm_name.toLowerCase().includes(search.toLowerCase()) ||
     (b.platform_company_name || "").toLowerCase().includes(search.toLowerCase())
@@ -84,6 +191,15 @@ export default function TrackerDetail() {
 
   const getDescription = (buyer: any) => {
     return buyer.services_offered || buyer.business_summary || null;
+  };
+
+  const hasWebsite = (buyer: any) => buyer.platform_website || buyer.pe_firm_website;
+  
+  const isRecentlyEnriched = (buyer: any) => {
+    if (!buyer.data_last_updated) return false;
+    const lastUpdated = new Date(buyer.data_last_updated);
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    return lastUpdated > hourAgo;
   };
 
   if (isLoading) return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
@@ -110,6 +226,27 @@ export default function TrackerDetail() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input placeholder="Search buyers..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
               </div>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      onClick={enrichAllBuyers}
+                      disabled={isBulkEnriching || buyers.filter(hasWebsite).length === 0}
+                    >
+                      {isBulkEnriching ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4 mr-2" />
+                      )}
+                      Enrich All
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Scrape websites and extract data for all buyers</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <CSVImport trackerId={id!} onComplete={loadData} />
               <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                 <DialogTrigger asChild><Button><Plus className="w-4 h-4 mr-2" />Add Buyer</Button></DialogTrigger>
@@ -143,7 +280,7 @@ export default function TrackerDetail() {
                       </TableHead>
                       <TableHead className="w-[300px]">Description</TableHead>
                       <TableHead className="w-[120px] text-center">Intelligence</TableHead>
-                      <TableHead className="w-[60px]"></TableHead>
+                      <TableHead className="w-[100px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -172,6 +309,12 @@ export default function TrackerDetail() {
                                 <span className="text-muted-foreground/40" title="Website not set">
                                   <ExternalLink className="w-3.5 h-3.5" />
                                 </span>
+                              )}
+                              {isRecentlyEnriched(buyer) && (
+                                <Badge variant="outline" className="text-xs px-1.5 py-0 bg-primary/10 text-primary border-primary/20">
+                                  <Sparkles className="w-3 h-3 mr-1" />
+                                  Enriched
+                                </Badge>
                               )}
                             </div>
                             <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
@@ -206,35 +349,62 @@ export default function TrackerDetail() {
                           <IntelligenceBadge buyer={buyer} />
                         </TableCell>
                         <TableCell>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Delete Buyer</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to delete {buyer.platform_company_name || buyer.pe_firm_name}? This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction 
-                                  onClick={() => deleteBuyer(buyer.id, buyer.platform_company_name || buyer.pe_firm_name)}
-                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          <div className="flex items-center gap-1">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      enrichBuyer(buyer.id, buyer.platform_company_name || buyer.pe_firm_name);
+                                    }}
+                                    disabled={enrichingBuyers.has(buyer.id) || !hasWebsite(buyer)}
+                                  >
+                                    {enrichingBuyers.has(buyer.id) ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <Sparkles className="w-4 h-4" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{hasWebsite(buyer) ? "Enrich with AI" : "No website to scrape"}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                  onClick={(e) => e.stopPropagation()}
                                 >
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Buyer</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete {buyer.platform_company_name || buyer.pe_firm_name}? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction 
+                                    onClick={() => deleteBuyer(buyer.id, buyer.platform_company_name || buyer.pe_firm_name)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
