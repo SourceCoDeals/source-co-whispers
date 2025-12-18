@@ -222,12 +222,12 @@ export default function BuyerDetail() {
             <TabsTrigger value="contacts">Contacts ({contacts.length})</TabsTrigger>
           </TabsList>
           
-          {/* Overview Tab - All 8 Categories */}
+          {/* Overview Tab - Redesigned 8 Categories */}
           <TabsContent value="overview" className="space-y-4">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               
-              {/* A. Company & Firm Identification */}
-              <BuyerDataSection title="A. Company & Firm Identification" icon={<Building2 className="w-4 h-4 text-muted-foreground" />}>
+              {/* 1. Company & Firm Identification */}
+              <BuyerDataSection title="Company & Firm Info" icon={<Building2 className="w-4 h-4 text-muted-foreground" />}>
                 <DataGrid columns={2}>
                   <DataField label="Buyer Company Name" value={buyer.platform_company_name} />
                   <DataField label="PE / Parent Firm" value={buyer.pe_firm_name} />
@@ -239,35 +239,104 @@ export default function BuyerDetail() {
                 </DataGrid>
               </BuyerDataSection>
 
-              {/* B. Location & Geography */}
-              <BuyerDataSection title="B. Location & Geography" icon={<MapPin className="w-4 h-4 text-muted-foreground" />}>
+              {/* 2. Headquarter Address */}
+              <BuyerDataSection title="Headquarter Address" icon={<MapPin className="w-4 h-4 text-muted-foreground" />}>
                 <div className="space-y-4">
-                  <DataGrid columns={2}>
-                    <DataField label="HQ City" value={buyer.hq_city} />
-                    <DataField label="HQ State" value={buyer.hq_state} />
-                    <DataField label="HQ Country" value={buyer.hq_country} />
-                    <DataField label="HQ Region" value={buyer.hq_region} />
-                  </DataGrid>
+                  {/* Prominent full address display */}
+                  {(buyer.hq_city || buyer.hq_state || buyer.hq_country) && (
+                    <div className="bg-muted/50 rounded-lg p-4">
+                      <p className="text-lg font-medium">
+                        {[buyer.hq_city, buyer.hq_state, buyer.hq_country].filter(Boolean).join(", ")}
+                      </p>
+                      {buyer.hq_region && <p className="text-sm text-muted-foreground mt-1">Region: {buyer.hq_region}</p>}
+                    </div>
+                  )}
                   <DataListField label="Other Office Locations" items={buyer.other_office_locations} />
-                  <DataListField label="States/Regions with Operations" items={buyer.service_regions?.length ? buyer.service_regions : buyer.geographic_footprint} />
-                  <DataListField label="Acquisition Geography" items={buyer.acquisition_geography} variant="default" />
-                  <DataListField label="Target Geographies" items={buyer.target_geographies} variant="default" />
-                  <DataListField label="Geographic Exclusions" items={buyer.geographic_exclusions} variant="destructive" />
+                  <DataListField label="Service Regions" items={buyer.service_regions?.length ? buyer.service_regions : buyer.geographic_footprint} />
                 </div>
               </BuyerDataSection>
 
-              {/* C. Business Description */}
-              <BuyerDataSection title="C. Business Description" icon={<Briefcase className="w-4 h-4 text-muted-foreground" />}>
+              {/* 3. Business Description */}
+              <BuyerDataSection title="Business Description" icon={<Briefcase className="w-4 h-4 text-muted-foreground" />}>
                 <div className="space-y-4">
                   <DataField label="Primary Services / Products" value={buyer.services_offered} />
                   <DataField label="Industry Vertical" value={buyer.industry_vertical} />
                   <DataField label="Business Summary" value={buyer.business_summary} />
                   <DataField label="Specialized Focus" value={buyer.specialized_focus} />
+                  <DataField label="Business Type" value={buyer.business_type || buyer.business_model} />
                 </div>
               </BuyerDataSection>
 
-              {/* D. Customer Profile */}
-              <BuyerDataSection title="D. Customer Profile" icon={<Users className="w-4 h-4 text-muted-foreground" />}>
+              {/* 4. Investment Criteria Summary - Elevated */}
+              <BuyerDataSection title="Investment Criteria Summary" icon={<Target className="w-4 h-4 text-muted-foreground" />}>
+                <div className="space-y-4">
+                  {buyer.thesis_summary && (
+                    <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+                      <p className="text-xs text-primary uppercase tracking-wide font-semibold mb-2">Investment Thesis</p>
+                      <p className="text-sm">{buyer.thesis_summary}</p>
+                      {buyer.thesis_confidence && (
+                        <Badge variant={buyer.thesis_confidence === "high" ? "default" : "outline"} className="mt-2">
+                          {buyer.thesis_confidence} confidence
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                  <DataField label="Strategic Priorities" value={buyer.strategic_priorities} />
+                  <DataField label="Acquisition Appetite" value={buyer.acquisition_appetite} />
+                  <DataField label="Acquisition Timeline" value={buyer.acquisition_timeline} />
+                  <DataListField label="Target Services" items={buyer.target_services} />
+                  <DataListField label="Required Capabilities" items={buyer.required_capabilities} />
+                  <DataListField label="Deal Breakers" items={buyer.deal_breakers} variant="destructive" />
+                </div>
+              </BuyerDataSection>
+
+              {/* 5. Target Geographies - Standalone */}
+              <BuyerDataSection title="Target Geographies" icon={<Globe className="w-4 h-4 text-muted-foreground" />}>
+                <div className="space-y-4">
+                  <DataListField label="Target Geographies" items={buyer.target_geographies} variant="default" />
+                  <DataListField label="Acquisition Geography" items={buyer.acquisition_geography} variant="default" />
+                  <DataListField label="Geographic Exclusions" items={buyer.geographic_exclusions} variant="destructive" />
+                  <DataListField label="Target Industries" items={buyer.target_industries} />
+                  <DataListField label="Industry Exclusions" items={buyer.industry_exclusions} variant="destructive" />
+                </div>
+              </BuyerDataSection>
+
+              {/* 6. Deal Structure */}
+              <BuyerDataSection title="Deal Structure" icon={<DollarSign className="w-4 h-4 text-muted-foreground" />}>
+                <div className="space-y-4">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Size Criteria</p>
+                  <DataGrid columns={3}>
+                    <DataField label="Min Revenue" value={buyer.min_revenue} type="currency" />
+                    <DataField label="Max Revenue" value={buyer.max_revenue} type="currency" />
+                    <DataField label="Revenue Sweet Spot" value={buyer.revenue_sweet_spot} type="currency" />
+                  </DataGrid>
+                  <DataGrid columns={3}>
+                    <DataField label="Min EBITDA" value={buyer.min_ebitda} type="currency" />
+                    <DataField label="Max EBITDA" value={buyer.max_ebitda} type="currency" />
+                    <DataField label="EBITDA Sweet Spot" value={buyer.ebitda_sweet_spot} type="currency" />
+                  </DataGrid>
+                  <DataField label="Target EBITDA %" value={buyer.preferred_ebitda} type="percentage" />
+                  
+                  <div className="border-t pt-4">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground mb-3">Deal Preferences</p>
+                    <DataField label="Business Model Preferences" value={buyer.business_model_prefs} />
+                    <DataListField label="Business Model Exclusions" items={buyer.business_model_exclusions} variant="destructive" />
+                    <div className="flex gap-3 mt-3 flex-wrap">
+                      {buyer.addon_only && <Badge variant="secondary">Add-on Only</Badge>}
+                      {buyer.platform_only && <Badge variant="secondary">Platform Only</Badge>}
+                    </div>
+                  </div>
+
+                  <div className="border-t pt-4">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground mb-3">Ownership Structure</p>
+                    <DataField label="Owner Roll Requirement" value={buyer.owner_roll_requirement} />
+                    <DataField label="Owner Transition Goals" value={buyer.owner_transition_goals} />
+                  </div>
+                </div>
+              </BuyerDataSection>
+
+              {/* 7. Customer/End Market Info */}
+              <BuyerDataSection title="Customer / End Market Info" icon={<Users className="w-4 h-4 text-muted-foreground" />}>
                 <div className="space-y-4">
                   <p className="text-xs font-semibold uppercase text-muted-foreground">Current Customers</p>
                   <DataGrid columns={2}>
@@ -277,7 +346,7 @@ export default function BuyerDetail() {
                   <DataListField label="Customer Industries" items={buyer.customer_industries} />
                   
                   <div className="border-t pt-4">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground mb-3">Target Customer Profile (Acquisitions)</p>
+                    <p className="text-xs font-semibold uppercase text-muted-foreground mb-3">Target Customer Profile</p>
                     <DataField label="Target Customer Profile" value={buyer.target_customer_profile} />
                     <DataGrid columns={2}>
                       <DataField label="Target Customer Size" value={buyer.target_customer_size} />
@@ -288,54 +357,22 @@ export default function BuyerDetail() {
                 </div>
               </BuyerDataSection>
 
-              {/* E. Business Model */}
-              <BuyerDataSection title="E. Business Model" icon={<TrendingUp className="w-4 h-4 text-muted-foreground" />}>
+              {/* 8. Acquisition History Summary */}
+              <BuyerDataSection title="Acquisition History Summary" icon={<History className="w-4 h-4 text-muted-foreground" />}>
                 <div className="space-y-4">
-                  <p className="text-xs font-semibold uppercase text-muted-foreground">Current</p>
-                  <DataGrid columns={2}>
-                    <DataField label="Business Type" value={buyer.business_type || buyer.business_model} />
-                    <DataField label="Revenue Model" value={buyer.revenue_model} />
-                  </DataGrid>
-                  <DataField label="Go-to-Market Strategy" value={buyer.go_to_market_strategy} />
-                  
-                  <div className="border-t pt-4">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground mb-3">Acquisition Preferences</p>
-                    <DataField label="Target Business Model" value={buyer.target_business_model} />
-                    <DataField label="Business Model Preferences" value={buyer.business_model_prefs} />
-                    <DataListField label="Business Model Exclusions" items={buyer.business_model_exclusions} variant="destructive" />
-                  </div>
-                </div>
-              </BuyerDataSection>
-
-              {/* F. Size Criteria */}
-              <BuyerDataSection title="F. Size Criteria (Acquisition Targets)" icon={<DollarSign className="w-4 h-4 text-muted-foreground" />}>
-                <div className="space-y-4">
-                  <p className="text-xs font-semibold uppercase text-muted-foreground">Revenue</p>
-                  <DataGrid columns={3}>
-                    <DataField label="Min Revenue" value={buyer.min_revenue} type="currency" />
-                    <DataField label="Max Revenue" value={buyer.max_revenue} type="currency" />
-                    <DataField label="Revenue Sweet Spot" value={buyer.revenue_sweet_spot} type="currency" />
-                  </DataGrid>
-                  
-                  <div className="border-t pt-4">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground mb-3">EBITDA</p>
-                    <DataGrid columns={3}>
-                      <DataField label="Min EBITDA" value={buyer.min_ebitda} type="currency" />
-                      <DataField label="Max EBITDA" value={buyer.max_ebitda} type="currency" />
-                      <DataField label="EBITDA Sweet Spot" value={buyer.ebitda_sweet_spot} type="currency" />
-                    </DataGrid>
-                    <DataField label="Target EBITDA %" value={buyer.preferred_ebitda} type="percentage" />
-                  </div>
-                </div>
-              </BuyerDataSection>
-
-              {/* G. Acquisition History */}
-              <BuyerDataSection title="G. Acquisition History" icon={<History className="w-4 h-4 text-muted-foreground" />}>
-                <div className="space-y-4">
+                  {/* Prominent Last Acquisition Date */}
+                  {buyer.last_acquisition_date && (
+                    <div className="bg-muted/50 rounded-lg p-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Last Acquisition Date</p>
+                        <p className="text-lg font-semibold">{new Date(buyer.last_acquisition_date).toLocaleDateString()}</p>
+                      </div>
+                      <History className="w-8 h-8 text-muted-foreground/50" />
+                    </div>
+                  )}
                   <DataGrid columns={2}>
                     <DataField label="Total Acquisitions" value={buyer.total_acquisitions} />
                     <DataField label="Acquisition Frequency" value={buyer.acquisition_frequency} />
-                    <DataField label="Last Acquisition Date" value={buyer.last_acquisition_date} />
                     <DataField label="Number of Platforms" value={buyer.num_platforms} />
                   </DataGrid>
                   {recentAcqs.length > 0 && (
@@ -352,56 +389,7 @@ export default function BuyerDetail() {
                       </div>
                     </div>
                   )}
-                  <DataGrid columns={2}>
-                    <DataField label="Last Call Date" value={buyer.last_call_date} />
-                    <DataField label="Data Last Updated" value={new Date(buyer.data_last_updated).toLocaleDateString()} />
-                  </DataGrid>
-                </div>
-              </BuyerDataSection>
-
-              {/* H. Investment Criteria */}
-              <BuyerDataSection title="H. Investment Criteria" icon={<Target className="w-4 h-4 text-muted-foreground" />} className="lg:col-span-2">
-                <div className="space-y-4">
-                  {buyer.thesis_summary && (
-                    <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Investment Thesis</p>
-                      <p className="text-sm">{buyer.thesis_summary}</p>
-                    </div>
-                  )}
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <DataListField label="Target Services / Products" items={buyer.target_services} />
-                    <DataListField label="Required Capabilities" items={buyer.required_capabilities} />
-                    <DataListField label="Target Industries" items={buyer.target_industries} />
-                    <DataListField label="Industry Exclusions" items={buyer.industry_exclusions} variant="destructive" />
-                    <DataListField label="Deal Breakers" items={buyer.deal_breakers} variant="destructive" />
-                    <DataListField label="Portfolio Companies" items={buyer.portfolio_companies} />
-                  </div>
-                  
-                  <DataGrid columns={2}>
-                    <DataField label="Service Mix Preferences" value={buyer.service_mix_prefs} />
-                    <DataField label="Strategic Priorities" value={buyer.strategic_priorities} />
-                    <DataField label="Acquisition Appetite" value={buyer.acquisition_appetite} />
-                    <DataField label="Acquisition Timeline / Goals" value={buyer.acquisition_timeline} />
-                  </DataGrid>
-
-                  <div className="border-t pt-4">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground mb-3">Ownership</p>
-                    <DataGrid columns={2}>
-                      <DataField label="Owner Roll Requirement" value={buyer.owner_roll_requirement} />
-                      <DataField label="Owner Transition Goals" value={buyer.owner_transition_goals} />
-                    </DataGrid>
-                  </div>
-                  
-                  <div className="flex gap-4 flex-wrap">
-                    {buyer.addon_only && <Badge>Add-on Only</Badge>}
-                    {buyer.platform_only && <Badge>Platform Only</Badge>}
-                    {buyer.thesis_confidence && (
-                      <Badge variant={buyer.thesis_confidence === "high" ? "default" : "outline"}>
-                        {buyer.thesis_confidence} confidence
-                      </Badge>
-                    )}
-                  </div>
+                  <DataListField label="Portfolio Companies" items={buyer.portfolio_companies} />
                 </div>
               </BuyerDataSection>
 
