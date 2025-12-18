@@ -420,14 +420,22 @@ export type Database = {
         Row: {
           additional_info: string | null
           business_model: string | null
+          company_overview: string | null
           company_website: string | null
+          contact_email: string | null
+          contact_name: string | null
+          contact_phone: string | null
           created_at: string
           deal_name: string
           ebitda_percentage: number | null
+          employee_count: number | null
+          founded_year: number | null
           geography: string[] | null
+          headquarters: string | null
           id: string
           industry_type: string | null
           owner_goals: string | null
+          ownership_structure: string | null
           revenue: number | null
           service_mix: string | null
           special_requirements: string | null
@@ -439,14 +447,22 @@ export type Database = {
         Insert: {
           additional_info?: string | null
           business_model?: string | null
+          company_overview?: string | null
           company_website?: string | null
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
           created_at?: string
           deal_name: string
           ebitda_percentage?: number | null
+          employee_count?: number | null
+          founded_year?: number | null
           geography?: string[] | null
+          headquarters?: string | null
           id?: string
           industry_type?: string | null
           owner_goals?: string | null
+          ownership_structure?: string | null
           revenue?: number | null
           service_mix?: string | null
           special_requirements?: string | null
@@ -458,14 +474,22 @@ export type Database = {
         Update: {
           additional_info?: string | null
           business_model?: string | null
+          company_overview?: string | null
           company_website?: string | null
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
           created_at?: string
           deal_name?: string
           ebitda_percentage?: number | null
+          employee_count?: number | null
+          founded_year?: number | null
           geography?: string[] | null
+          headquarters?: string | null
           id?: string
           industry_type?: string | null
           owner_goals?: string | null
+          ownership_structure?: string | null
           revenue?: number | null
           service_mix?: string | null
           special_requirements?: string | null
