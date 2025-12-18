@@ -1,6 +1,7 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 interface DataFieldProps {
   label: string;
@@ -45,16 +46,53 @@ interface DataListFieldProps {
   items?: string[] | null;
   variant?: "default" | "destructive" | "outline";
   className?: string;
+  collapsible?: boolean;
+  collapsedCount?: number;
 }
 
-export function DataListField({ label, items, variant = "outline", className }: DataListFieldProps) {
+export function DataListField({ 
+  label, 
+  items, 
+  variant = "outline", 
+  className,
+  collapsible = false,
+  collapsedCount = 5
+}: DataListFieldProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
   if (!items || items.length === 0) return null;
+  
+  const shouldCollapse = collapsible && items.length > collapsedCount;
+  const displayItems = shouldCollapse && !isExpanded 
+    ? items.slice(0, collapsedCount) 
+    : items;
+  const hiddenCount = items.length - collapsedCount;
   
   return (
     <div className={cn("space-y-2", className)}>
-      <p className="text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
+        {shouldCollapse && (
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {isExpanded ? (
+              <>
+                <span>Show less</span>
+                <ChevronUp className="w-3 h-3" />
+              </>
+            ) : (
+              <>
+                <span>+{hiddenCount} more</span>
+                <ChevronDown className="w-3 h-3" />
+              </>
+            )}
+          </button>
+        )}
+      </div>
       <div className="flex flex-wrap gap-1.5">
-        {items.map((item, i) => (
+        {displayItems.map((item, i) => (
           <Badge key={i} variant={variant} className="text-xs">
             {item}
           </Badge>

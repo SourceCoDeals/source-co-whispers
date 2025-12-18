@@ -316,8 +316,8 @@ export default function BuyerDetail() {
                       {buyer.hq_region && <p className="text-sm text-muted-foreground mt-1">Region: {buyer.hq_region}</p>}
                     </div>
                   )}
-                  <DataListField label="Other Office Locations" items={buyer.other_office_locations} />
-                  <DataListField label="Service Regions" items={buyer.service_regions?.length ? buyer.service_regions : buyer.geographic_footprint} />
+                  <DataListField label="Other Office Locations" items={buyer.other_office_locations} collapsible collapsedCount={5} />
+                  <DataListField label="Service Regions" items={buyer.service_regions?.length ? buyer.service_regions : buyer.geographic_footprint} collapsible collapsedCount={5} />
                 </div>
               </BuyerDataSection>
 
@@ -358,11 +358,11 @@ export default function BuyerDetail() {
               {/* 5. Geographic Footprint - Standalone */}
               <BuyerDataSection title="Geographic Footprint" icon={<Globe className="w-4 h-4 text-muted-foreground" />}>
                 <div className="space-y-4">
-                  <DataListField label="Current Locations" items={buyer.geographic_footprint} variant="default" />
-                  <DataListField label="Service Regions" items={buyer.service_regions} variant="default" />
-                  <DataListField label="Target Geographies" items={buyer.target_geographies} variant="outline" />
+                  <DataListField label="Current Locations" items={buyer.geographic_footprint} variant="default" collapsible collapsedCount={5} />
+                  <DataListField label="Service Regions" items={buyer.service_regions} variant="default" collapsible collapsedCount={5} />
+                  <DataListField label="Target Geographies" items={buyer.target_geographies} variant="outline" collapsible collapsedCount={5} />
                   <DataListField label="Geographic Exclusions" items={buyer.geographic_exclusions} variant="destructive" />
-                  <DataListField label="Target Industries" items={buyer.target_industries} />
+                  <DataListField label="Target Industries" items={buyer.target_industries} collapsible collapsedCount={5} />
                   <DataListField label="Industry Exclusions" items={buyer.industry_exclusions} variant="destructive" />
                 </div>
               </BuyerDataSection>
