@@ -2,3 +2,9 @@ project_id = "gsvsyqjgtjuzrgxqkvxw"
 
 [functions.map-csv-columns]
 verify_jwt = false
+
+[functions.firecrawl-scrape]
+verify_jwt = false
+
+[functions.enrich-buyer]
+verify_jwt = false
