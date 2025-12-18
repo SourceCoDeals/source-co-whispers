@@ -80,61 +80,52 @@ export default function DealDetail() {
               <h2 className="font-semibold text-lg">Company Overview</h2>
             </div>
             <div className="space-y-3 text-sm">
-              {deal.company_website && (
-                <div className="flex items-start gap-3">
-                  <ExternalLink className="w-4 h-4 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide">Website</p>
+              <div className="flex items-start gap-3">
+                <ExternalLink className="w-4 h-4 text-muted-foreground mt-0.5" />
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">Website</p>
+                  {deal.company_website ? (
                     <a 
-                      href={deal.company_website.startsWith('http') ? deal.company_website : `https://${deal.company_website}`}
+                      href={deal.company_website.startsWith("http") ? deal.company_website : `https://${deal.company_website}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-primary hover:underline"
                     >
                       {deal.company_website}
                     </a>
-                  </div>
+                  ) : (
+                    <p className="text-muted-foreground italic">Not specified</p>
+                  )}
                 </div>
-              )}
-              {deal.headquarters && (
-                <div className="flex items-start gap-3">
-                  <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide">Headquarters</p>
-                    <p className="font-medium">{deal.headquarters}</p>
-                  </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">Headquarters</p>
+                  <p className={deal.headquarters ? "font-medium" : "text-muted-foreground italic"}>{deal.headquarters || "Not specified"}</p>
                 </div>
-              )}
-              {deal.founded_year && (
-                <div className="flex items-start gap-3">
-                  <Calendar className="w-4 h-4 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide">Founded</p>
-                    <p className="font-medium">{deal.founded_year}</p>
-                  </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <Calendar className="w-4 h-4 text-muted-foreground mt-0.5" />
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">Founded</p>
+                  <p className={deal.founded_year ? "font-medium" : "text-muted-foreground italic"}>{deal.founded_year || "Not specified"}</p>
                 </div>
-              )}
-              {deal.employee_count && (
-                <div className="flex items-start gap-3">
-                  <Users className="w-4 h-4 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide">Employees</p>
-                    <p className="font-medium">{deal.employee_count}+</p>
-                  </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <Users className="w-4 h-4 text-muted-foreground mt-0.5" />
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">Employees</p>
+                  <p className={deal.employee_count ? "font-medium" : "text-muted-foreground italic"}>{deal.employee_count ? `${deal.employee_count}+` : "Not specified"}</p>
                 </div>
-              )}
-              {deal.industry_type && (
-                <div className="flex items-start gap-3">
-                  <Briefcase className="w-4 h-4 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide">Industry</p>
-                    <p className="font-medium">{deal.industry_type}</p>
-                  </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <Briefcase className="w-4 h-4 text-muted-foreground mt-0.5" />
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">Industry</p>
+                  <p className={deal.industry_type ? "font-medium" : "text-muted-foreground italic"}>{deal.industry_type || "Not specified"}</p>
                 </div>
-              )}
-              {!deal.company_website && !deal.headquarters && !deal.founded_year && !deal.employee_count && !deal.industry_type && (
-                <p className="text-muted-foreground italic">No company information available</p>
-              )}
+              </div>
             </div>
           </div>
 
@@ -145,15 +136,13 @@ export default function DealDetail() {
               <h2 className="font-semibold text-lg">Financial Overview</h2>
             </div>
             <div className="space-y-4">
-              {deal.revenue && (
-                <div>
-                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Revenue</p>
-                  <p className="text-3xl font-bold text-foreground">${deal.revenue}M</p>
-                </div>
-              )}
-              {deal.ebitda_percentage && (
-                <div>
-                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">EBITDA Margin</p>
+              <div>
+                <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Revenue</p>
+                <p className={deal.revenue ? "text-3xl font-bold text-foreground" : "text-muted-foreground italic"}>{deal.revenue ? `$${deal.revenue}M` : "Not specified"}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">EBITDA Margin</p>
+                {deal.ebitda_percentage ? (
                   <div className="flex items-center gap-3">
                     <p className="text-2xl font-bold text-foreground">{deal.ebitda_percentage}%</p>
                     <div className="flex-1 bg-muted rounded-full h-3 overflow-hidden">
@@ -163,25 +152,22 @@ export default function DealDetail() {
                       />
                     </div>
                   </div>
-                </div>
-              )}
-              {!deal.revenue && !deal.ebitda_percentage && (
-                <p className="text-muted-foreground italic">No financial information available</p>
-              )}
+                ) : (
+                  <p className="text-muted-foreground italic">Not specified</p>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Row 2: Executive Summary */}
-        {deal.company_overview && (
-          <div className="bg-card rounded-lg border p-6 space-y-3">
-            <div className="flex items-center gap-2 text-primary">
-              <FileText className="w-5 h-5" />
-              <h2 className="font-semibold text-lg">Executive Summary</h2>
-            </div>
-            <p className="text-sm leading-relaxed">{deal.company_overview}</p>
+        <div className="bg-card rounded-lg border p-6 space-y-3">
+          <div className="flex items-center gap-2 text-primary">
+            <FileText className="w-5 h-5" />
+            <h2 className="font-semibold text-lg">Executive Summary</h2>
           </div>
-        )}
+          <p className={deal.company_overview ? "text-sm leading-relaxed" : "text-sm text-muted-foreground italic"}>{deal.company_overview || "No executive summary available"}</p>
+        </div>
 
         {/* Row 3: Services & Business Model + Geographic Coverage */}
         <div className="grid md:grid-cols-2 gap-6">
@@ -192,21 +178,18 @@ export default function DealDetail() {
               <h2 className="font-semibold text-lg">Services & Business Model</h2>
             </div>
             <div className="space-y-3 text-sm">
-              {deal.service_mix && (
-                <div>
-                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Service Mix</p>
-                  <p>{deal.service_mix}</p>
-                </div>
-              )}
-              {deal.business_model && (
-                <div>
-                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Business Model</p>
+              <div>
+                <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Service Mix</p>
+                <p className={deal.service_mix ? "" : "text-muted-foreground italic"}>{deal.service_mix || "Not specified"}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Business Model</p>
+                {deal.business_model ? (
                   <Badge variant="outline">{deal.business_model}</Badge>
-                </div>
-              )}
-              {!deal.service_mix && !deal.business_model && (
-                <p className="text-muted-foreground italic">No service information available</p>
-              )}
+                ) : (
+                  <p className="text-muted-foreground italic">Not specified</p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -236,28 +219,20 @@ export default function DealDetail() {
           </div>
           <div className="grid md:grid-cols-2 gap-6 text-sm">
             <div className="space-y-3">
-              {deal.owner_goals ? (
-                <div>
-                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Owner Goals</p>
-                  <p>{deal.owner_goals}</p>
-                </div>
-              ) : (
-                <p className="text-muted-foreground italic">No owner goals specified</p>
-              )}
-              {deal.special_requirements && (
-                <div>
-                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Special Requirements</p>
-                  <p>{deal.special_requirements}</p>
-                </div>
-              )}
+              <div>
+                <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Owner Goals</p>
+                <p className={deal.owner_goals ? "" : "text-muted-foreground italic"}>{deal.owner_goals || "Not specified"}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Special Requirements</p>
+                <p className={deal.special_requirements ? "" : "text-muted-foreground italic"}>{deal.special_requirements || "None"}</p>
+              </div>
             </div>
             <div className="space-y-3">
-              {deal.ownership_structure && (
-                <div>
-                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Ownership Structure</p>
-                  <p>{deal.ownership_structure}</p>
-                </div>
-              )}
+              <div>
+                <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Ownership Structure</p>
+                <p className={deal.ownership_structure ? "" : "text-muted-foreground italic"}>{deal.ownership_structure || "Not specified"}</p>
+              </div>
             </div>
           </div>
         </div>
@@ -270,56 +245,67 @@ export default function DealDetail() {
           </div>
           <div className="grid md:grid-cols-2 gap-6 text-sm">
             <div className="space-y-3">
-              {deal.contact_name && (
-                <div className="flex items-center gap-3">
-                  <User className="w-4 h-4 text-muted-foreground" />
-                  <p className="font-medium">{deal.contact_name}</p>
+              <div className="flex items-center gap-3">
+                <User className="w-4 h-4 text-muted-foreground" />
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">Name</p>
+                  <p className={deal.contact_name ? "font-medium" : "text-muted-foreground italic"}>{deal.contact_name || "Not specified"}</p>
                 </div>
-              )}
-              {deal.contact_email && (
-                <div className="flex items-center gap-3">
-                  <Mail className="w-4 h-4 text-muted-foreground" />
-                  <a href={`mailto:${deal.contact_email}`} className="text-primary hover:underline">{deal.contact_email}</a>
+              </div>
+              <div className="flex items-center gap-3">
+                <Mail className="w-4 h-4 text-muted-foreground" />
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">Email</p>
+                  {deal.contact_email ? (
+                    <a href={`mailto:${deal.contact_email}`} className="text-primary hover:underline">{deal.contact_email}</a>
+                  ) : (
+                    <p className="text-muted-foreground italic">Not specified</p>
+                  )}
                 </div>
-              )}
-              {deal.contact_phone && (
-                <div className="flex items-center gap-3">
-                  <Phone className="w-4 h-4 text-muted-foreground" />
-                  <a href={`tel:${deal.contact_phone}`} className="text-primary hover:underline">{deal.contact_phone}</a>
+              </div>
+              <div className="flex items-center gap-3">
+                <Phone className="w-4 h-4 text-muted-foreground" />
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">Phone</p>
+                  {deal.contact_phone ? (
+                    <a href={`tel:${deal.contact_phone}`} className="text-primary hover:underline">{deal.contact_phone}</a>
+                  ) : (
+                    <p className="text-muted-foreground italic">Not specified</p>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
             <div className="space-y-3">
-              {deal.contact_linkedin && (
-                <div className="flex items-center gap-3">
-                  <Linkedin className="w-4 h-4 text-muted-foreground" />
-                  <a 
-                    href={deal.contact_linkedin.startsWith('http') ? deal.contact_linkedin : `https://${deal.contact_linkedin}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline"
-                  >
-                    LinkedIn Profile
-                  </a>
+              <div className="flex items-center gap-3">
+                <Linkedin className="w-4 h-4 text-muted-foreground" />
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">LinkedIn</p>
+                  {deal.contact_linkedin ? (
+                    <a 
+                      href={deal.contact_linkedin.startsWith("http") ? deal.contact_linkedin : `https://${deal.contact_linkedin}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      View Profile
+                    </a>
+                  ) : (
+                    <p className="text-muted-foreground italic">Not specified</p>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           </div>
-          {!deal.contact_name && !deal.contact_email && !deal.contact_phone && !deal.contact_linkedin && (
-            <p className="text-muted-foreground italic text-sm">No contact information available</p>
-          )}
         </div>
 
         {/* Row 6: Additional Information */}
-        {deal.additional_info && (
-          <div className="bg-card rounded-lg border p-6 space-y-3">
-            <div className="flex items-center gap-2 text-primary">
-              <Hash className="w-5 h-5" />
-              <h2 className="font-semibold text-lg">Additional Information</h2>
-            </div>
-            <p className="text-sm">{deal.additional_info}</p>
+        <div className="bg-card rounded-lg border p-6 space-y-3">
+          <div className="flex items-center gap-2 text-primary">
+            <Hash className="w-5 h-5" />
+            <h2 className="font-semibold text-lg">Additional Information</h2>
           </div>
-        )}
+          <p className={deal.additional_info ? "text-sm" : "text-sm text-muted-foreground italic"}>{deal.additional_info || "No additional information"}</p>
+        </div>
 
         {/* Footer: Timestamps */}
         <div className="flex items-center justify-end gap-6 text-xs text-muted-foreground border-t pt-4">
