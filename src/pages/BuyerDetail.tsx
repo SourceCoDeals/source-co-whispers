@@ -355,11 +355,12 @@ export default function BuyerDetail() {
                 </div>
               </BuyerDataSection>
 
-              {/* 5. Target Geographies - Standalone */}
-              <BuyerDataSection title="Target Geographies" icon={<Globe className="w-4 h-4 text-muted-foreground" />}>
+              {/* 5. Geographic Footprint - Standalone */}
+              <BuyerDataSection title="Geographic Footprint" icon={<Globe className="w-4 h-4 text-muted-foreground" />}>
                 <div className="space-y-4">
-                  <DataListField label="Target Geographies" items={buyer.target_geographies} variant="default" />
-                  <DataListField label="Acquisition Geography" items={buyer.acquisition_geography} variant="default" />
+                  <DataListField label="Current Locations" items={buyer.geographic_footprint} variant="default" />
+                  <DataListField label="Service Regions" items={buyer.service_regions} variant="default" />
+                  <DataListField label="Target Geographies" items={buyer.target_geographies} variant="outline" />
                   <DataListField label="Geographic Exclusions" items={buyer.geographic_exclusions} variant="destructive" />
                   <DataListField label="Target Industries" items={buyer.target_industries} />
                   <DataListField label="Industry Exclusions" items={buyer.industry_exclusions} variant="destructive" />
