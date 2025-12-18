@@ -84,12 +84,12 @@ const extractCustomersEndMarketTool = {
   }
 };
 
-// Prompt 3: Geography / Footprint (Platform Website)
+// Prompt 3: Geography / Footprint (Platform Website) - CURRENT LOCATIONS
 const extractGeographyFootprintTool = {
   type: "function",
   function: {
     name: "extract_geography_footprint",
-    description: "Extract geographic footprint information from platform company website",
+    description: "Extract CURRENT geographic locations where the company has physical locations or operations",
     parameters: {
       type: "object",
       properties: {
@@ -109,20 +109,20 @@ const extractGeographyFootprintTool = {
           type: "string",
           description: "Headquarters region (e.g., Southeast, Midwest)"
         },
-        service_regions: {
-          type: "array",
-          items: { type: "string" },
-          description: "Specific states or regions served"
-        },
         geographic_footprint: {
           type: "array",
           items: { type: "string" },
-          description: "Geographic regions where the company operates"
+          description: "ALL states/cities where the company currently has physical shop locations, offices, or operations. List each location separately."
+        },
+        service_regions: {
+          type: "array",
+          items: { type: "string" },
+          description: "Broader regions where the company provides services (may extend beyond physical locations)"
         },
         other_office_locations: {
           type: "array",
           items: { type: "string" },
-          description: "Other office or branch locations"
+          description: "Specific addresses or cities of branch offices/shops beyond headquarters"
         }
       },
       required: [],
@@ -451,25 +451,30 @@ EXAMPLE OUTPUT:
       );
       Object.assign(extractedData, customers);
 
-      // Prompt 3: Geography / Footprint
-      console.log('Running Prompt 3: Geography / Footprint');
+      // Prompt 3: Geography / Footprint - CURRENT LOCATIONS
+      console.log('Running Prompt 3: Current Geographic Footprint');
       const geographyPrompt = platformPromptBase + `
-WHAT TO DO: Identify where the company operates, including:
+WHAT TO DO: Identify where the company CURRENTLY has physical locations (shops, offices, facilities).
+Look for:
 - Where is the company headquartered? (city, state, country)
-- In which geographies does the company operate? (local, regional, national, international)
-- Does the company have multiple locations?
+- What locations or branches do they currently have? Look for "Locations", "Our Shops", "Service Areas", "Contact Us" pages
+- List EVERY state and city where they mention having a physical presence
+- This is about CURRENT locations, not where they want to expand
 
-EXAMPLE OUTPUT:
-- hq_city: "Chicago"
-- hq_state: "Illinois"
+EXAMPLE OUTPUT for a collision repair company:
+- hq_city: "Dallas"
+- hq_state: "Texas"
 - hq_country: "USA"
-- hq_region: "Midwest"
-- service_regions: ["Illinois", "Indiana", "Wisconsin", "Michigan"]
-- geographic_footprint: ["Midwest United States"]`;
+- hq_region: "Southwest"
+- geographic_footprint: ["Texas", "Oklahoma", "Louisiana", "Arkansas", "Arizona"]
+- other_office_locations: ["Houston, TX", "Austin, TX", "San Antonio, TX", "Oklahoma City, OK", "Phoenix, AZ"]
+- service_regions: ["Southwest United States", "South Central United States"]
+
+Be thorough - extract EVERY location mentioned on the website where they have shops or offices.`;
 
       const geography = await callAIWithTool(
         lovableApiKey,
-        'You are extracting geographic information from a company website. Be precise and only include information clearly stated.',
+        'You are extracting CURRENT physical location information from a company website. Focus on where they have existing shops, offices, or facilities - not where they might expand.',
         geographyPrompt,
         extractGeographyFootprintTool
       );

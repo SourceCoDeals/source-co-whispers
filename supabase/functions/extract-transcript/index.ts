@@ -41,34 +41,34 @@ const extractTranscriptThesisTool = {
   }
 };
 
-// Prompt 8: Target Geographies from Transcript (OVERRIDE)
+// Prompt 8: Target Geographies from Transcript (OVERRIDE) - WHERE THEY WANT TO ACQUIRE
 const extractTranscriptGeographyTool = {
   type: "function",
   function: {
     name: "extract_transcript_geography",
-    description: "Extract target geographies from call transcript - PRIMARY AUTHORITY",
+    description: "Extract where the buyer WANTS TO ACQUIRE new companies - their expansion targets, not their current locations",
     parameters: {
       type: "object",
       properties: {
         target_geographies: {
           type: "array",
           items: { type: "string" },
-          description: "Specific locations of interest mentioned"
+          description: "States, regions, or cities where they WANT TO ACQUIRE or EXPAND TO. These are future targets, not current locations."
         },
         geographic_exclusions: {
           type: "array",
           items: { type: "string" },
-          description: "Locations they want to avoid"
+          description: "Locations they explicitly do NOT want to acquire in or have ruled out"
         },
         acquisition_geography: {
           type: "array",
           items: { type: "string" },
-          description: "Where they are actively looking for acquisitions"
+          description: "Specific markets they are actively looking at for acquisitions right now"
         },
         key_quotes_geography: {
           type: "array",
           items: { type: "string" },
-          description: "Direct quotes about geography preferences"
+          description: "Direct quotes about where they want to expand or acquire"
         }
       },
       required: [],
@@ -358,20 +358,23 @@ EXAMPLE OUTPUT:
     Object.assign(extractedData, thesis);
     if (thesis.key_quotes_thesis) allKeyQuotes.push(...thesis.key_quotes_thesis);
 
-    // Prompt 8: Target Geographies (OVERRIDE)
-    console.log('Running Prompt 8: Target Geographies from Transcript');
+    // Prompt 8: Target Geographies (OVERRIDE) - WHERE THEY WANT TO ACQUIRE
+    console.log('Running Prompt 8: Acquisition Target Geographies from Transcript');
     const geographyPrompt = transcriptPromptBase + `
-WHAT TO DO: Extract geographic preferences and exclusions mentioned in the call.
-Look for:
-- Specific states, regions, or cities they want to expand to
-- Areas they are avoiding or have ruled out
-- Reasoning behind geographic preferences
+WHAT TO DO: Extract where the buyer WANTS TO ACQUIRE or EXPAND TO - their geographic growth targets.
+This is different from where they currently have locations. Look for:
+- States or regions they mention wanting to enter or grow in
+- Markets they say they're actively looking at for deals
+- Areas they explicitly say they DON'T want to acquire in
+- Any reasoning about why certain geographies are attractive or unattractive
 
 EXAMPLE OUTPUT:
-- target_geographies: ["Texas", "Florida", "Southeast"]
-- geographic_exclusions: ["California", "New York"]
-- acquisition_geography: ["Houston", "Dallas", "Atlanta", "Miami"]
-- key_quotes_geography: ["We're really focused on Texas right now", "We won't do anything in California due to regulations"]`;
+- target_geographies: ["Texas", "Florida", "Southeast"] - places they WANT to acquire
+- geographic_exclusions: ["California", "New York"] - places they WON'T acquire
+- acquisition_geography: ["Houston", "Dallas", "Atlanta"] - specific markets they're actively pursuing
+- key_quotes_geography: ["We're really trying to get into Texas", "California is off the table for us"]
+
+Focus on FUTURE acquisition targets, not where they already have shops.`;
 
     const geography = await callAIWithTool(lovableApiKey, systemPrompt, geographyPrompt, extractTranscriptGeographyTool);
     Object.assign(extractedData, geography);
