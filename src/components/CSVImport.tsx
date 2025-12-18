@@ -102,6 +102,7 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
           { key: 'platform_website', label: 'Platform Website', description: '' },
           { key: 'pe_firm_name', label: 'PE Firm Name', description: '' },
           { key: 'pe_firm_website', label: 'PE Firm Website', description: '' },
+          { key: 'hq_city_state', label: 'HQ City & State (combined)', description: '' },
           { key: 'hq_city', label: 'HQ City', description: '' },
           { key: 'hq_state', label: 'HQ State', description: '' },
           { key: 'hq_country', label: 'HQ Country', description: '' },
@@ -133,12 +134,24 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
         headers.forEach((header, index) => {
           const fieldValue = mapping[header];
           if (fieldValue && fieldValue !== 'skip' && row[index]) {
-            const field = fieldValue as keyof TablesInsert<'buyers'>;
             const value = row[index].trim();
             if (!value) return;
             
-            // All basic fields are strings
-            (buyer as any)[field] = value;
+            // Handle combined city/state field - auto-split
+            if (fieldValue === 'hq_city_state') {
+              const parts = value.split(',').map(s => s.trim());
+              if (parts.length >= 2) {
+                buyer.hq_city = parts[0];
+                buyer.hq_state = parts[parts.length - 1]; // Take last part as state
+              } else {
+                // No comma, treat as city
+                buyer.hq_city = value;
+              }
+            } else {
+              // All other basic fields are strings
+              const field = fieldValue as keyof TablesInsert<'buyers'>;
+              (buyer as any)[field] = value;
+            }
           }
         });
         

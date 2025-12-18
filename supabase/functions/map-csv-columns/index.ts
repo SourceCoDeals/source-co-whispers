@@ -10,8 +10,9 @@ const BUYER_FIELDS = [
   { key: 'platform_website', label: 'Platform Website', description: 'Company website URL' },
   { key: 'pe_firm_name', label: 'PE Firm Name', description: 'Private equity firm or sponsor name' },
   { key: 'pe_firm_website', label: 'PE Firm Website', description: 'PE firm website URL' },
-  { key: 'hq_city', label: 'HQ City', description: 'Headquarters city' },
-  { key: 'hq_state', label: 'HQ State', description: 'Headquarters state or province' },
+  { key: 'hq_city_state', label: 'HQ City & State (combined)', description: 'Combined city and state like "Dallas, TX" - will be auto-split' },
+  { key: 'hq_city', label: 'HQ City', description: 'Headquarters city only' },
+  { key: 'hq_state', label: 'HQ State', description: 'Headquarters state or province only' },
   { key: 'hq_country', label: 'HQ Country', description: 'Headquarters country' },
   { key: 'skip', label: 'Skip (Do Not Import)', description: 'Do not import this column' },
 ];
@@ -46,14 +47,17 @@ Sample Data (first 3 rows): ${JSON.stringify(sampleRows?.slice(0, 3) || [])}
 Return a JSON object mapping each CSV header to a database field key. Use "skip" for columns that don't match any field. Be intelligent about matching - for example:
 - "Company", "Platform", "Portfolio Company", "Name" → platform_company_name
 - "PE", "Sponsor", "PE Firm", "Investor", "Fund" → pe_firm_name
-- "City", "HQ City", "Headquarters City" → hq_city
-- "State", "HQ State", "Location" (if 2-letter code) → hq_state
+- "Location", "City/State", "HQ", "Headquarters" with data like "Dallas, TX" or "New York, NY" → hq_city_state (combined city and state)
+- "City", "HQ City" (city only, no state) → hq_city
+- "State", "HQ State" (state only, 2-letter code) → hq_state
 - "Country" → hq_country
 - "Website", "URL", "Site", "Platform Website" → platform_website
 - "PE Website", "Firm Website", "Sponsor Website" → pe_firm_website
 
+IMPORTANT: If the sample data shows values like "City, ST" format (e.g., "Dallas, TX", "Chicago, IL"), map to hq_city_state so it gets auto-split.
+
 Return ONLY valid JSON, no explanation. Example format:
-{"Company Name": "platform_company_name", "PE Sponsor": "pe_firm_name", "Location": "hq_state"}`;
+{"Company Name": "platform_company_name", "PE Sponsor": "pe_firm_name", "Location": "hq_city_state"}`;
 
     console.log('Calling Lovable AI for column mapping...');
     
@@ -116,9 +120,17 @@ Return ONLY valid JSON, no explanation. Example format:
           mapping[header] = 'pe_firm_name';
         } else if (h.includes('platform') || h.includes('company') || h.includes('portfolio') || h.includes('name')) {
           mapping[header] = 'platform_company_name';
-        } else if (h.includes('city')) {
+        } else if (h.includes('location') || h.includes('headquarters') || h === 'hq') {
+          // Check sample data to see if it looks like "City, State" format
+          const sampleValue = sampleRows?.[0]?.[headers.indexOf(header)] || '';
+          if (sampleValue.includes(',')) {
+            mapping[header] = 'hq_city_state';
+          } else {
+            mapping[header] = 'hq_city';
+          }
+        } else if (h.includes('city') && !h.includes('state')) {
           mapping[header] = 'hq_city';
-        } else if (h.includes('state') || h === 'location') {
+        } else if (h.includes('state') && !h.includes('city')) {
           mapping[header] = 'hq_state';
         } else if (h.includes('country')) {
           mapping[header] = 'hq_country';
