@@ -530,6 +530,7 @@ export type Database = {
         Row: {
           archived: boolean
           created_at: string
+          fit_criteria: string | null
           geography_weight: number
           id: string
           industry_name: string
@@ -542,6 +543,7 @@ export type Database = {
         Insert: {
           archived?: boolean
           created_at?: string
+          fit_criteria?: string | null
           geography_weight?: number
           id?: string
           industry_name: string
@@ -554,6 +556,7 @@ export type Database = {
         Update: {
           archived?: boolean
           created_at?: string
+          fit_criteria?: string | null
           geography_weight?: number
           id?: string
           industry_name?: string
