@@ -190,7 +190,7 @@ export default function TrackerDetail() {
   };
 
   const getDescription = (buyer: any) => {
-    return buyer.services_offered || buyer.business_summary || null;
+    return buyer.business_summary || buyer.services_offered || null;
   };
 
   const hasWebsite = (buyer: any) => buyer.platform_website || buyer.pe_firm_website;
