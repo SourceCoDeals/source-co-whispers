@@ -347,16 +347,37 @@ export default function DealMatching() {
                   </p>
                 )}
                 
+                {/* Clickable Website URLs */}
+                <div className="flex items-center gap-3 text-sm flex-wrap">
+                  {buyer.platform_website && (
+                    <a 
+                      href={getPlatformWebsite(buyer)} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-muted-foreground hover:text-primary flex items-center gap-1"
+                    >
+                      <Globe className="w-3 h-3" />
+                      {buyer.platform_website.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                    </a>
+                  )}
+                  {buyer.pe_firm_website && (
+                    <a 
+                      href={buyer.pe_firm_website.startsWith('http') ? buyer.pe_firm_website : `https://${buyer.pe_firm_website}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-muted-foreground hover:text-primary flex items-center gap-1"
+                    >
+                      <Building2 className="w-3 h-3" />
+                      {buyer.pe_firm_website.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                    </a>
+                  )}
+                </div>
+                
                 {/* PE Firm info with LinkedIn */}
                 {buyer.platform_company_name && (
                   <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                     <Building2 className="w-3 h-3" />
                     <span>{buyer.pe_firm_name}</span>
-                    {buyer.pe_firm_website && (
-                      <a href={buyer.pe_firm_website.startsWith('http') ? buyer.pe_firm_website : `https://${buyer.pe_firm_website}`} target="_blank" rel="noopener noreferrer" className="hover:text-primary" title="PE Firm Website">
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    )}
                     {getPEFirmLinkedIn(buyer) && (
                       <a href={getPEFirmLinkedIn(buyer)} target="_blank" rel="noopener noreferrer" className="hover:text-[#0077b5]" title="PE Firm LinkedIn">
                         <Linkedin className="w-3 h-3" />
@@ -365,9 +386,9 @@ export default function DealMatching() {
                   </div>
                 )}
                 
-                {/* Services/Business description */}
+                {/* Services/Business description - 3 lines */}
                 {(buyer.services_offered || buyer.business_summary) && (
-                  <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{buyer.services_offered || buyer.business_summary}</p>
+                  <p className="text-sm text-muted-foreground mt-1 line-clamp-3">{buyer.services_offered || buyer.business_summary}</p>
                 )}
                 
                 {/* Additional Info */}
