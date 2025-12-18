@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { CSVImport } from "@/components/CSVImport";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
@@ -54,6 +55,13 @@ export default function TrackerDetail() {
     toast({ title: "Buyer added" });
     setNewBuyer({ pe_firm_name: "", pe_firm_website: "", platform_company_name: "", platform_website: "" });
     setDialogOpen(false);
+    loadData();
+  };
+
+  const deleteBuyer = async (buyerId: string, buyerName: string) => {
+    const { error } = await supabase.from("buyers").delete().eq("id", buyerId);
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Buyer deleted", description: `${buyerName} has been removed` });
     loadData();
   };
 
@@ -135,6 +143,7 @@ export default function TrackerDetail() {
                       </TableHead>
                       <TableHead className="w-[300px]">Description</TableHead>
                       <TableHead className="w-[120px] text-center">Intelligence</TableHead>
+                      <TableHead className="w-[60px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -153,16 +162,20 @@ export default function TrackerDetail() {
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()}
-                                  className="font-medium text-primary hover:underline"
+                                  className="font-medium text-primary hover:underline flex items-center gap-1"
                                 >
-                                  {buyer.platform_company_name || "—"}
+                                  {buyer.platform_company_name || buyer.pe_firm_name}
+                                  <ExternalLink className="w-3 h-3" />
                                 </a>
                               ) : (
-                                <span className="font-medium">{buyer.platform_company_name || "—"}</span>
+                                <span className="font-medium">{buyer.platform_company_name || buyer.pe_firm_name}</span>
                               )}
                             </div>
                             {getHQ(buyer) && (
-                              <span className="text-xs text-muted-foreground">{getHQ(buyer)}</span>
+                              <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                <MapPin className="w-3 h-3" />
+                                {getHQ(buyer)}
+                              </span>
                             )}
                           </div>
                         </TableCell>
@@ -175,9 +188,10 @@ export default function TrackerDetail() {
                                 target="_blank" 
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
-                                className="text-primary hover:underline"
+                                className="text-primary hover:underline flex items-center gap-1"
                               >
                                 {buyer.pe_firm_name}
+                                <ExternalLink className="w-3 h-3" />
                               </a>
                             ) : (
                               <span>{buyer.pe_firm_name}</span>
@@ -189,6 +203,37 @@ export default function TrackerDetail() {
                         </TableCell>
                         <TableCell className="text-center">
                           <IntelligenceBadge buyer={buyer} />
+                        </TableCell>
+                        <TableCell>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Buyer</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete {buyer.platform_company_name || buyer.pe_firm_name}? This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction 
+                                  onClick={() => deleteBuyer(buyer.id, buyer.platform_company_name || buyer.pe_firm_name)}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </TableCell>
                       </TableRow>
                     ))}
