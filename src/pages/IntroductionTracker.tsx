@@ -7,12 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Mail, Linkedin, Plus, Building2, FileCheck, UserPlus, ExternalLink, MapPin, DollarSign, AlertTriangle, Target, User, Calendar } from "lucide-react";
+import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Mail, Linkedin, Plus, Building2, FileCheck, UserPlus, ExternalLink, MapPin, DollarSign, AlertTriangle, Target, User, Calendar, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-const stages = ["Not Started", "Initial Contact", "Connected", "NDA Sent", "NDA Signed", "IOI", "LOI", "Due Diligence", "Closed", "Dead"];
 
 const employeeOptions = ["Unassigned", "John Smith", "Sarah Johnson", "Mike Williams", "Emily Davis", "Chris Brown"];
 
@@ -59,14 +58,15 @@ export default function IntroductionTracker() {
     setIsLoading(false);
   };
 
-  const updateStage = async (buyerId: string, stage: string) => {
+  const updateOutreachInitiated = async (buyerId: string, initiated: boolean) => {
     const existing = outreachRecords[buyerId];
+    const stage = initiated ? "Outreach Initiated" : "Not Started";
     if (existing) {
       await supabase.from("outreach_records").update({ deal_stage: stage, last_activity_date: new Date().toISOString() }).eq("id", existing.id);
     } else {
       await supabase.from("outreach_records").insert({ buyer_id: buyerId, deal_id: id, deal_stage: stage });
     }
-    toast({ title: "Stage updated" });
+    toast({ title: initiated ? "Outreach initiated" : "Outreach reset" });
     loadData();
   };
 
@@ -127,27 +127,18 @@ Best regards`);
     return `Up to $${max}M EBITDA`;
   };
 
-  const getStageColor = (stage: string) => {
-    if (stage === "Dead") return "bg-destructive/10 text-destructive border-destructive/30";
-    if (stage === "Closed") return "bg-green-500/10 text-green-600 border-green-500/30";
-    if (["IOI", "LOI", "Due Diligence"].includes(stage)) return "bg-blue-500/10 text-blue-600 border-blue-500/30";
-    if (["Connected", "NDA Sent", "NDA Signed"].includes(stage)) return "bg-amber-500/10 text-amber-600 border-amber-500/30";
-    return "";
+  const isOutreachInitiated = (buyerId: string) => {
+    const outreach = outreachRecords[buyerId];
+    return outreach?.deal_stage && outreach.deal_stage !== "Not Started";
   };
 
   const stats = {
     total: approvedBuyers.length,
-    introduced: Object.values(outreachRecords).filter((r: any) => r.deal_stage !== "Not Started").length,
+    initiated: Object.values(outreachRecords).filter((r: any) => r.deal_stage && r.deal_stage !== "Not Started").length,
     withContacts: approvedBuyers.filter(b => contacts[b.id]?.length > 0).length,
     withFeeAgreement: approvedBuyers.filter(b => hasFeeAgreement(b)).length,
     assigned: approvedBuyers.filter(b => b.employee_owner).length,
   };
-
-  const stageCounts = stages.reduce((acc, stage) => {
-    acc[stage] = Object.values(outreachRecords).filter((r: any) => r.deal_stage === stage).length;
-    return acc;
-  }, {} as Record<string, number>);
-  stageCounts["Not Started"] = stats.total - stats.introduced;
 
   if (isLoading) return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
 
@@ -170,8 +161,8 @@ Best regards`);
             <p className="text-2xl font-bold">{stats.total}</p>
           </div>
           <div className="bg-card rounded-lg border p-4">
-            <p className="text-sm text-muted-foreground">Introduced</p>
-            <p className="text-2xl font-bold">{stats.introduced}</p>
+            <p className="text-sm text-muted-foreground">Outreach Initiated</p>
+            <p className="text-2xl font-bold">{stats.initiated}</p>
           </div>
           <div className="bg-card rounded-lg border p-4">
             <p className="text-sm text-muted-foreground">Have Contacts</p>
@@ -187,22 +178,6 @@ Best regards`);
           </div>
         </div>
 
-        {/* Pipeline by Stage */}
-        <div className="bg-card rounded-lg border p-4">
-          <h3 className="text-sm font-medium mb-3">Pipeline by Stage</h3>
-          <div className="flex gap-2 flex-wrap">
-            {stages.map(stage => {
-              const count = stageCounts[stage] || 0;
-              if (count === 0) return null;
-              return (
-                <Badge key={stage} variant="outline" className={`${getStageColor(stage)}`}>
-                  {stage}: {count}
-                </Badge>
-              );
-            })}
-          </div>
-        </div>
-
         {approvedBuyers.length === 0 ? (
           <div className="bg-card rounded-lg border p-8 text-center">
             <p className="text-muted-foreground mb-4">No approved buyers yet.</p>
@@ -212,9 +187,8 @@ Best regards`);
           <div className="bg-card rounded-lg border divide-y">
             {approvedBuyers.map((buyer) => {
               const buyerContacts = contacts[buyer.id] || [];
-              const outreach = outreachRecords[buyer.id];
               const isExpanded = expanded.has(buyer.id);
-              const currentStage = outreach?.deal_stage || "Not Started";
+              const initiated = isOutreachInitiated(buyer.id);
 
               const hqLocation = [buyer.hq_city, buyer.hq_state].filter(Boolean).join(", ");
               const revenueRange = formatRevenue(buyer.min_revenue, buyer.max_revenue);
@@ -305,12 +279,20 @@ Best regards`);
                         )}
                       </div>
 
-                      {/* Right Side: Stage + Expand */}
+                      {/* Right Side: Outreach Status + Expand */}
                       <div className="flex items-center gap-3 shrink-0">
-                        <Select value={currentStage} onValueChange={(v) => updateStage(buyer.id, v)}>
-                          <SelectTrigger className={`w-36 ${getStageColor(currentStage)}`}><SelectValue /></SelectTrigger>
-                          <SelectContent>{stages.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-                        </Select>
+                        {initiated ? (
+                          <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">
+                            <Check className="w-3 h-3 mr-1" />Outreach Initiated
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-muted-foreground">Not Started</Badge>
+                        )}
+                        <Switch
+                          checked={initiated}
+                          onCheckedChange={(checked) => updateOutreachInitiated(buyer.id, checked)}
+                          className="data-[state=checked]:bg-green-500"
+                        />
                         <CollapsibleTrigger asChild>
                           <Button variant="ghost" size="sm">{isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</Button>
                         </CollapsibleTrigger>
