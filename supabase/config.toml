@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.enrich-buyer]
 verify_jwt = false
+
+[functions.extract-transcript]
+verify_jwt = false

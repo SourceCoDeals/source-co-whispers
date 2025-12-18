@@ -147,8 +147,11 @@ export type Database = {
           buyer_id: string
           call_date: string | null
           created_at: string
+          extracted_data: Json | null
+          extraction_evidence: Json | null
           id: string
           notes: string | null
+          processed_at: string | null
           title: string
           transcript_type: string
           url: string | null
@@ -157,8 +160,11 @@ export type Database = {
           buyer_id: string
           call_date?: string | null
           created_at?: string
+          extracted_data?: Json | null
+          extraction_evidence?: Json | null
           id?: string
           notes?: string | null
+          processed_at?: string | null
           title: string
           transcript_type?: string
           url?: string | null
@@ -167,8 +173,11 @@ export type Database = {
           buyer_id?: string
           call_date?: string | null
           created_at?: string
+          extracted_data?: Json | null
+          extraction_evidence?: Json | null
           id?: string
           notes?: string | null
+          processed_at?: string | null
           title?: string
           transcript_type?: string
           url?: string | null
@@ -204,6 +213,8 @@ export type Database = {
           deal_breakers: string[] | null
           ebitda_sweet_spot: number | null
           employee_owner: string | null
+          extraction_evidence: Json | null
+          extraction_sources: Json | null
           fee_agreement_status: string | null
           geo_preferences: Json | null
           geographic_exclusions: string[] | null
@@ -278,6 +289,8 @@ export type Database = {
           deal_breakers?: string[] | null
           ebitda_sweet_spot?: number | null
           employee_owner?: string | null
+          extraction_evidence?: Json | null
+          extraction_sources?: Json | null
           fee_agreement_status?: string | null
           geo_preferences?: Json | null
           geographic_exclusions?: string[] | null
@@ -352,6 +365,8 @@ export type Database = {
           deal_breakers?: string[] | null
           ebitda_sweet_spot?: number | null
           employee_owner?: string | null
+          extraction_evidence?: Json | null
+          extraction_sources?: Json | null
           fee_agreement_status?: string | null
           geo_preferences?: Json | null
           geographic_exclusions?: string[] | null

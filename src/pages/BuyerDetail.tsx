@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
 import { BuyerDataSection, DataField, DataListField, DataGrid } from "@/components/BuyerDataSection";
-import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2, Briefcase, DollarSign, TrendingUp, Linkedin } from "lucide-react";
+import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2, Briefcase, DollarSign, TrendingUp, Linkedin, Sparkles, CheckCircle, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 export default function BuyerDetail() {
   const { id } = useParams();
@@ -27,6 +28,8 @@ export default function BuyerDetail() {
   const [transcriptDialogOpen, setTranscriptDialogOpen] = useState(false);
   const [newTranscript, setNewTranscript] = useState({ title: "", url: "", notes: "", call_date: "", transcript_type: "link" });
   const [isUploading, setIsUploading] = useState(false);
+  const [processingTranscripts, setProcessingTranscripts] = useState<Set<string>>(new Set());
+  const [expandedTranscripts, setExpandedTranscripts] = useState<Set<string>>(new Set());
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -103,6 +106,68 @@ export default function BuyerDetail() {
     if (transcript.transcript_type === "link") return transcript.url;
     const { data } = supabase.storage.from("call-transcripts").getPublicUrl(transcript.url);
     return data.publicUrl;
+  };
+
+  const processTranscriptWithAI = async (transcriptId: string, applyToProfile: boolean = false) => {
+    setProcessingTranscripts(prev => new Set(prev).add(transcriptId));
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('extract-transcript', {
+        body: { transcriptId, applyToProfile }
+      });
+
+      if (error) {
+        toast({ title: "Processing failed", description: error.message, variant: "destructive" });
+        return;
+      }
+
+      if (data.needsContent) {
+        toast({ 
+          title: "Insufficient content", 
+          description: "Please add detailed notes to the transcript before processing.",
+          variant: "destructive" 
+        });
+        return;
+      }
+
+      if (data.success) {
+        toast({ 
+          title: applyToProfile ? "Applied to profile" : "Extraction complete",
+          description: data.message
+        });
+        loadData();
+        // Expand the transcript to show extracted data
+        setExpandedTranscripts(prev => new Set(prev).add(transcriptId));
+      } else {
+        toast({ title: "Processing failed", description: data.error, variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to process transcript", variant: "destructive" });
+    } finally {
+      setProcessingTranscripts(prev => {
+        const next = new Set(prev);
+        next.delete(transcriptId);
+        return next;
+      });
+    }
+  };
+
+  const toggleTranscriptExpanded = (transcriptId: string) => {
+    setExpandedTranscripts(prev => {
+      const next = new Set(prev);
+      if (next.has(transcriptId)) {
+        next.delete(transcriptId);
+      } else {
+        next.add(transcriptId);
+      }
+      return next;
+    });
+  };
+
+  const getTranscriptStatus = (transcript: any) => {
+    if (processingTranscripts.has(transcript.id)) return 'processing';
+    if (transcript.processed_at) return 'extracted';
+    return 'pending';
   };
 
   const saveIntelligence = async () => {
@@ -406,8 +471,8 @@ export default function BuyerDetail() {
                 </BuyerDataSection>
               )}
 
-              {/* Call Transcripts */}
-              <BuyerDataSection title="Call Transcripts" icon={<FileText className="w-4 h-4 text-muted-foreground" />} className="lg:col-span-2">
+              {/* Call Transcripts - Enhanced with AI Processing */}
+              <BuyerDataSection title="Transcripts & Call Intelligence" icon={<FileText className="w-4 h-4 text-muted-foreground" />} className="lg:col-span-2">
                 <div className="space-y-4">
                   <div className="flex justify-end">
                     <Dialog open={transcriptDialogOpen} onOpenChange={setTranscriptDialogOpen}>
@@ -430,12 +495,13 @@ export default function BuyerDetail() {
                             <Input value={newTranscript.url} onChange={(e) => setNewTranscript({ ...newTranscript, url: e.target.value })} placeholder="https://..." className="mt-1" />
                           </div>
                           <div>
-                            <Label>Notes</Label>
-                            <Textarea value={newTranscript.notes} onChange={(e) => setNewTranscript({ ...newTranscript, notes: e.target.value })} placeholder="Key takeaways from this call..." className="mt-1" rows={2} />
+                            <Label>Notes / Transcript Content</Label>
+                            <Textarea value={newTranscript.notes} onChange={(e) => setNewTranscript({ ...newTranscript, notes: e.target.value })} placeholder="Paste transcript content or key takeaways from this call... (required for AI processing)" className="mt-1" rows={6} />
+                            <p className="text-xs text-muted-foreground mt-1">Tip: Paste the full transcript here for best AI extraction results.</p>
                           </div>
                           <div className="flex gap-2">
                             <Button onClick={addTranscriptLink} disabled={!newTranscript.title.trim()} className="flex-1">
-                              <Link2 className="w-4 h-4 mr-2" />Add Link
+                              <Link2 className="w-4 h-4 mr-2" />Add Transcript
                             </Button>
                           </div>
                           <div className="relative">
@@ -460,25 +526,157 @@ export default function BuyerDetail() {
                   {transcripts.length === 0 ? (
                     <p className="text-sm text-muted-foreground italic">No transcripts linked yet.</p>
                   ) : (
-                    <div className="space-y-2">
-                      {transcripts.map((t) => (
-                        <div key={t.id} className="flex items-center justify-between bg-muted/50 rounded-lg px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <FileText className="w-4 h-4 text-muted-foreground" />
-                            <div>
-                              <a href={getTranscriptUrl(t)} target="_blank" rel="noopener noreferrer" className="font-medium hover:text-primary hover:underline">{t.title}</a>
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                {t.call_date && <span>{new Date(t.call_date).toLocaleDateString()}</span>}
-                                <Badge variant="outline" className="text-xs">{t.transcript_type === "file" ? "Uploaded" : "Link"}</Badge>
+                    <div className="space-y-3">
+                      {transcripts.map((t) => {
+                        const status = getTranscriptStatus(t);
+                        const isExpanded = expandedTranscripts.has(t.id);
+                        const extractedData = t.extracted_data || {};
+                        const hasExtractedData = Object.keys(extractedData).length > 0;
+
+                        return (
+                          <div key={t.id} className="bg-muted/50 rounded-lg overflow-hidden">
+                            <div className="flex items-center justify-between px-4 py-3">
+                              <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {t.url ? (
+                                      <a href={getTranscriptUrl(t)} target="_blank" rel="noopener noreferrer" className="font-medium hover:text-primary hover:underline truncate">{t.title}</a>
+                                    ) : (
+                                      <span className="font-medium truncate">{t.title}</span>
+                                    )}
+                                    {status === 'extracted' && (
+                                      <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30 shrink-0">
+                                        <CheckCircle className="w-3 h-3 mr-1" />Extracted
+                                      </Badge>
+                                    )}
+                                    {status === 'processing' && (
+                                      <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30 shrink-0">
+                                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />Processing
+                                      </Badge>
+                                    )}
+                                    {status === 'pending' && (
+                                      <Badge variant="outline" className="shrink-0">
+                                        <Clock className="w-3 h-3 mr-1" />Pending
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    {t.call_date && <span>{new Date(t.call_date).toLocaleDateString()}</span>}
+                                    <Badge variant="outline" className="text-xs">{t.transcript_type === "file" ? "Uploaded" : "Link"}</Badge>
+                                  </div>
+                                </div>
                               </div>
-                              {t.notes && <p className="text-xs text-muted-foreground mt-1">{t.notes}</p>}
+                              <div className="flex items-center gap-2 shrink-0">
+                                {status === 'pending' && (
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={() => processTranscriptWithAI(t.id, false)}
+                                    disabled={processingTranscripts.has(t.id)}
+                                  >
+                                    <Sparkles className="w-4 h-4 mr-2" />
+                                    Process AI
+                                  </Button>
+                                )}
+                                {status === 'extracted' && (
+                                  <>
+                                    <Button 
+                                      variant="default" 
+                                      size="sm" 
+                                      onClick={() => processTranscriptWithAI(t.id, true)}
+                                      disabled={processingTranscripts.has(t.id)}
+                                    >
+                                      <CheckCircle className="w-4 h-4 mr-2" />
+                                      Apply to Profile
+                                    </Button>
+                                    {hasExtractedData && (
+                                      <Button 
+                                        variant="ghost" 
+                                        size="icon"
+                                        onClick={() => toggleTranscriptExpanded(t.id)}
+                                      >
+                                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                      </Button>
+                                    )}
+                                  </>
+                                )}
+                                <Button variant="ghost" size="icon" onClick={() => deleteTranscript(t)} className="text-muted-foreground hover:text-destructive">
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
                             </div>
+                            
+                            {/* Expanded extracted data preview */}
+                            {isExpanded && hasExtractedData && (
+                              <div className="border-t px-4 py-3 bg-background/50">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground mb-3">Extracted Data Preview</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                  {extractedData.thesis_summary && (
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Investment Thesis</p>
+                                      <p className="text-sm">{extractedData.thesis_summary}</p>
+                                    </div>
+                                  )}
+                                  {extractedData.target_geographies?.length > 0 && (
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Target Geographies</p>
+                                      <div className="flex flex-wrap gap-1 mt-1">
+                                        {extractedData.target_geographies.map((g: string, i: number) => (
+                                          <Badge key={i} variant="secondary" className="text-xs">{g}</Badge>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {(extractedData.min_revenue || extractedData.max_revenue) && (
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Revenue Range</p>
+                                      <p className="text-sm">${extractedData.min_revenue || '?'}M - ${extractedData.max_revenue || '?'}M</p>
+                                    </div>
+                                  )}
+                                  {(extractedData.min_ebitda || extractedData.max_ebitda) && (
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">EBITDA Range</p>
+                                      <p className="text-sm">${extractedData.min_ebitda || '?'}M - ${extractedData.max_ebitda || '?'}M</p>
+                                    </div>
+                                  )}
+                                  {extractedData.deal_breakers?.length > 0 && (
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Deal Breakers</p>
+                                      <div className="flex flex-wrap gap-1 mt-1">
+                                        {extractedData.deal_breakers.map((d: string, i: number) => (
+                                          <Badge key={i} variant="destructive" className="text-xs">{d}</Badge>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {extractedData.key_quotes?.length > 0 && (
+                                    <div className="md:col-span-2">
+                                      <p className="text-xs text-muted-foreground mb-2">Key Quotes ({extractedData.key_quotes.length})</p>
+                                      <div className="space-y-1">
+                                        {extractedData.key_quotes.slice(0, 3).map((q: string, i: number) => (
+                                          <blockquote key={i} className="border-l-2 border-primary/30 pl-2 text-xs italic text-muted-foreground">
+                                            "{q}"
+                                          </blockquote>
+                                        ))}
+                                        {extractedData.key_quotes.length > 3 && (
+                                          <p className="text-xs text-muted-foreground">...and {extractedData.key_quotes.length - 3} more</p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {t.notes && !isExpanded && (
+                              <div className="px-4 pb-3">
+                                <p className="text-xs text-muted-foreground line-clamp-2">{t.notes}</p>
+                              </div>
+                            )}
                           </div>
-                          <Button variant="ghost" size="icon" onClick={() => deleteTranscript(t)} className="text-muted-foreground hover:text-destructive">
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
