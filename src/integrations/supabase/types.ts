@@ -203,6 +203,7 @@ export type Database = {
           data_last_updated: string
           deal_breakers: string[] | null
           ebitda_sweet_spot: number | null
+          employee_owner: string | null
           fee_agreement_status: string | null
           geo_preferences: Json | null
           geographic_exclusions: string[] | null
@@ -276,6 +277,7 @@ export type Database = {
           data_last_updated?: string
           deal_breakers?: string[] | null
           ebitda_sweet_spot?: number | null
+          employee_owner?: string | null
           fee_agreement_status?: string | null
           geo_preferences?: Json | null
           geographic_exclusions?: string[] | null
@@ -349,6 +351,7 @@ export type Database = {
           data_last_updated?: string
           deal_breakers?: string[] | null
           ebitda_sweet_spot?: number | null
+          employee_owner?: string | null
           fee_agreement_status?: string | null
           geo_preferences?: Json | null
           geographic_exclusions?: string[] | null
