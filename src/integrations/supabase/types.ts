@@ -513,6 +513,7 @@ export type Database = {
       }
       industry_trackers: {
         Row: {
+          archived: boolean
           created_at: string
           geography_weight: number
           id: string
@@ -524,6 +525,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          archived?: boolean
           created_at?: string
           geography_weight?: number
           id?: string
@@ -535,6 +537,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          archived?: boolean
           created_at?: string
           geography_weight?: number
           id?: string

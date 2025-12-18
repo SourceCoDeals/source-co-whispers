@@ -4,11 +4,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Building2, Loader2, Sparkles, Users, FileText, ArrowUpDown } from "lucide-react";
+import { Plus, Building2, Loader2, Sparkles, Users, FileText, ArrowUpDown, Archive, ArchiveRestore } from "lucide-react";
 import { IntelligenceCoverageBar } from "@/components/IntelligenceBadge";
 import { getIntelligenceCoverage } from "@/lib/types";
 import { seedSampleData } from "@/lib/seedData";
 import { useToast } from "@/hooks/use-toast";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -22,6 +24,7 @@ export default function Trackers() {
   const [trackers, setTrackers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -63,6 +66,24 @@ export default function Trackers() {
     }
   };
 
+  const handleArchiveToggle = async (e: React.MouseEvent, trackerId: string, currentArchived: boolean) => {
+    e.stopPropagation();
+    const { error } = await supabase
+      .from("industry_trackers")
+      .update({ archived: !currentArchived })
+      .eq("id", trackerId);
+    
+    if (error) {
+      toast({ title: "Error", description: "Failed to update archive status", variant: "destructive" });
+    } else {
+      toast({ title: currentArchived ? "Universe restored" : "Universe archived" });
+      loadTrackers();
+    }
+  };
+
+  const filteredTrackers = trackers.filter(t => showArchived ? t.archived : !t.archived);
+  const archivedCount = trackers.filter(t => t.archived).length;
+
   if (isLoading) {
     return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
   }
@@ -85,19 +106,36 @@ export default function Trackers() {
             <Button onClick={() => navigate("/trackers/new")}><Plus className="w-4 h-4 mr-2" />New Buyer Universe</Button>
           </div>
         </div>
+
+        {archivedCount > 0 && (
+          <div className="flex items-center gap-2">
+            <Switch 
+              id="show-archived" 
+              checked={showArchived} 
+              onCheckedChange={setShowArchived}
+            />
+            <Label htmlFor="show-archived" className="text-sm text-muted-foreground cursor-pointer">
+              Show archived ({archivedCount})
+            </Label>
+          </div>
+        )}
         
-        {trackers.length === 0 ? (
+        {filteredTrackers.length === 0 ? (
           <div className="bg-card rounded-lg border p-12 text-center">
             <Building2 className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="font-semibold mb-2">No buyer universes yet</h3>
-            <p className="text-muted-foreground mb-4">Create your first universe to start building institutional memory.</p>
-            <div className="flex gap-3 justify-center">
-              <Button variant="outline" onClick={handleSeedData} disabled={isSeeding}>
-                {isSeeding ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                Load Sample Data
-              </Button>
-              <Button onClick={() => navigate("/trackers/new")}><Plus className="w-4 h-4 mr-2" />Create Universe</Button>
-            </div>
+            <h3 className="font-semibold mb-2">{showArchived ? "No archived universes" : "No buyer universes yet"}</h3>
+            <p className="text-muted-foreground mb-4">
+              {showArchived ? "Archived universes will appear here." : "Create your first universe to start building institutional memory."}
+            </p>
+            {!showArchived && (
+              <div className="flex gap-3 justify-center">
+                <Button variant="outline" onClick={handleSeedData} disabled={isSeeding}>
+                  {isSeeding ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                  Load Sample Data
+                </Button>
+                <Button onClick={() => navigate("/trackers/new")}><Plus className="w-4 h-4 mr-2" />Create Universe</Button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="bg-card rounded-lg border overflow-hidden">
@@ -121,10 +159,11 @@ export default function Trackers() {
                   </TableHead>
                   <TableHead className="w-[200px]">Intelligence Coverage</TableHead>
                   <TableHead className="w-[120px] text-center">Status</TableHead>
+                  <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {trackers.map((t) => {
+                {filteredTrackers.map((t) => {
                   const intelligencePercent = t.buyer_count > 0 ? Math.round((t.intelligent_count / t.buyer_count) * 100) : 0;
                   return (
                     <TableRow 
@@ -136,6 +175,7 @@ export default function Trackers() {
                         <div className="flex items-center gap-2">
                           <Building2 className="w-4 h-4 text-accent" />
                           {t.industry_name}
+                          {t.archived && <Badge variant="outline" className="ml-2 text-xs">Archived</Badge>}
                         </div>
                       </TableCell>
                       <TableCell className="text-center">{t.buyer_count}</TableCell>
@@ -147,6 +187,17 @@ export default function Trackers() {
                         <Badge variant={intelligencePercent >= 70 ? "success" : intelligencePercent >= 40 ? "secondary" : "outline"}>
                           {intelligencePercent}% intel
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={(e) => handleArchiveToggle(e, t.id, t.archived)}
+                          title={t.archived ? "Restore" : "Archive"}
+                        >
+                          {t.archived ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );
