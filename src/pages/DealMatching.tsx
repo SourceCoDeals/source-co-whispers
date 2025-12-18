@@ -377,10 +377,10 @@ export default function DealMatching() {
                 
                 {/* Locations */}
                 <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground flex-wrap">
-                  {getOfficeLocations(buyer) && (
+                  {(buyer.hq_city || buyer.hq_state) && (
                     <span className="flex items-center gap-1">
                       <MapPin className="w-3.5 h-3.5" />
-                      <span className="line-clamp-1">{getOfficeLocations(buyer).slice(0, 5).join(" · ")}{getOfficeLocations(buyer).length > 5 ? ` +${getOfficeLocations(buyer).length - 5} more` : ''}</span>
+                      <span>HQ: {[buyer.hq_city, buyer.hq_state].filter(Boolean).join(", ")}</span>
                     </span>
                   )}
                   {getServiceLocations(buyer) && (
