@@ -98,14 +98,13 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
         // Fallback: set empty mapping, let user map manually
         setMapping({});
         setAvailableFields([
-          { key: 'pe_firm_name', label: 'PE Firm Name', description: '' },
           { key: 'platform_company_name', label: 'Platform Company', description: '' },
-          { key: 'services_offered', label: 'Services Offered', description: '' },
+          { key: 'platform_website', label: 'Platform Website', description: '' },
+          { key: 'pe_firm_name', label: 'PE Firm Name', description: '' },
+          { key: 'pe_firm_website', label: 'PE Firm Website', description: '' },
           { key: 'hq_city', label: 'HQ City', description: '' },
           { key: 'hq_state', label: 'HQ State', description: '' },
-          { key: 'platform_website', label: 'Platform Website', description: '' },
-          { key: 'geographic_footprint', label: 'Geographic Footprint', description: '' },
-          { key: 'business_model', label: 'Business Model', description: '' },
+          { key: 'hq_country', label: 'HQ Country', description: '' },
           { key: 'skip', label: 'Skip (Do Not Import)', description: '' },
         ]);
         setStep('mapping');
@@ -138,19 +137,8 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
             const value = row[index].trim();
             if (!value) return;
             
-            // Handle array fields
-            if (field === 'geographic_footprint' || field === 'target_geographies') {
-              (buyer as any)[field] = value.split(',').map((s: string) => s.trim()).filter(Boolean);
-            } 
-            // Handle numeric fields
-            else if (['min_revenue', 'max_revenue', 'min_ebitda', 'max_ebitda'].includes(field)) {
-              const num = parseFloat(value.replace(/[^0-9.-]/g, ''));
-              if (!isNaN(num)) (buyer as any)[field] = num;
-            }
-            // Handle string fields
-            else {
-              (buyer as any)[field] = value;
-            }
+            // All basic fields are strings
+            (buyer as any)[field] = value;
           }
         });
         

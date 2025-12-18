@@ -6,26 +6,13 @@ const corsHeaders = {
 };
 
 const BUYER_FIELDS = [
-  { key: 'pe_firm_name', label: 'PE Firm Name', description: 'Private equity firm or sponsor name' },
   { key: 'platform_company_name', label: 'Platform Company', description: 'Portfolio company or platform name' },
-  { key: 'services_offered', label: 'Services Offered', description: 'Services, products, or offerings description' },
+  { key: 'platform_website', label: 'Platform Website', description: 'Company website URL' },
+  { key: 'pe_firm_name', label: 'PE Firm Name', description: 'Private equity firm or sponsor name' },
+  { key: 'pe_firm_website', label: 'PE Firm Website', description: 'PE firm website URL' },
   { key: 'hq_city', label: 'HQ City', description: 'Headquarters city' },
   { key: 'hq_state', label: 'HQ State', description: 'Headquarters state or province' },
   { key: 'hq_country', label: 'HQ Country', description: 'Headquarters country' },
-  { key: 'platform_website', label: 'Platform Website', description: 'Company website URL' },
-  { key: 'pe_firm_website', label: 'PE Firm Website', description: 'PE firm website URL' },
-  { key: 'business_model', label: 'Business Model', description: 'Business model type (B2B, B2C, etc.)' },
-  { key: 'thesis_summary', label: 'Thesis Summary', description: 'Investment thesis or strategy summary' },
-  { key: 'geographic_footprint', label: 'Geographic Footprint', description: 'States or regions where company operates' },
-  { key: 'target_geographies', label: 'Target Geographies', description: 'Target acquisition geographies' },
-  { key: 'industry_vertical', label: 'Industry Vertical', description: 'Industry or vertical focus' },
-  { key: 'min_revenue', label: 'Min Revenue', description: 'Minimum target revenue' },
-  { key: 'max_revenue', label: 'Max Revenue', description: 'Maximum target revenue' },
-  { key: 'min_ebitda', label: 'Min EBITDA', description: 'Minimum target EBITDA' },
-  { key: 'max_ebitda', label: 'Max EBITDA', description: 'Maximum target EBITDA' },
-  { key: 'business_summary', label: 'Business Summary', description: 'Company description or summary' },
-  { key: 'employee_owner', label: 'Employee Owner', description: 'Assigned team member' },
-  { key: 'fee_agreement_status', label: 'Fee Agreement Status', description: 'Fee agreement status' },
   { key: 'skip', label: 'Skip (Do Not Import)', description: 'Do not import this column' },
 ];
 
@@ -57,13 +44,13 @@ CSV Headers: ${JSON.stringify(headers)}
 Sample Data (first 3 rows): ${JSON.stringify(sampleRows?.slice(0, 3) || [])}
 
 Return a JSON object mapping each CSV header to a database field key. Use "skip" for columns that don't match any field. Be intelligent about matching - for example:
-- "Company", "Platform", "Portfolio Company" → platform_company_name
-- "PE", "Sponsor", "PE Firm", "Investor" → pe_firm_name
-- "City", "HQ City" → hq_city
+- "Company", "Platform", "Portfolio Company", "Name" → platform_company_name
+- "PE", "Sponsor", "PE Firm", "Investor", "Fund" → pe_firm_name
+- "City", "HQ City", "Headquarters City" → hq_city
 - "State", "HQ State", "Location" (if 2-letter code) → hq_state
-- "Website", "URL", "Site" → platform_website
-- "Services", "Description", "Offerings" → services_offered
-- "Geography", "States", "Regions", "Footprint" → geographic_footprint
+- "Country" → hq_country
+- "Website", "URL", "Site", "Platform Website" → platform_website
+- "PE Website", "Firm Website", "Sponsor Website" → pe_firm_website
 
 Return ONLY valid JSON, no explanation. Example format:
 {"Company Name": "platform_company_name", "PE Sponsor": "pe_firm_name", "Location": "hq_state"}`;
@@ -125,20 +112,20 @@ Return ONLY valid JSON, no explanation. Example format:
       mapping = {};
       for (const header of headers) {
         const h = header.toLowerCase();
-        if (h.includes('pe') || h.includes('sponsor') || h.includes('investor')) {
+        if (h.includes('pe') || h.includes('sponsor') || h.includes('investor') || h.includes('fund')) {
           mapping[header] = 'pe_firm_name';
-        } else if (h.includes('platform') || h.includes('company') || h.includes('portfolio')) {
+        } else if (h.includes('platform') || h.includes('company') || h.includes('portfolio') || h.includes('name')) {
           mapping[header] = 'platform_company_name';
         } else if (h.includes('city')) {
           mapping[header] = 'hq_city';
         } else if (h.includes('state') || h === 'location') {
           mapping[header] = 'hq_state';
-        } else if (h.includes('service') || h.includes('description') || h.includes('offering')) {
-          mapping[header] = 'services_offered';
+        } else if (h.includes('country')) {
+          mapping[header] = 'hq_country';
+        } else if ((h.includes('pe') || h.includes('firm') || h.includes('sponsor')) && h.includes('website')) {
+          mapping[header] = 'pe_firm_website';
         } else if (h.includes('website') || h.includes('url')) {
           mapping[header] = 'platform_website';
-        } else if (h.includes('geography') || h.includes('footprint') || h.includes('region')) {
-          mapping[header] = 'geographic_footprint';
         } else {
           mapping[header] = 'skip';
         }
