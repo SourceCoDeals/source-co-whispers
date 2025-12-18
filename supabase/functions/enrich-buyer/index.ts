@@ -131,6 +131,48 @@ const extractGeographyFootprintTool = {
   }
 };
 
+// Prompt 3b: Platform Acquisition History (Platform Website)
+const extractPlatformAcquisitionsTool = {
+  type: "function",
+  function: {
+    name: "extract_platform_acquisitions",
+    description: "Extract acquisition history for the platform company itself (not the PE firm)",
+    parameters: {
+      type: "object",
+      properties: {
+        recent_acquisitions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Name of acquired company" },
+              date: { type: "string", description: "Date of acquisition (YYYY-MM or YYYY)" },
+              location: { type: "string", description: "City/State of acquired company" },
+              description: { type: "string", description: "Brief description of the acquisition" },
+              source_url: { type: "string", description: "URL to press release or news article about the acquisition" }
+            }
+          },
+          description: "List of companies acquired by this platform"
+        },
+        total_acquisitions: {
+          type: "number",
+          description: "Total number of acquisitions made by the platform"
+        },
+        acquisition_frequency: {
+          type: "string",
+          description: "How often they acquire (e.g., '3-4 per year', 'monthly')"
+        },
+        last_acquisition_date: {
+          type: "string",
+          description: "Date of most recent acquisition in YYYY-MM-DD format"
+        }
+      },
+      required: [],
+      additionalProperties: false
+    }
+  }
+};
+
 // Prompt 4: PE Firm Investment Thesis
 const extractPEInvestmentThesisTool = {
   type: "function",
@@ -480,12 +522,46 @@ Be thorough - extract EVERY location mentioned on the website where they have sh
       );
       Object.assign(extractedData, geography);
 
+      // Prompt 3b: Platform Acquisition History
+      console.log('Running Prompt 3b: Platform Acquisition History');
+      const acquisitionsPrompt = platformPromptBase + `
+WHAT TO DO: Find acquisitions made BY this platform company (not acquisitions of this company).
+Look for:
+- Press releases about acquisitions
+- "News" or "About Us" sections mentioning company growth through acquisitions
+- Any mentions of companies they have acquired or merged with
+- Dates and locations of acquired companies
+
+For each acquisition found, try to identify:
+- Name of the acquired company
+- Date of acquisition
+- Location (city, state) of the acquired company
+- Brief description
+- URL to the press release or news article if available
+
+EXAMPLE OUTPUT:
+- recent_acquisitions: [
+    { "name": "ABC Collision", "date": "2024-03", "location": "Houston, TX", "description": "Added 3 locations in Houston market", "source_url": "https://example.com/news/abc-acquisition" },
+    { "name": "XYZ Auto Body", "date": "2023-11", "location": "Dallas, TX", "description": "Strategic expansion into DFW", "source_url": "https://example.com/news/xyz-deal" }
+  ]
+- total_acquisitions: 8
+- acquisition_frequency: "3-4 per year"
+- last_acquisition_date: "2024-03-15"`;
+
+      const acquisitions = await callAIWithTool(
+        lovableApiKey,
+        'You are extracting PLATFORM acquisition history - companies acquired BY this platform. Look for press releases, news, and announcements about their acquisitions.',
+        acquisitionsPrompt,
+        extractPlatformAcquisitionsTool
+      );
+      Object.assign(extractedData, acquisitions);
+
       evidenceRecords.push({
         source: 'platform_website',
         source_url: buyer.platform_website,
         extracted_at: new Date().toISOString(),
-        prompts_run: ['business_overview', 'customers_end_market', 'geography_footprint'],
-        fields_extracted: Object.keys({ ...businessOverview, ...customers, ...geography }).filter(k => extractedData[k])
+        prompts_run: ['business_overview', 'customers_end_market', 'geography_footprint', 'platform_acquisitions'],
+        fields_extracted: Object.keys({ ...businessOverview, ...customers, ...geography, ...acquisitions }).filter(k => extractedData[k])
       });
     }
 
