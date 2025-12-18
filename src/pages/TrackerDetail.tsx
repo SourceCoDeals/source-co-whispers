@@ -171,12 +171,10 @@ export default function TrackerDetail() {
                                 <span className="font-medium">{buyer.platform_company_name || buyer.pe_firm_name}</span>
                               )}
                             </div>
-                            {getHQ(buyer) && (
-                              <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                                <MapPin className="w-3 h-3" />
-                                {getHQ(buyer)}
-                              </span>
-                            )}
+                            <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                              <MapPin className="w-3 h-3" />
+                              {getHQ(buyer) || <span className="italic">Location not set</span>}
+                            </span>
                           </div>
                         </TableCell>
                         <TableCell>
