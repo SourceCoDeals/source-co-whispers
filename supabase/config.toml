@@ -1,1 +1,4 @@
 project_id = "gsvsyqjgtjuzrgxqkvxw"
+
+[functions.map-csv-columns]
+verify_jwt = false
