@@ -133,7 +133,7 @@ export default function TrackerDetail() {
                       <TableHead className="w-[180px]">
                         <div className="flex items-center gap-1">PE Firm <ArrowUpDown className="w-3 h-3 text-muted-foreground" /></div>
                       </TableHead>
-                      <TableHead className="w-[300px]">Services</TableHead>
+                      <TableHead className="w-[300px]">Description</TableHead>
                       <TableHead className="w-[120px] text-center">Intelligence</TableHead>
                     </TableRow>
                   </TableHeader>
