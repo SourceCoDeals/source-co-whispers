@@ -423,39 +423,54 @@ export default function BuyerDetail() {
                 </div>
               </BuyerDataSection>
 
-              {/* 8. Acquisition History Summary */}
-              <BuyerDataSection title="Acquisition History Summary" icon={<History className="w-4 h-4 text-muted-foreground" />}>
+              {/* 8. Platform Acquisition History */}
+              <BuyerDataSection title="Platform Acquisition History" icon={<History className="w-4 h-4 text-muted-foreground" />}>
                 <div className="space-y-4">
                   {/* Prominent Last Acquisition Date */}
                   {buyer.last_acquisition_date && (
                     <div className="bg-muted/50 rounded-lg p-4 flex items-center justify-between">
                       <div>
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Last Acquisition Date</p>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Last Platform Acquisition</p>
                         <p className="text-lg font-semibold">{new Date(buyer.last_acquisition_date).toLocaleDateString()}</p>
                       </div>
                       <History className="w-8 h-8 text-muted-foreground/50" />
                     </div>
                   )}
                   <DataGrid columns={2}>
-                    <DataField label="Total Acquisitions" value={buyer.total_acquisitions} />
+                    <DataField label="Total Platform Add-ons" value={buyer.total_acquisitions} />
                     <DataField label="Acquisition Frequency" value={buyer.acquisition_frequency} />
-                    <DataField label="Number of Platforms" value={buyer.num_platforms} />
                   </DataGrid>
                   {recentAcqs.length > 0 && (
                     <div className="space-y-2">
-                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Recent Acquisitions</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Recent Platform Acquisitions</p>
                       <div className="space-y-2">
                         {recentAcqs.map((acq: any, i: number) => (
-                          <div key={i} className="text-sm p-2 bg-muted/50 rounded">
-                            <p className="font-medium">{acq.name || acq.company || "Unknown"}</p>
-                            {acq.date && <p className="text-xs text-muted-foreground">{acq.date}</p>}
-                            {acq.description && <p className="text-xs text-muted-foreground">{acq.description}</p>}
+                          <div key={i} className="text-sm p-3 bg-muted/50 rounded-lg">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <p className="font-medium">{acq.name || acq.company || "Unknown"}</p>
+                                {acq.date && <p className="text-xs text-muted-foreground">{acq.date}</p>}
+                                {acq.location && <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />{acq.location}</p>}
+                                {acq.description && <p className="text-xs text-muted-foreground mt-1">{acq.description}</p>}
+                              </div>
+                              {acq.source_url && (
+                                <a 
+                                  href={acq.source_url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:text-primary/80 flex items-center gap-1 text-xs shrink-0"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  Source
+                                </a>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
-                  <DataListField label="Portfolio Companies" items={buyer.portfolio_companies} />
                 </div>
               </BuyerDataSection>
 
