@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, ArrowLeft, Users, ExternalLink, FileText, Calendar, Building2, DollarSign, MapPin, Target, User, Phone, Mail, Briefcase, Clock, Hash } from "lucide-react";
+import { Loader2, ArrowLeft, Users, ExternalLink, FileText, Calendar, Building2, DollarSign, MapPin, Target, User, Phone, Mail, Briefcase, Clock, Hash, Linkedin } from "lucide-react";
 import { format } from "date-fns";
 
 export default function DealDetail() {
@@ -43,6 +43,32 @@ export default function DealDetail() {
             </div>
           </div>
           <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"} className="text-sm">{deal.status}</Badge>
+        </div>
+
+        {/* Attachments & Actions - Moved to top */}
+        <div className="bg-card rounded-lg border p-6 space-y-4">
+          <div className="flex items-center gap-2 text-primary">
+            <FileText className="w-5 h-5" />
+            <h2 className="font-semibold text-lg">Attachments & Actions</h2>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {deal.transcript_link && (
+              <a 
+                href={deal.transcript_link.startsWith('http') ? deal.transcript_link : `https://${deal.transcript_link}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-sm text-primary hover:underline border rounded-md px-3 py-2"
+              >
+                <FileText className="w-4 h-4" /> View Call Transcript
+              </a>
+            )}
+            <Button onClick={() => navigate(`/deals/${id}/matching`)}>
+              <Users className="w-4 h-4 mr-2" />View Buyer Matches
+            </Button>
+            <Button variant="outline" onClick={() => navigate(`/deals/${id}/introductions`)}>
+              Track Introductions
+            </Button>
+          </div>
         </div>
 
         {/* Row 1: Company Overview & Financial Overview */}
@@ -218,14 +244,14 @@ export default function DealDetail() {
               ) : (
                 <p className="text-muted-foreground italic">No owner goals specified</p>
               )}
-            </div>
-            <div className="space-y-3">
               {deal.special_requirements && (
                 <div>
                   <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Special Requirements</p>
                   <p>{deal.special_requirements}</p>
                 </div>
               )}
+            </div>
+            <div className="space-y-3">
               {deal.ownership_structure && (
                 <div>
                   <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Ownership Structure</p>
@@ -236,15 +262,14 @@ export default function DealDetail() {
           </div>
         </div>
 
-        {/* Row 5: Primary Contact + Attachments & Actions */}
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Primary Contact */}
-          <div className="bg-card rounded-lg border p-6 space-y-4">
-            <div className="flex items-center gap-2 text-primary">
-              <User className="w-5 h-5" />
-              <h2 className="font-semibold text-lg">Primary Contact</h2>
-            </div>
-            <div className="space-y-3 text-sm">
+        {/* Row 5: Primary Contact */}
+        <div className="bg-card rounded-lg border p-6 space-y-4">
+          <div className="flex items-center gap-2 text-primary">
+            <User className="w-5 h-5" />
+            <h2 className="font-semibold text-lg">Primary Contact</h2>
+          </div>
+          <div className="grid md:grid-cols-2 gap-6 text-sm">
+            <div className="space-y-3">
               {deal.contact_name && (
                 <div className="flex items-center gap-3">
                   <User className="w-4 h-4 text-muted-foreground" />
@@ -263,37 +288,26 @@ export default function DealDetail() {
                   <a href={`tel:${deal.contact_phone}`} className="text-primary hover:underline">{deal.contact_phone}</a>
                 </div>
               )}
-              {!deal.contact_name && !deal.contact_email && !deal.contact_phone && (
-                <p className="text-muted-foreground italic">No contact information available</p>
-              )}
-            </div>
-          </div>
-
-          {/* Attachments & Actions */}
-          <div className="bg-card rounded-lg border p-6 space-y-4">
-            <div className="flex items-center gap-2 text-primary">
-              <FileText className="w-5 h-5" />
-              <h2 className="font-semibold text-lg">Attachments & Actions</h2>
             </div>
             <div className="space-y-3">
-              {deal.transcript_link && (
-                <a 
-                  href={deal.transcript_link.startsWith('http') ? deal.transcript_link : `https://${deal.transcript_link}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm text-primary hover:underline"
-                >
-                  <FileText className="w-4 h-4" /> View Call Transcript
-                </a>
+              {deal.contact_linkedin && (
+                <div className="flex items-center gap-3">
+                  <Linkedin className="w-4 h-4 text-muted-foreground" />
+                  <a 
+                    href={deal.contact_linkedin.startsWith('http') ? deal.contact_linkedin : `https://${deal.contact_linkedin}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    LinkedIn Profile
+                  </a>
+                </div>
               )}
-              <Button className="w-full" onClick={() => navigate(`/deals/${id}/matching`)}>
-                <Users className="w-4 h-4 mr-2" />View Buyer Matches
-              </Button>
-              <Button variant="outline" className="w-full" onClick={() => navigate(`/deals/${id}/introductions`)}>
-                Track Introductions
-              </Button>
             </div>
           </div>
+          {!deal.contact_name && !deal.contact_email && !deal.contact_phone && !deal.contact_linkedin && (
+            <p className="text-muted-foreground italic text-sm">No contact information available</p>
+          )}
         </div>
 
         {/* Row 6: Additional Information */}
