@@ -74,11 +74,8 @@ export default function TrackerDetail() {
     return null;
   };
 
-  const getServicesSummary = (buyer: any) => {
-    if (!buyer.services_offered) return null;
-    const text = buyer.services_offered;
-    const firstSentence = text.split(/[.;]/)[0];
-    return firstSentence.length > 60 ? firstSentence.substring(0, 60) + '...' : firstSentence;
+  const getDescription = (buyer: any) => {
+    return buyer.services_offered || buyer.business_summary || null;
   };
 
   if (isLoading) return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
@@ -188,7 +185,7 @@ export default function TrackerDetail() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <span className="text-sm text-muted-foreground">{getServicesSummary(buyer) || "—"}</span>
+                          <span className="text-sm text-muted-foreground line-clamp-3">{getDescription(buyer) || "—"}</span>
                         </TableCell>
                         <TableCell className="text-center">
                           <IntelligenceBadge buyer={buyer} />
