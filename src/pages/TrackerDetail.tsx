@@ -266,7 +266,14 @@ export default function TrackerDetail() {
   };
 
   const parseFitCriteria = async () => {
-    const criteriaText = `Size Criteria: ${isEditingFitCriteria ? editedSizeCriteria : tracker?.fit_criteria_size || ''}\n\nService/Product Criteria: ${isEditingFitCriteria ? editedServiceCriteria : tracker?.fit_criteria_service || ''}\n\nGeography Criteria: ${isEditingFitCriteria ? editedGeographyCriteria : tracker?.fit_criteria_geography || ''}`;
+    // Use the original fit_criteria text if structured fields are empty, otherwise combine structured fields
+    let criteriaText = tracker?.fit_criteria || '';
+    
+    if (isEditingFitCriteria) {
+      criteriaText = `Size Criteria: ${editedSizeCriteria}\n\nService/Product Criteria: ${editedServiceCriteria}\n\nGeography Criteria: ${editedGeographyCriteria}`;
+    } else if (tracker?.fit_criteria_size || tracker?.fit_criteria_service || tracker?.fit_criteria_geography) {
+      criteriaText = `Size Criteria: ${tracker?.fit_criteria_size || ''}\n\nService/Product Criteria: ${tracker?.fit_criteria_service || ''}\n\nGeography Criteria: ${tracker?.fit_criteria_geography || ''}`;
+    }
     
     if (!criteriaText.trim() || criteriaText === 'Size Criteria: \n\nService/Product Criteria: \n\nGeography Criteria: ') {
       toast({ title: "No criteria to parse", description: "Please add fit criteria text first", variant: "destructive" });
@@ -444,6 +451,23 @@ export default function TrackerDetail() {
                       <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_geography}</p>
                     </div>
                   )}
+                </div>
+              ) : tracker.fit_criteria ? (
+                <div className="mt-3">
+                  <div className="bg-muted/30 rounded-lg p-3 border">
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria}</p>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={parseFitCriteria} disabled={isParsingCriteria}>
+                      {isParsingCriteria ? (
+                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <Wand2 className="w-3.5 h-3.5 mr-1" />
+                      )}
+                      Parse into Structured Criteria
+                    </Button>
+                    <span className="text-xs text-muted-foreground">Extract size, service, and geography details</span>
+                  </div>
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-muted-foreground italic">
