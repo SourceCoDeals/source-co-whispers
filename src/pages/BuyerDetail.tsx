@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
 import { BuyerDataSection, DataField, DataListField, DataGrid } from "@/components/BuyerDataSection";
-import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2, Briefcase, DollarSign, TrendingUp, Linkedin, Sparkles, CheckCircle, Clock, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2, Briefcase, DollarSign, TrendingUp, Linkedin, Sparkles, CheckCircle, Clock, ChevronDown, ChevronUp, Check } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -14,10 +14,13 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Card } from "@/components/ui/card";
 
 export default function BuyerDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const dealId = searchParams.get('dealId');
   const { toast } = useToast();
   const [buyer, setBuyer] = useState<any>(null);
   const [contacts, setContacts] = useState<any[]>([]);
@@ -30,8 +33,13 @@ export default function BuyerDetail() {
   const [isUploading, setIsUploading] = useState(false);
   const [processingTranscripts, setProcessingTranscripts] = useState<Set<string>>(new Set());
   const [expandedTranscripts, setExpandedTranscripts] = useState<Set<string>>(new Set());
+  
+  // Deal context state
+  const [deal, setDeal] = useState<any>(null);
+  const [dealScore, setDealScore] = useState<any>(null);
+  const [isApproving, setIsApproving] = useState(false);
 
-  useEffect(() => { loadData(); }, [id]);
+  useEffect(() => { loadData(); }, [id, dealId]);
 
   const loadData = async () => {
     const [buyerRes, contactsRes, transcriptsRes] = await Promise.all([
@@ -43,7 +51,63 @@ export default function BuyerDetail() {
     setContacts(contactsRes.data || []);
     setTranscripts(transcriptsRes.data || []);
     setEditData(buyerRes.data || {});
+    
+    // Load deal context if dealId is provided
+    if (dealId) {
+      const [dealRes, scoreRes] = await Promise.all([
+        supabase.from("deals").select("*").eq("id", dealId).single(),
+        supabase.from("buyer_deal_scores").select("*").eq("deal_id", dealId).eq("buyer_id", id).single(),
+      ]);
+      setDeal(dealRes.data);
+      setDealScore(scoreRes.data);
+    }
+    
     setIsLoading(false);
+  };
+
+  const approveBuyerForDeal = async () => {
+    if (!dealId || !id) return;
+    setIsApproving(true);
+    
+    try {
+      // Check if score exists
+      const { data: existing } = await supabase
+        .from("buyer_deal_scores")
+        .select("id")
+        .eq("deal_id", dealId)
+        .eq("buyer_id", id)
+        .single();
+      
+      if (existing) {
+        // Update existing
+        const { error } = await supabase
+          .from("buyer_deal_scores")
+          .update({ selected_for_outreach: true })
+          .eq("deal_id", dealId)
+          .eq("buyer_id", id);
+        
+        if (error) throw error;
+      } else {
+        // Create new score record
+        const { error } = await supabase
+          .from("buyer_deal_scores")
+          .insert({
+            deal_id: dealId,
+            buyer_id: id,
+            selected_for_outreach: true,
+            composite_score: 0,
+          });
+        
+        if (error) throw error;
+      }
+      
+      setDealScore({ ...dealScore, selected_for_outreach: true });
+      toast({ title: "Buyer approved", description: `${buyer?.platform_company_name || buyer?.pe_firm_name} approved for ${deal?.deal_name}` });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsApproving(false);
+    }
   };
 
   const addTranscriptLink = async () => {
@@ -243,6 +307,47 @@ export default function BuyerDetail() {
   return (
     <AppLayout>
       <div className="space-y-6">
+        {/* Deal Context Banner */}
+        {deal && (
+          <Card className="p-4 bg-primary/5 border-primary/20">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-3">
+                <Target className="w-5 h-5 text-primary" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Evaluating for deal:</p>
+                  <p className="font-semibold text-primary">{deal.deal_name}</p>
+                </div>
+                {deal.geography?.length > 0 && (
+                  <Badge variant="outline" className="ml-2">
+                    <MapPin className="w-3 h-3 mr-1" />
+                    {deal.geography.slice(0, 2).join(", ")}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {dealScore?.selected_for_outreach ? (
+                  <Badge variant="default" className="bg-green-600">
+                    <Check className="w-3 h-3 mr-1" />
+                    Approved for Outreach
+                  </Badge>
+                ) : (
+                  <Button onClick={approveBuyerForDeal} disabled={isApproving}>
+                    {isApproving ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Check className="w-4 h-4 mr-2" />
+                    )}
+                    Approve for {deal.deal_name}
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => navigate(`/deals/${dealId}/matching`)}>
+                  Back to Matching
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
+
         {/* Header */}
         <div className="flex items-start gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="mt-1">
