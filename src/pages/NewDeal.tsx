@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, Sparkles } from "lucide-react";
 
@@ -24,7 +25,8 @@ export default function NewDeal() {
     service_mix: "",
     owner_goals: "",
     additional_info: "",
-    transcript_link: ""
+    transcript_link: "",
+    location_count: "1"
   });
 
   useEffect(() => {
@@ -50,6 +52,7 @@ export default function NewDeal() {
       owner_goals: form.owner_goals,
       additional_info: form.additional_info,
       transcript_link: form.transcript_link || null,
+      location_count: parseInt(form.location_count) || 1,
     }).select().single();
     
     if (error) { 
@@ -105,9 +108,25 @@ export default function NewDeal() {
           <div><Label>Deal Name *</Label><Input value={form.deal_name} onChange={(e) => setForm({ ...form, deal_name: e.target.value })} placeholder="e.g., Southeast Roofing Co." className="mt-1" /></div>
           <div><Label>Company Website</Label><Input type="url" value={form.company_website} onChange={(e) => setForm({ ...form, company_website: e.target.value })} placeholder="e.g., https://example.com" className="mt-1" /></div>
           <div><Label>Geography (comma-separated states)</Label><Input value={form.geography} onChange={(e) => setForm({ ...form, geography: e.target.value })} placeholder="e.g., GA, FL, SC" className="mt-1" /></div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div><Label>Revenue ($M)</Label><Input type="number" value={form.revenue} onChange={(e) => setForm({ ...form, revenue: e.target.value })} placeholder="e.g., 6.5" className="mt-1" /></div>
             <div><Label>EBITDA (%)</Label><Input type="number" value={form.ebitda_percentage} onChange={(e) => setForm({ ...form, ebitda_percentage: e.target.value })} placeholder="e.g., 23" className="mt-1" /></div>
+            <div>
+              <Label>Number of Locations</Label>
+              <Select value={form.location_count} onValueChange={(v) => setForm({ ...form, location_count: v })}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 (Single location)</SelectItem>
+                  <SelectItem value="2">2 locations</SelectItem>
+                  <SelectItem value="3">3 locations</SelectItem>
+                  <SelectItem value="4">4 locations</SelectItem>
+                  <SelectItem value="5">5+ locations</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">Single-location deals require buyer within 100 miles</p>
+            </div>
           </div>
           <div><Label>Service Mix</Label><Textarea value={form.service_mix} onChange={(e) => setForm({ ...form, service_mix: e.target.value })} placeholder="Describe services/products offered..." className="mt-1" /></div>
           <div><Label>Goals of Owner</Label><Textarea value={form.owner_goals} onChange={(e) => setForm({ ...form, owner_goals: e.target.value })} placeholder="What the owner wants from the sale..." className="mt-1" /></div>

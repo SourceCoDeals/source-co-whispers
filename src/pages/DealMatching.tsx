@@ -8,10 +8,18 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
-import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send } from "lucide-react";
+import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+interface GeographicScore {
+  buyerId: string;
+  geographyScore: number;
+  isDisqualified: boolean;
+  disqualificationReason: string | null;
+  fitReasoning: string;
+}
 
 export default function DealMatching() {
   const { id } = useParams();
@@ -20,11 +28,13 @@ export default function DealMatching() {
   const [deal, setDeal] = useState<any>(null);
   const [buyers, setBuyers] = useState<any[]>([]);
   const [scores, setScores] = useState<any[]>([]);
+  const [geoScores, setGeoScores] = useState<Map<string, GeographicScore>>(new Map());
   const [contacts, setContacts] = useState<Record<string, any[]>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [contactedStatus, setContactedStatus] = useState<Record<string, boolean>>({});
+  const [hideDisqualified, setHideDisqualified] = useState(false);
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -47,21 +57,41 @@ export default function DealMatching() {
         setContacts(contactsByBuyer);
       }
       
+      // Get real geographic scores from edge function
+      try {
+        const { data: geoData, error: geoError } = await supabase.functions.invoke('score-buyer-geography', {
+          body: { dealId: id }
+        });
+        
+        if (geoData?.scores) {
+          const geoMap = new Map<string, GeographicScore>();
+          geoData.scores.forEach((s: GeographicScore) => {
+            geoMap.set(s.buyerId, s);
+          });
+          setGeoScores(geoMap);
+        }
+      } catch (err) {
+        console.error("Failed to get geographic scores:", err);
+      }
+      
       const { data: scoresData } = await supabase.from("buyer_deal_scores").select("*").eq("deal_id", id);
       if (scoresData?.length) {
         setScores(scoresData);
         const approved = new Set(scoresData.filter(s => s.selected_for_outreach).map(s => s.buyer_id));
         setSelected(approved);
       } else {
+        // Create initial scores - geography will be overwritten by real scores
         const newScores = (buyersData || []).map((b) => ({
           buyer_id: b.id, deal_id: id,
-          geography_score: Math.floor(Math.random() * 40) + 60,
+          geography_score: 50, // Will be overwritten by real geo scores
           service_score: Math.floor(Math.random() * 40) + 60,
           acquisition_score: Math.floor(Math.random() * 40) + 60,
           portfolio_score: Math.floor(Math.random() * 40) + 60,
           business_model_score: Math.floor(Math.random() * 40) + 60,
           thesis_bonus: b.thesis_summary ? Math.floor(Math.random() * 30) + 20 : 0,
-          composite_score: 0, fit_reasoning: "Match based on geographic overlap and service alignment.", data_completeness: b.thesis_summary ? "High" : "Low",
+          composite_score: 0, 
+          fit_reasoning: "Calculating...", 
+          data_completeness: b.thesis_summary ? "High" : "Low",
           selected_for_outreach: false,
         }));
         newScores.forEach((s) => { s.composite_score = ((s.geography_score + s.service_score + s.acquisition_score + s.portfolio_score + s.business_model_score) / 5 + s.thesis_bonus) / 1.5; });
@@ -72,9 +102,51 @@ export default function DealMatching() {
     setIsLoading(false);
   };
 
-  const sortedBuyers = buyers.map((b) => ({ ...b, score: scores.find((s) => s.buyer_id === b.id) })).sort((a, b) => (b.score?.composite_score || 0) - (a.score?.composite_score || 0));
+  // Merge geographic scores with buyer scores and sort
+  const sortedBuyers = buyers.map((b) => {
+    const score = scores.find((s) => s.buyer_id === b.id);
+    const geoScore = geoScores.get(b.id);
+    
+    // Use real geography score if available
+    const realGeoScore = geoScore?.geographyScore ?? score?.geography_score ?? 50;
+    const isDisqualified = geoScore?.isDisqualified ?? false;
+    const fitReasoning = geoScore?.fitReasoning ?? score?.fit_reasoning ?? "";
+    
+    // Recalculate composite with real geography score (geography weighted 40%)
+    const geoWeight = 0.4;
+    const otherWeight = 0.6 / 4; // Distribute remaining 60% among 4 other scores
+    const compositeScore = isDisqualified ? 0 : (
+      (realGeoScore * geoWeight) +
+      ((score?.service_score || 50) * otherWeight) +
+      ((score?.acquisition_score || 50) * otherWeight) +
+      ((score?.portfolio_score || 50) * otherWeight) +
+      ((score?.business_model_score || 50) * otherWeight) +
+      (score?.thesis_bonus || 0) * 0.3
+    );
+    
+    return {
+      ...b,
+      score: {
+        ...score,
+        geography_score: realGeoScore,
+        composite_score: compositeScore,
+        fit_reasoning: fitReasoning,
+      },
+      isDisqualified,
+      disqualificationReason: geoScore?.disqualificationReason,
+    };
+  }).sort((a, b) => {
+    // Disqualified buyers always go to bottom
+    if (a.isDisqualified && !b.isDisqualified) return 1;
+    if (!a.isDisqualified && b.isDisqualified) return -1;
+    return (b.score?.composite_score || 0) - (a.score?.composite_score || 0);
+  });
+  
+  const qualifiedBuyers = sortedBuyers.filter(b => !b.isDisqualified);
+  const disqualifiedBuyers = sortedBuyers.filter(b => b.isDisqualified);
+  const displayBuyers = hideDisqualified ? qualifiedBuyers : sortedBuyers;
   const approvedBuyers = sortedBuyers.filter(b => b.score?.selected_for_outreach);
-  const allBuyers = sortedBuyers;
+  const allBuyers = displayBuyers;
 
   const toggleSelect = (buyerId: string) => {
     const newSet = new Set(selected);
@@ -327,7 +399,12 @@ export default function DealMatching() {
                       <Linkedin className="w-3.5 h-3.5" />
                     </a>
                   )}
-                  {isApproved && (
+                  {buyer.isDisqualified && (
+                    <Badge variant="destructive" className="text-xs">
+                      <AlertTriangle className="w-3 h-3 mr-1" />Disqualified
+                    </Badge>
+                  )}
+                  {isApproved && !buyer.isDisqualified && (
                     <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
                       <CheckCircle2 className="w-3 h-3 mr-1" />Approved
                     </Badge>
@@ -465,10 +542,19 @@ export default function DealMatching() {
           </div>
         </div>
 
-        <div className="bg-accent/10 rounded-lg border border-accent/20 p-4 flex gap-6 text-sm">
-          <span>✅ {scores.filter((s) => s.thesis_bonus > 0).length} buyers with thesis data</span>
-          <span>🎯 {scores.filter((s) => s.composite_score >= 80).length} strong matches (&gt;80%)</span>
+        <div className="bg-accent/10 rounded-lg border border-accent/20 p-4 flex flex-wrap gap-4 md:gap-6 text-sm items-center">
+          <span>✅ {qualifiedBuyers.length} qualified buyers</span>
+          <span className="text-destructive">❌ {disqualifiedBuyers.length} disqualified (no nearby presence)</span>
+          <span>🎯 {qualifiedBuyers.filter(b => (b.score?.composite_score || 0) >= 70).length} strong matches (&gt;70%)</span>
           <span>✓ {approvedBuyers.length} approved</span>
+          <label className="flex items-center gap-2 ml-auto cursor-pointer">
+            <Switch 
+              checked={hideDisqualified} 
+              onCheckedChange={setHideDisqualified}
+              className="data-[state=checked]:bg-primary"
+            />
+            <span className="text-xs text-muted-foreground">Hide disqualified</span>
+          </label>
         </div>
 
         <Tabs defaultValue="all" className="w-full">

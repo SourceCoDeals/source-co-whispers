@@ -235,6 +235,7 @@ export type Database = {
           min_ebitda: number | null
           min_revenue: number | null
           num_platforms: number | null
+          operating_locations: Json | null
           other_office_locations: string[] | null
           owner_roll_requirement: string | null
           owner_transition_goals: string | null
@@ -311,6 +312,7 @@ export type Database = {
           min_ebitda?: number | null
           min_revenue?: number | null
           num_platforms?: number | null
+          operating_locations?: Json | null
           other_office_locations?: string[] | null
           owner_roll_requirement?: string | null
           owner_transition_goals?: string | null
@@ -387,6 +389,7 @@ export type Database = {
           min_ebitda?: number | null
           min_revenue?: number | null
           num_platforms?: number | null
+          operating_locations?: Json | null
           other_office_locations?: string[] | null
           owner_roll_requirement?: string | null
           owner_transition_goals?: string | null
@@ -456,6 +459,7 @@ export type Database = {
           headquarters: string | null
           id: string
           industry_type: string | null
+          location_count: number | null
           owner_goals: string | null
           ownership_structure: string | null
           revenue: number | null
@@ -493,6 +497,7 @@ export type Database = {
           headquarters?: string | null
           id?: string
           industry_type?: string | null
+          location_count?: number | null
           owner_goals?: string | null
           ownership_structure?: string | null
           revenue?: number | null
@@ -530,6 +535,7 @@ export type Database = {
           headquarters?: string | null
           id?: string
           industry_type?: string | null
+          location_count?: number | null
           owner_goals?: string | null
           ownership_structure?: string | null
           revenue?: number | null
