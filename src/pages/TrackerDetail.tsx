@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { CSVImport } from "@/components/CSVImport";
 import { StructuredCriteriaPanel } from "@/components/StructuredCriteriaPanel";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2 } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -44,7 +44,9 @@ export default function TrackerDetail() {
   const [enrichingBuyers, setEnrichingBuyers] = useState<Set<string>>(new Set());
   const [isBulkEnriching, setIsBulkEnriching] = useState(false);
   const [isEditingFitCriteria, setIsEditingFitCriteria] = useState(false);
-  const [editedFitCriteria, setEditedFitCriteria] = useState("");
+  const [editedSizeCriteria, setEditedSizeCriteria] = useState("");
+  const [editedServiceCriteria, setEditedServiceCriteria] = useState("");
+  const [editedGeographyCriteria, setEditedGeographyCriteria] = useState("");
   const [isSavingFitCriteria, setIsSavingFitCriteria] = useState(false);
   const [isParsingCriteria, setIsParsingCriteria] = useState(false);
 
@@ -223,35 +225,50 @@ export default function TrackerDetail() {
   };
 
   const startEditingFitCriteria = () => {
-    setEditedFitCriteria(tracker?.fit_criteria || "");
+    setEditedSizeCriteria(tracker?.fit_criteria_size || "");
+    setEditedServiceCriteria(tracker?.fit_criteria_service || "");
+    setEditedGeographyCriteria(tracker?.fit_criteria_geography || "");
     setIsEditingFitCriteria(true);
   };
 
   const cancelEditingFitCriteria = () => {
     setIsEditingFitCriteria(false);
-    setEditedFitCriteria("");
+    setEditedSizeCriteria("");
+    setEditedServiceCriteria("");
+    setEditedGeographyCriteria("");
   };
 
   const saveFitCriteria = async () => {
     setIsSavingFitCriteria(true);
     const { error } = await supabase
       .from("industry_trackers")
-      .update({ fit_criteria: editedFitCriteria, updated_at: new Date().toISOString() })
+      .update({ 
+        fit_criteria_size: editedSizeCriteria,
+        fit_criteria_service: editedServiceCriteria,
+        fit_criteria_geography: editedGeographyCriteria,
+        updated_at: new Date().toISOString() 
+      })
       .eq("id", id);
     
     if (error) {
       toast({ title: "Error", description: "Failed to save fit criteria", variant: "destructive" });
     } else {
       toast({ title: "Fit criteria updated" });
-      setTracker({ ...tracker, fit_criteria: editedFitCriteria });
+      setTracker({ 
+        ...tracker, 
+        fit_criteria_size: editedSizeCriteria,
+        fit_criteria_service: editedServiceCriteria,
+        fit_criteria_geography: editedGeographyCriteria
+      });
       setIsEditingFitCriteria(false);
     }
     setIsSavingFitCriteria(false);
   };
 
   const parseFitCriteria = async () => {
-    const criteriaText = isEditingFitCriteria ? editedFitCriteria : tracker?.fit_criteria;
-    if (!criteriaText?.trim()) {
+    const criteriaText = `Size Criteria: ${isEditingFitCriteria ? editedSizeCriteria : tracker?.fit_criteria_size || ''}\n\nService/Product Criteria: ${isEditingFitCriteria ? editedServiceCriteria : tracker?.fit_criteria_service || ''}\n\nGeography Criteria: ${isEditingFitCriteria ? editedGeographyCriteria : tracker?.fit_criteria_geography || ''}`;
+    
+    if (!criteriaText.trim() || criteriaText === 'Size Criteria: \n\nService/Product Criteria: \n\nGeography Criteria: ') {
       toast({ title: "No criteria to parse", description: "Please add fit criteria text first", variant: "destructive" });
       return;
     }
@@ -334,13 +351,45 @@ export default function TrackerDetail() {
           </div>
           
           {isEditingFitCriteria ? (
-            <div className="mt-3 space-y-3">
-              <Textarea
-                value={editedFitCriteria}
-                onChange={(e) => setEditedFitCriteria(e.target.value)}
-                placeholder="Describe what matters for buyer fit in this industry... e.g., Geographic footprint requirements, revenue thresholds, service capabilities, deal breakers, etc."
-                className="min-h-[120px] text-sm"
-              />
+            <div className="mt-3 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium flex items-center gap-1.5">
+                    <DollarSign className="w-3.5 h-3.5 text-primary" />
+                    Size Criteria
+                  </Label>
+                  <Textarea
+                    value={editedSizeCriteria}
+                    onChange={(e) => setEditedSizeCriteria(e.target.value)}
+                    placeholder="Revenue thresholds, EBITDA ranges, employee count, location count, sq ft requirements..."
+                    className="min-h-[100px] text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium flex items-center gap-1.5">
+                    <Briefcase className="w-3.5 h-3.5 text-primary" />
+                    Service/Product Mix
+                  </Label>
+                  <Textarea
+                    value={editedServiceCriteria}
+                    onChange={(e) => setEditedServiceCriteria(e.target.value)}
+                    placeholder="Required services, preferred capabilities, excluded services, business model preferences..."
+                    className="min-h-[100px] text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-primary" />
+                    Geography
+                  </Label>
+                  <Textarea
+                    value={editedGeographyCriteria}
+                    onChange={(e) => setEditedGeographyCriteria(e.target.value)}
+                    placeholder="Target regions, excluded areas, coverage type, HQ requirements..."
+                    className="min-h-[100px] text-sm"
+                  />
+                </div>
+              </div>
               <div className="flex items-center gap-2 justify-end">
                 <Button variant="ghost" size="sm" onClick={cancelEditingFitCriteria} disabled={isSavingFitCriteria || isParsingCriteria}>
                   <X className="w-3.5 h-3.5 mr-1" />
@@ -366,11 +415,41 @@ export default function TrackerDetail() {
             </div>
           ) : (
             <>
-              <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
-                {tracker.fit_criteria || (
-                  <span className="italic">No fit criteria defined. Click Edit to add criteria that will guide buyer matching.</span>
-                )}
-              </p>
+              {(tracker.fit_criteria_size || tracker.fit_criteria_service || tracker.fit_criteria_geography) ? (
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {tracker.fit_criteria_size && (
+                    <div className="bg-muted/30 rounded-lg p-3 border">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <DollarSign className="w-3.5 h-3.5 text-primary" />
+                        <span className="text-xs font-medium">Size</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_size}</p>
+                    </div>
+                  )}
+                  {tracker.fit_criteria_service && (
+                    <div className="bg-muted/30 rounded-lg p-3 border">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Briefcase className="w-3.5 h-3.5 text-primary" />
+                        <span className="text-xs font-medium">Service/Product Mix</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_service}</p>
+                    </div>
+                  )}
+                  {tracker.fit_criteria_geography && (
+                    <div className="bg-muted/30 rounded-lg p-3 border">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <MapPin className="w-3.5 h-3.5 text-primary" />
+                        <span className="text-xs font-medium">Geography</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_geography}</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground italic">
+                  No fit criteria defined. Click Edit to add criteria that will guide buyer matching.
+                </p>
+              )}
               <StructuredCriteriaPanel
                 sizeCriteria={tracker.size_criteria}
                 serviceCriteria={tracker.service_criteria}
