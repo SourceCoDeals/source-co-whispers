@@ -47,6 +47,7 @@ export default function Dashboard() {
       const { data: trackersData, error: trackersError } = await supabase
         .from("industry_trackers")
         .select("*")
+        .eq("archived", false)
         .order("updated_at", { ascending: false });
 
       if (trackersError) throw trackersError;
