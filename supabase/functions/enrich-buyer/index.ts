@@ -386,6 +386,23 @@ const STATE_NAME_TO_ABBREV: Record<string, string> = {
   'vermont': 'VT', 'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY'
 };
 
+// Patterns to skip - UI text, URLs, garbage data
+const SKIP_PATTERNS = [
+  /find\s*(a\s*)?shop/i,
+  /near\s*(you|me)/i,
+  /body-shop/i,
+  /locations?$/i,
+  /^https?:\/\//i,
+  /\.com/i,
+  /\.net/i,
+  /\.org/i,
+  /click\s*here/i,
+  /learn\s*more/i,
+  /view\s*all/i,
+  /see\s*all/i,
+  /^\d+\s*\d*\s*\d*\s*\d*\s*\d*\s*\d*$/, // Just numbers like "13 States 2 3 4 5 6..."
+];
+
 // Normalize geographic footprint to 2-letter state abbreviations only
 function normalizeGeographicFootprint(footprint: string[] | null | undefined): string[] | null {
   if (!footprint || !Array.isArray(footprint) || footprint.length === 0) {
@@ -401,6 +418,18 @@ function normalizeGeographicFootprint(footprint: string[] | null | undefined): s
     const upper = trimmed.toUpperCase();
     const lower = trimmed.toLowerCase();
     
+    // Skip garbage data patterns
+    if (SKIP_PATTERNS.some(pattern => pattern.test(trimmed))) {
+      console.log(`Skipping garbage data: "${item}"`);
+      continue;
+    }
+    
+    // Skip very short or very long entries (likely garbage)
+    if (trimmed.length < 2 || trimmed.length > 100) {
+      console.log(`Skipping entry with unusual length: "${item}"`);
+      continue;
+    }
+    
     // Check if already valid 2-letter abbreviation
     if (ALL_US_STATES.includes(upper)) {
       normalized.push(upper);
@@ -414,6 +443,26 @@ function normalizeGeographicFootprint(footprint: string[] | null | undefined): s
       continue;
     }
     
+    // Handle common misspellings
+    const misspellings: Record<string, string> = {
+      'conneticut': 'CT', 'conecticut': 'CT', 'conneticutt': 'CT',
+      'massachusets': 'MA', 'massachussetts': 'MA', 'massachucetts': 'MA',
+      'pennsilvania': 'PA', 'pensylvania': 'PA',
+      'tennesee': 'TN', 'tennesse': 'TN',
+      'missisipi': 'MS', 'mississipi': 'MS', 'missisippi': 'MS',
+      'louisianna': 'LA', 'lousiana': 'LA',
+      'virgina': 'VA',
+      'north carolia': 'NC', 'n carolina': 'NC', 'n. carolina': 'NC',
+      'south carolia': 'SC', 's carolina': 'SC', 's. carolina': 'SC',
+      'west virgina': 'WV', 'w virginia': 'WV', 'w. virginia': 'WV',
+      'new jersery': 'NJ',
+    };
+    if (misspellings[lower]) {
+      console.log(`Fixed misspelling "${item}" -> "${misspellings[lower]}"`);
+      normalized.push(misspellings[lower]);
+      continue;
+    }
+    
     // "national"/"nationwide"/"USA" -> all 50 states
     if (['national', 'nationwide', 'usa', 'us', 'united states', 'all states'].includes(lower)) {
       console.log(`Expanding "${item}" to all 50 states`);
@@ -421,24 +470,53 @@ function normalizeGeographicFootprint(footprint: string[] | null | undefined): s
       continue;
     }
     
-    // Handle "X states" pattern (e.g., "41 states", "50 states")
+    // Handle "X states" pattern (e.g., "41 states", "50 states", "13 States")
     const statesMatch = lower.match(/^(\d+)\s*states?$/);
     if (statesMatch) {
       const count = parseInt(statesMatch[1], 10);
-      if (count >= 40) {  // 40+ states = treat as nationwide
+      if (count >= 30) {  // 30+ states = treat as nationwide
         console.log(`Expanding "${item}" (${count} states) to all 50 states`);
         normalized.push(...ALL_US_STATES);
         continue;
       }
+      // Less than 30 states - skip as we can't know which ones
+      console.log(`Skipping "${item}" - count too low to expand, need specific states`);
+      continue;
     }
     
-    // Handle "City, State" format (e.g., "San Antonio, TX")
-    const cityStateMatch = trimmed.match(/,\s*([A-Za-z]{2})$/);
-    if (cityStateMatch) {
-      const stateAbbrev = cityStateMatch[1].toUpperCase();
-      if (ALL_US_STATES.includes(stateAbbrev)) {
+    // Handle "City, State" format with full state name (e.g., "Jackson, Mississippi")
+    const cityFullStateMatch = trimmed.match(/,\s*([A-Za-z\s]+)$/);
+    if (cityFullStateMatch) {
+      const statePart = cityFullStateMatch[1].trim().toLowerCase();
+      // Remove parenthetical text like "(and 5 surrounding towns)"
+      const cleanedState = statePart.replace(/\s*\([^)]*\)\s*/g, '').trim();
+      
+      // Check if it's a 2-letter abbreviation
+      if (cleanedState.length === 2 && ALL_US_STATES.includes(cleanedState.toUpperCase())) {
+        console.log(`Extracted state "${cleanedState.toUpperCase()}" from "${item}"`);
+        normalized.push(cleanedState.toUpperCase());
+        continue;
+      }
+      
+      // Check if it's a full state name
+      const stateAbbrev = STATE_NAME_TO_ABBREV[cleanedState];
+      if (stateAbbrev) {
         console.log(`Extracted state "${stateAbbrev}" from "${item}"`);
         normalized.push(stateAbbrev);
+        continue;
+      }
+    }
+    
+    // Handle space-separated abbreviations (e.g., "TX OK AR LA")
+    if (/^[A-Z]{2}(\s+[A-Z]{2})+$/i.test(trimmed)) {
+      const parts = upper.split(/\s+/);
+      for (const part of parts) {
+        if (ALL_US_STATES.includes(part)) {
+          normalized.push(part);
+        }
+      }
+      if (normalized.length > 0) {
+        console.log(`Parsed space-separated states from "${item}"`);
         continue;
       }
     }
