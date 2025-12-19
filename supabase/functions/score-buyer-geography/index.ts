@@ -90,9 +90,30 @@ function normalizeState(state: string): string {
   return abbrev || cleaned;
 }
 
+// All US state abbreviations for "national" expansion
+const allUSStates = Object.keys(stateAdjacency);
+
+// Check if a geographic term indicates national coverage (exact match only)
+function isNationalKeyword(geo: string): boolean {
+  const lower = geo.toLowerCase().trim();
+  const nationalKeywords = ['national', 'nationwide', 'all states', 'contiguous us', 'continental us'];
+  return nationalKeywords.includes(lower);
+}
+
 function extractStatesFromGeography(geography: string[] | null): string[] {
   if (!geography) return [];
-  return geography.map(g => normalizeState(g)).filter(Boolean);
+  
+  const states: string[] = [];
+  for (const geo of geography) {
+    // If it's a national keyword, expand to all US states
+    if (isNationalKeyword(geo)) {
+      states.push(...allUSStates);
+    } else {
+      const normalized = normalizeState(geo);
+      if (normalized) states.push(normalized);
+    }
+  }
+  return states;
 }
 
 function isCanadian(state: string): boolean {
@@ -121,30 +142,6 @@ interface GeographicScore {
   fitReasoning: string;
 }
 
-// Check if buyer has national coverage
-function isNationalBuyer(profile: BuyerGeographicProfile): boolean {
-  const allGeoData = [
-    ...(profile.targetGeographies || []),
-    ...(profile.serviceRegions || []),
-    ...(profile.geographicFootprint || [])
-  ];
-  
-  const nationalIndicators = ['national', 'nationwide', 'us', 'usa', 'united states', 'all states', 'all us', 'contiguous'];
-  
-  for (const geo of allGeoData) {
-    const lower = geo.toLowerCase().trim();
-    for (const indicator of nationalIndicators) {
-      if (lower === indicator || lower.includes(indicator)) {
-        return true;
-      }
-    }
-  }
-  
-  // Also consider buyers with many states (10+) as national
-  const stateCount = new Set(allGeoData.map(g => normalizeState(g)).filter(s => Object.keys(stateAdjacency).includes(s))).size;
-  return stateCount >= 10;
-}
-
 function scoreBuyerGeography(
   buyer: BuyerGeographicProfile,
   dealStates: string[],
@@ -152,27 +149,13 @@ function scoreBuyerGeography(
 ): GeographicScore {
   const buyerStates = new Set<string>();
   
-  // Collect all buyer geographic data
+  // Collect all buyer geographic data with national keyword expansion
   if (buyer.hqState) buyerStates.add(normalizeState(buyer.hqState));
-  buyer.targetGeographies.forEach(s => buyerStates.add(normalizeState(s)));
-  buyer.serviceRegions.forEach(s => buyerStates.add(normalizeState(s)));
-  buyer.geographicFootprint.forEach(s => buyerStates.add(normalizeState(s)));
+  extractStatesFromGeography(buyer.targetGeographies).forEach(s => buyerStates.add(s));
+  extractStatesFromGeography(buyer.serviceRegions).forEach(s => buyerStates.add(s));
+  extractStatesFromGeography(buyer.geographicFootprint).forEach(s => buyerStates.add(s));
   
   const buyerStateArray = Array.from(buyerStates).filter(Boolean);
-  
-  // Check if buyer is national first
-  if (isNationalBuyer(buyer)) {
-    const dealIsUS = dealStates.some(s => !isCanadian(s));
-    if (dealIsUS) {
-      return {
-        buyerId: buyer.buyerId,
-        geographyScore: 88,
-        isDisqualified: false,
-        disqualificationReason: null,
-        fitReasoning: `✅ Strong fit: Buyer has national US coverage. Operates across the country.`
-      };
-    }
-  }
   
   // Check if buyer is Canada-only
   const buyerIsCanadaOnly = buyerStateArray.length > 0 && buyerStateArray.every(s => isCanadian(s));
