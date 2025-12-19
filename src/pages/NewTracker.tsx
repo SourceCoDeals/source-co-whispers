@@ -9,14 +9,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, Lightbulb } from "lucide-react";
 
-// Generate a valid UUID
-function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-}
 
 export default function NewTracker() {
   const [name, setName] = useState("");
@@ -30,11 +22,19 @@ export default function NewTracker() {
     if (!name.trim()) return;
     setIsLoading(true);
     
+    // Get the authenticated user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast({ title: "Error", description: "You must be logged in to create a buyer universe", variant: "destructive" });
+      setIsLoading(false);
+      return;
+    }
+    
     const { data, error } = await supabase
       .from("industry_trackers")
       .insert({ 
         industry_name: name.trim(), 
-        user_id: generateUUID(),
+        user_id: user.id,
         fit_criteria: fitCriteria.trim() || null,
       })
       .select()
