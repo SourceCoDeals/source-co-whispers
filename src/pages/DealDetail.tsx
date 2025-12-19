@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, ArrowLeft, Users, ExternalLink, FileText, Calendar, Building2, DollarSign, MapPin, Target, User, Phone, Mail, Briefcase, Clock, Hash, Linkedin, Sparkles, AlertTriangle, MessageSquareWarning, Store } from "lucide-react";
+import { Loader2, ArrowLeft, Users, ExternalLink, FileText, Calendar, Building2, DollarSign, MapPin, Target, User, Phone, Mail, Briefcase, Clock, Hash, Linkedin, Sparkles, AlertTriangle, MessageSquareWarning, Store, Globe } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
@@ -23,6 +23,7 @@ export default function DealDetail() {
   const [tracker, setTracker] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [isEnriching, setIsEnriching] = useState(false);
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -64,6 +65,44 @@ export default function DealDetail() {
       toast({ title: "Extraction failed", description: "Failed to extract transcript", variant: "destructive" });
     } finally {
       setIsExtracting(false);
+    }
+  };
+
+  const handleEnrichFromWebsite = async () => {
+    if (!deal?.company_website) {
+      toast({ title: "No website", description: "This deal has no company website.", variant: "destructive" });
+      return;
+    }
+    
+    setIsEnriching(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('enrich-deal', {
+        body: { dealId: id, onlyFillEmpty: true }
+      });
+      
+      if (error) {
+        toast({ title: "Enrichment failed", description: error.message, variant: "destructive" });
+      } else if (data?.success) {
+        const fieldsUpdated = data.updatedFields?.length || 0;
+        if (fieldsUpdated > 0) {
+          toast({ 
+            title: "Enrichment complete", 
+            description: `Updated ${fieldsUpdated} fields from website: ${data.updatedFields.join(', ')}` 
+          });
+          await loadData();
+        } else {
+          toast({ 
+            title: "No new data", 
+            description: "All fields already have data. Website info would not add anything new." 
+          });
+        }
+      } else {
+        toast({ title: "Enrichment failed", description: data?.error || "Unknown error", variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Enrichment failed", description: "Failed to enrich from website", variant: "destructive" });
+    } finally {
+      setIsEnriching(false);
     }
   };
 
@@ -140,6 +179,20 @@ export default function DealDetail() {
                   {isExtracting ? "Extracting..." : "Extract from Transcript"}
                 </Button>
               </>
+            )}
+            {deal.company_website && (
+              <Button 
+                variant="outline" 
+                onClick={handleEnrichFromWebsite} 
+                disabled={isEnriching}
+              >
+                {isEnriching ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Globe className="w-4 h-4 mr-2" />
+                )}
+                {isEnriching ? "Enriching..." : "Enrich from Website"}
+              </Button>
             )}
             <Button onClick={() => navigate(`/deals/${id}/matching`)}>
               <Users className="w-4 h-4 mr-2" />View Buyer Matches

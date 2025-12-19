@@ -65,9 +65,27 @@ export default function NewDeal() {
       return; 
     }
 
-    // If transcript link provided, extract info from it
+    // Step 1: If website provided, enrich from website FIRST (fills empty fields)
+    if (form.company_website) {
+      setExtractionStatus("Enriching from website...");
+      try {
+        const { data: enrichResult, error: enrichError } = await supabase.functions.invoke('enrich-deal', {
+          body: { dealId: data.id, onlyFillEmpty: true }
+        });
+        
+        if (enrichError) {
+          console.error('Website enrichment error:', enrichError);
+        } else if (enrichResult?.success && enrichResult.updatedFields?.length > 0) {
+          console.log(`Enriched ${enrichResult.updatedFields.length} fields from website`);
+        }
+      } catch (err) {
+        console.error('Website enrichment failed:', err);
+      }
+    }
+
+    // Step 2: If transcript link provided, extract info (overwrites website data with owner-stated data)
     if (form.transcript_link) {
-      setExtractionStatus("Extracting info from transcript...");
+      setExtractionStatus("Extracting from transcript...");
       try {
         const { data: extractionResult, error: extractionError } = await supabase.functions.invoke('extract-deal-transcript', {
           body: { dealId: data.id }
@@ -80,9 +98,10 @@ export default function NewDeal() {
             description: "Transcript extraction failed, but you can retry from the deal page." 
           });
         } else if (extractionResult?.success) {
+          const followupNote = extractionResult.hasFollowupQuestions ? " Some data needs clarification." : "";
           toast({ 
             title: "Deal listed!", 
-            description: `Extracted ${extractionResult.extractedFields?.length || 0} fields from transcript.` 
+            description: `Extracted ${extractionResult.extractedFields?.length || 0} fields from transcript.${followupNote}` 
           });
         } else {
           toast({ 
@@ -94,6 +113,8 @@ export default function NewDeal() {
         console.error('Extraction failed:', err);
         toast({ title: "Deal created", description: "Transcript extraction failed." });
       }
+    } else if (form.company_website) {
+      toast({ title: "Deal listed!", description: "Enriched with data from website." });
     } else {
       toast({ title: "Deal listed!" });
     }

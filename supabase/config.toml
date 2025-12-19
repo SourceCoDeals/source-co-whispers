@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.parse-fit-criteria]
 verify_jwt = false
+
+[functions.enrich-deal]
+verify_jwt = false
