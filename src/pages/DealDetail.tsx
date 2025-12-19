@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, ArrowLeft, Users, ExternalLink, FileText, Calendar, Building2, DollarSign, MapPin, Target, User, Phone, Mail, Briefcase, Clock, Hash, Linkedin, Sparkles, AlertTriangle, MessageSquareWarning } from "lucide-react";
+import { Loader2, ArrowLeft, Users, ExternalLink, FileText, Calendar, Building2, DollarSign, MapPin, Target, User, Phone, Mail, Briefcase, Clock, Hash, Linkedin, Sparkles, AlertTriangle, MessageSquareWarning, Store } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
@@ -203,6 +203,16 @@ export default function DealDetail() {
                 <div>
                   <p className="text-muted-foreground text-xs uppercase tracking-wide">Industry</p>
                   <p className={deal.industry_type ? "font-medium" : "text-muted-foreground italic"}>{deal.industry_type || "Not specified"}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <Store className="w-4 h-4 text-muted-foreground mt-0.5" />
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">Number of Locations</p>
+                  <p className="font-medium">{deal.location_count || 1} {(deal.location_count || 1) === 1 ? 'location' : 'locations'}</p>
+                  {(deal.location_count || 1) < 3 && (
+                    <p className="text-xs text-muted-foreground mt-0.5">Requires buyer within 100 miles</p>
+                  )}
                 </div>
               </div>
             </div>
