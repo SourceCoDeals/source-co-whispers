@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { CSVImport } from "@/components/CSVImport";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info } from "lucide-react";
+import { StructuredCriteriaPanel } from "@/components/StructuredCriteriaPanel";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -45,6 +46,7 @@ export default function TrackerDetail() {
   const [isEditingFitCriteria, setIsEditingFitCriteria] = useState(false);
   const [editedFitCriteria, setEditedFitCriteria] = useState("");
   const [isSavingFitCriteria, setIsSavingFitCriteria] = useState(false);
+  const [isParsingCriteria, setIsParsingCriteria] = useState(false);
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -247,6 +249,60 @@ export default function TrackerDetail() {
     setIsSavingFitCriteria(false);
   };
 
+  const parseFitCriteria = async () => {
+    const criteriaText = isEditingFitCriteria ? editedFitCriteria : tracker?.fit_criteria;
+    if (!criteriaText?.trim()) {
+      toast({ title: "No criteria to parse", description: "Please add fit criteria text first", variant: "destructive" });
+      return;
+    }
+
+    setIsParsingCriteria(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('parse-fit-criteria', {
+        body: { fit_criteria: criteriaText }
+      });
+
+      if (error) {
+        toast({ title: "Parsing failed", description: error.message, variant: "destructive" });
+        return;
+      }
+
+      if (!data.success) {
+        toast({ title: "Parsing failed", description: data.error || "Unknown error", variant: "destructive" });
+        return;
+      }
+
+      // Update the tracker with structured criteria
+      const { error: updateError } = await supabase
+        .from("industry_trackers")
+        .update({
+          size_criteria: data.size_criteria,
+          service_criteria: data.service_criteria,
+          geography_criteria: data.geography_criteria,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", id);
+
+      if (updateError) {
+        toast({ title: "Failed to save", description: updateError.message, variant: "destructive" });
+        return;
+      }
+
+      setTracker({
+        ...tracker,
+        size_criteria: data.size_criteria,
+        service_criteria: data.service_criteria,
+        geography_criteria: data.geography_criteria
+      });
+
+      toast({ title: "Criteria parsed", description: "Structured criteria extracted successfully" });
+    } catch (err) {
+      toast({ title: "Parsing failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setIsParsingCriteria(false);
+    }
+  };
+
   if (isLoading) return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
   if (!tracker) return <AppLayout><div className="text-center py-12">Tracker not found</div></AppLayout>;
 
@@ -286,11 +342,19 @@ export default function TrackerDetail() {
                 className="min-h-[120px] text-sm"
               />
               <div className="flex items-center gap-2 justify-end">
-                <Button variant="ghost" size="sm" onClick={cancelEditingFitCriteria} disabled={isSavingFitCriteria}>
+                <Button variant="ghost" size="sm" onClick={cancelEditingFitCriteria} disabled={isSavingFitCriteria || isParsingCriteria}>
                   <X className="w-3.5 h-3.5 mr-1" />
                   Cancel
                 </Button>
-                <Button size="sm" onClick={saveFitCriteria} disabled={isSavingFitCriteria}>
+                <Button variant="outline" size="sm" onClick={parseFitCriteria} disabled={isParsingCriteria || isSavingFitCriteria}>
+                  {isParsingCriteria ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                  ) : (
+                    <Wand2 className="w-3.5 h-3.5 mr-1" />
+                  )}
+                  Parse Criteria
+                </Button>
+                <Button size="sm" onClick={saveFitCriteria} disabled={isSavingFitCriteria || isParsingCriteria}>
                   {isSavingFitCriteria ? (
                     <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
                   ) : (
@@ -301,11 +365,18 @@ export default function TrackerDetail() {
               </div>
             </div>
           ) : (
-            <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
-              {tracker.fit_criteria || (
-                <span className="italic">No fit criteria defined. Click Edit to add criteria that will guide buyer matching.</span>
-              )}
-            </p>
+            <>
+              <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
+                {tracker.fit_criteria || (
+                  <span className="italic">No fit criteria defined. Click Edit to add criteria that will guide buyer matching.</span>
+                )}
+              </p>
+              <StructuredCriteriaPanel
+                sizeCriteria={tracker.size_criteria}
+                serviceCriteria={tracker.service_criteria}
+                geographyCriteria={tracker.geography_criteria}
+              />
+            </>
           )}
         </div>
 
