@@ -617,6 +617,11 @@ Be thorough - extract EVERY state where they have shops or offices, using 2-lett
         geography.geographic_footprint = normalizeGeographicFootprint(geography.geographic_footprint);
       }
       
+      // Also normalize service_regions (may contain "X states" or "City, State" patterns)
+      if (geography.service_regions) {
+        geography.service_regions = normalizeGeographicFootprint(geography.service_regions);
+      }
+      
       Object.assign(extractedData, geography);
 
       // Prompt 3b: Platform Acquisition History
