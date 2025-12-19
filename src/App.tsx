@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
+import Auth from "./pages/Auth";
 import Trackers from "./pages/Trackers";
 import TrackerDetail from "./pages/TrackerDetail";
 import NewTracker from "./pages/NewTracker";
@@ -26,6 +27,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/auth" element={<Auth />} />
           <Route path="/trackers" element={<Trackers />} />
           <Route path="/trackers/new" element={<NewTracker />} />
           <Route path="/trackers/:id" element={<TrackerDetail />} />
