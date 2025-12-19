@@ -100,6 +100,43 @@ function isNationalKeyword(geo: string): boolean {
   return nationalKeywords.includes(lower);
 }
 
+// Extract all state names/abbreviations from a complex text string
+// e.g., "Jackson, Mississippi Illinois (for tax context)" → ["MS", "IL"]
+function extractStatesFromText(text: string): string[] {
+  if (!text) return [];
+  
+  const found: string[] = [];
+  const lower = text.toLowerCase();
+  
+  // Check for each full state name in the text
+  for (const [stateName, abbrev] of Object.entries(stateNameToAbbrev)) {
+    if (lower.includes(stateName)) {
+      if (!found.includes(abbrev)) {
+        found.push(abbrev);
+      }
+    }
+  }
+  
+  // Also check for 2-letter abbreviations with word boundaries
+  // This catches "MS" or "IL" when written as abbreviations
+  for (const abbrev of allUSStates) {
+    const regex = new RegExp(`\\b${abbrev}\\b`, 'i');
+    if (regex.test(text) && !found.includes(abbrev)) {
+      found.push(abbrev);
+    }
+  }
+  
+  // Also check Canadian provinces
+  for (const prov of canadianProvinces) {
+    const regex = new RegExp(`\\b${prov}\\b`, 'i');
+    if (regex.test(text) && !found.includes(prov)) {
+      found.push(prov);
+    }
+  }
+  
+  return found;
+}
+
 function extractStatesFromGeography(geography: string[] | null): string[] {
   if (!geography) return [];
   
@@ -109,11 +146,20 @@ function extractStatesFromGeography(geography: string[] | null): string[] {
     if (isNationalKeyword(geo)) {
       states.push(...allUSStates);
     } else {
-      const normalized = normalizeState(geo);
-      if (normalized) states.push(normalized);
+      // Try to extract states from the text (handles complex strings)
+      const extracted = extractStatesFromText(geo);
+      if (extracted.length > 0) {
+        states.push(...extracted);
+      } else {
+        // Fallback to simple normalization for plain abbreviations
+        const normalized = normalizeState(geo);
+        if (normalized && allUSStates.includes(normalized)) {
+          states.push(normalized);
+        }
+      }
     }
   }
-  return states;
+  return [...new Set(states)]; // Remove duplicates
 }
 
 function isCanadian(state: string): boolean {
