@@ -409,10 +409,17 @@ export default function DealMatching() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <IntelligenceBadge buyer={buyer} size="sm" />
-                <ScoreBadge score={score?.composite_score || 0} showLabel />
-                <CollapsibleTrigger asChild><Button variant="ghost" size="sm">{isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</Button></CollapsibleTrigger>
+              <div className="flex flex-col items-end gap-1.5 shrink-0">
+                <div className="flex items-center gap-3">
+                  <IntelligenceBadge buyer={buyer} size="sm" />
+                  <ScoreBadge score={score?.composite_score || 0} showLabel />
+                  <CollapsibleTrigger asChild><Button variant="ghost" size="sm">{isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</Button></CollapsibleTrigger>
+                </div>
+                {score?.fit_reasoning && (
+                  <p className="text-xs text-muted-foreground max-w-xs text-right line-clamp-2">
+                    {score.fit_reasoning}
+                  </p>
+                )}
               </div>
             </div>
             <CollapsibleContent className="mt-4 pl-0 space-y-4">
@@ -432,7 +439,6 @@ export default function DealMatching() {
               {buyer.thesis_summary && (
                 <p className="text-sm text-muted-foreground italic border-l-2 border-primary/30 pl-3">"{buyer.thesis_summary}"</p>
               )}
-              {score?.fit_reasoning && <p className="text-sm text-muted-foreground">{score.fit_reasoning}</p>}
             </CollapsibleContent>
           </Collapsible>
         </div>
@@ -460,7 +466,7 @@ export default function DealMatching() {
         </div>
 
         <div className="bg-accent/10 rounded-lg border border-accent/20 p-4 flex gap-6 text-sm">
-          <span>✅ {scores.filter((s) => s.thesis_bonus > 0).length} buyers with intelligence bonus</span>
+          <span>✅ {scores.filter((s) => s.thesis_bonus > 0).length} buyers with thesis data</span>
           <span>🎯 {scores.filter((s) => s.composite_score >= 80).length} strong matches (&gt;80%)</span>
           <span>✓ {approvedBuyers.length} approved</span>
         </div>
