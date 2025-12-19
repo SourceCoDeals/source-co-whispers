@@ -142,20 +142,21 @@ function extractStatesFromGeography(geography: string[] | null): string[] {
   
   const states: string[] = [];
   for (const geo of geography) {
-    // If it's a national keyword, expand to all US states
+    // Skip national keywords - we require explicit state lists
     if (isNationalKeyword(geo)) {
-      states.push(...allUSStates);
+      console.log(`Skipping national keyword "${geo}" - explicit state list required`);
+      continue;
+    }
+    
+    // Try to extract states from the text (handles complex strings)
+    const extracted = extractStatesFromText(geo);
+    if (extracted.length > 0) {
+      states.push(...extracted);
     } else {
-      // Try to extract states from the text (handles complex strings)
-      const extracted = extractStatesFromText(geo);
-      if (extracted.length > 0) {
-        states.push(...extracted);
-      } else {
-        // Fallback to simple normalization for plain abbreviations
-        const normalized = normalizeState(geo);
-        if (normalized && allUSStates.includes(normalized)) {
-          states.push(normalized);
-        }
+      // Fallback to simple normalization for plain abbreviations
+      const normalized = normalizeState(geo);
+      if (normalized && allUSStates.includes(normalized)) {
+        states.push(normalized);
       }
     }
   }
