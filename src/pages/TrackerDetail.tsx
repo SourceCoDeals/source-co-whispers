@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { CSVImport } from "@/components/CSVImport";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -41,6 +42,9 @@ export default function TrackerDetail() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [enrichingBuyers, setEnrichingBuyers] = useState<Set<string>>(new Set());
   const [isBulkEnriching, setIsBulkEnriching] = useState(false);
+  const [isEditingFitCriteria, setIsEditingFitCriteria] = useState(false);
+  const [editedFitCriteria, setEditedFitCriteria] = useState("");
+  const [isSavingFitCriteria, setIsSavingFitCriteria] = useState(false);
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -216,6 +220,33 @@ export default function TrackerDetail() {
     return lastUpdated > hourAgo;
   };
 
+  const startEditingFitCriteria = () => {
+    setEditedFitCriteria(tracker?.fit_criteria || "");
+    setIsEditingFitCriteria(true);
+  };
+
+  const cancelEditingFitCriteria = () => {
+    setIsEditingFitCriteria(false);
+    setEditedFitCriteria("");
+  };
+
+  const saveFitCriteria = async () => {
+    setIsSavingFitCriteria(true);
+    const { error } = await supabase
+      .from("industry_trackers")
+      .update({ fit_criteria: editedFitCriteria, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    
+    if (error) {
+      toast({ title: "Error", description: "Failed to save fit criteria", variant: "destructive" });
+    } else {
+      toast({ title: "Fit criteria updated" });
+      setTracker({ ...tracker, fit_criteria: editedFitCriteria });
+      setIsEditingFitCriteria(false);
+    }
+    setIsSavingFitCriteria(false);
+  };
+
   if (isLoading) return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
   if (!tracker) return <AppLayout><div className="text-center py-12">Tracker not found</div></AppLayout>;
 
@@ -229,6 +260,53 @@ export default function TrackerDetail() {
             <p className="text-muted-foreground">{buyers.length} buyers · {deals.length} deals</p>
           </div>
           <Button onClick={() => navigate(`/trackers/${id}/deals/new`)}><Plus className="w-4 h-4 mr-2" />List New Deal</Button>
+        </div>
+
+        {/* Fit Criteria Section */}
+        <div className="bg-card rounded-lg border p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Info className="w-4 h-4 text-primary" />
+              <h3 className="font-semibold text-sm">Buyer Fit Criteria</h3>
+            </div>
+            {!isEditingFitCriteria && (
+              <Button variant="ghost" size="sm" onClick={startEditingFitCriteria}>
+                <Pencil className="w-3.5 h-3.5 mr-1" />
+                Edit
+              </Button>
+            )}
+          </div>
+          
+          {isEditingFitCriteria ? (
+            <div className="mt-3 space-y-3">
+              <Textarea
+                value={editedFitCriteria}
+                onChange={(e) => setEditedFitCriteria(e.target.value)}
+                placeholder="Describe what matters for buyer fit in this industry... e.g., Geographic footprint requirements, revenue thresholds, service capabilities, deal breakers, etc."
+                className="min-h-[120px] text-sm"
+              />
+              <div className="flex items-center gap-2 justify-end">
+                <Button variant="ghost" size="sm" onClick={cancelEditingFitCriteria} disabled={isSavingFitCriteria}>
+                  <X className="w-3.5 h-3.5 mr-1" />
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={saveFitCriteria} disabled={isSavingFitCriteria}>
+                  {isSavingFitCriteria ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                  ) : (
+                    <Check className="w-3.5 h-3.5 mr-1" />
+                  )}
+                  Save
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
+              {tracker.fit_criteria || (
+                <span className="italic">No fit criteria defined. Click Edit to add criteria that will guide buyer matching.</span>
+              )}
+            </p>
+          )}
         </div>
 
         <Tabs defaultValue="buyers">
