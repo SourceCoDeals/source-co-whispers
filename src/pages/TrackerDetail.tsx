@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { CSVImport } from "@/components/CSVImport";
 import { StructuredCriteriaPanel } from "@/components/StructuredCriteriaPanel";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -453,11 +454,14 @@ export default function TrackerDetail() {
                   )}
                 </div>
               ) : tracker.fit_criteria ? (
-                <div className="mt-3">
-                  <div className="bg-muted/30 rounded-lg p-3 border">
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria}</p>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2">
+                <Collapsible defaultOpen={false} className="mt-3">
+                  <div className="flex items-center gap-2">
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground hover:text-foreground">
+                        <ChevronRight className="w-4 h-4 transition-transform duration-200 [[data-state=open]>&]:rotate-90" />
+                        Show Original Criteria
+                      </Button>
+                    </CollapsibleTrigger>
                     <Button variant="outline" size="sm" onClick={parseFitCriteria} disabled={isParsingCriteria}>
                       {isParsingCriteria ? (
                         <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
@@ -466,9 +470,13 @@ export default function TrackerDetail() {
                       )}
                       Parse into Structured Criteria
                     </Button>
-                    <span className="text-xs text-muted-foreground">Extract size, service, and geography details</span>
                   </div>
-                </div>
+                  <CollapsibleContent>
+                    <div className="bg-muted/30 rounded-lg p-3 border mt-2">
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria}</p>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               ) : (
                 <p className="mt-2 text-sm text-muted-foreground italic">
                   No fit criteria defined. Click Edit to add criteria that will guide buyer matching.
