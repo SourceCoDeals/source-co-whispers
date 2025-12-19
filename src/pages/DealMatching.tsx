@@ -388,7 +388,7 @@ export default function DealMatching() {
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Link to={`/buyers/${buyer.id}`} className="font-semibold hover:text-primary transition-colors">
+                  <Link to={`/buyers/${buyer.id}?dealId=${id}`} className="font-semibold hover:text-primary transition-colors">
                     {buyer.platform_company_name || buyer.pe_firm_name}
                   </Link>
                   <a href={getPlatformWebsite(buyer)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary" title="Visit website">
