@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft, Sparkles } from "lucide-react";
 
 export default function NewDeal() {
   const { trackerId } = useParams();
@@ -31,10 +31,13 @@ export default function NewDeal() {
     supabase.from("industry_trackers").select("*").eq("id", trackerId).single().then(({ data }) => setTracker(data));
   }, [trackerId]);
 
+  const [extractionStatus, setExtractionStatus] = useState<string | null>(null);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.deal_name.trim()) return;
     setIsLoading(true);
+    
     const { data, error } = await supabase.from("deals").insert({
       tracker_id: trackerId,
       deal_name: form.deal_name,
@@ -49,8 +52,45 @@ export default function NewDeal() {
       transcript_link: form.transcript_link || null,
     }).select().single();
     
-    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); setIsLoading(false); return; }
-    toast({ title: "Deal listed!" });
+    if (error) { 
+      toast({ title: "Error", description: error.message, variant: "destructive" }); 
+      setIsLoading(false); 
+      return; 
+    }
+
+    // If transcript link provided, extract info from it
+    if (form.transcript_link) {
+      setExtractionStatus("Extracting info from transcript...");
+      try {
+        const { data: extractionResult, error: extractionError } = await supabase.functions.invoke('extract-deal-transcript', {
+          body: { dealId: data.id }
+        });
+        
+        if (extractionError) {
+          console.error('Extraction error:', extractionError);
+          toast({ 
+            title: "Deal created", 
+            description: "Transcript extraction failed, but you can retry from the deal page." 
+          });
+        } else if (extractionResult?.success) {
+          toast({ 
+            title: "Deal listed!", 
+            description: `Extracted ${extractionResult.extractedFields?.length || 0} fields from transcript.` 
+          });
+        } else {
+          toast({ 
+            title: "Deal created", 
+            description: extractionResult?.error || "Extraction incomplete, you can retry from the deal page." 
+          });
+        }
+      } catch (err) {
+        console.error('Extraction failed:', err);
+        toast({ title: "Deal created", description: "Transcript extraction failed." });
+      }
+    } else {
+      toast({ title: "Deal listed!" });
+    }
+
     navigate(`/deals/${data.id}/matching`);
   };
 
@@ -72,8 +112,19 @@ export default function NewDeal() {
           <div><Label>Service Mix</Label><Textarea value={form.service_mix} onChange={(e) => setForm({ ...form, service_mix: e.target.value })} placeholder="Describe services/products offered..." className="mt-1" /></div>
           <div><Label>Goals of Owner</Label><Textarea value={form.owner_goals} onChange={(e) => setForm({ ...form, owner_goals: e.target.value })} placeholder="What the owner wants from the sale..." className="mt-1" /></div>
           <div><Label>Additional Information</Label><Textarea value={form.additional_info} onChange={(e) => setForm({ ...form, additional_info: e.target.value })} placeholder="Any other relevant details..." className="mt-1" /></div>
-          <div><Label>Transcript Link</Label><Input type="url" value={form.transcript_link} onChange={(e) => setForm({ ...form, transcript_link: e.target.value })} placeholder="Link to call transcript/recording" className="mt-1" /></div>
-          <Button type="submit" disabled={isLoading || !form.deal_name.trim()} className="w-full">{isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}List Deal & Match Buyers</Button>
+          <div>
+            <Label>Transcript Link</Label>
+            <Input type="url" value={form.transcript_link} onChange={(e) => setForm({ ...form, transcript_link: e.target.value })} placeholder="Link to call transcript (e.g., Fireflies.ai)" className="mt-1" />
+            {form.transcript_link && (
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> AI will extract company info from transcript
+              </p>
+            )}
+          </div>
+          <Button type="submit" disabled={isLoading || !form.deal_name.trim()} className="w-full">
+            {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            {extractionStatus || "List Deal & Match Buyers"}
+          </Button>
         </form>
       </div>
     </AppLayout>
