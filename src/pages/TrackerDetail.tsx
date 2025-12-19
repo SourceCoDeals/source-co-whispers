@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { CSVImport } from "@/components/CSVImport";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -77,6 +77,13 @@ export default function TrackerDetail() {
     const { error } = await supabase.from("deals").delete().eq("id", dealId);
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
     toast({ title: "Deal deleted", description: `${dealName} has been removed` });
+    loadData();
+  };
+
+  const archiveDeal = async (dealId: string, dealName: string) => {
+    const { error } = await supabase.from("deals").update({ status: "Archived" }).eq("id", dealId);
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Deal archived", description: `${dealName} has been archived` });
     loadData();
   };
 
@@ -433,6 +440,24 @@ export default function TrackerDetail() {
                   </Link>
                   <div className="flex items-center gap-2">
                     <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-muted-foreground hover:text-primary"
+                            onClick={() => archiveDeal(deal.id, deal.deal_name)}
+                            disabled={deal.status === "Archived"}
+                          >
+                            <Archive className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{deal.status === "Archived" ? "Already archived" : "Archive deal"}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button 
