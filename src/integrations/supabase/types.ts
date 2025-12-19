@@ -564,6 +564,9 @@ export type Database = {
           archived: boolean
           created_at: string
           fit_criteria: string | null
+          fit_criteria_geography: string | null
+          fit_criteria_service: string | null
+          fit_criteria_size: string | null
           geography_criteria: Json | null
           geography_weight: number
           id: string
@@ -580,6 +583,9 @@ export type Database = {
           archived?: boolean
           created_at?: string
           fit_criteria?: string | null
+          fit_criteria_geography?: string | null
+          fit_criteria_service?: string | null
+          fit_criteria_size?: string | null
           geography_criteria?: Json | null
           geography_weight?: number
           id?: string
@@ -596,6 +602,9 @@ export type Database = {
           archived?: boolean
           created_at?: string
           fit_criteria?: string | null
+          fit_criteria_geography?: string | null
+          fit_criteria_service?: string | null
+          fit_criteria_size?: string | null
           geography_criteria?: Json | null
           geography_weight?: number
           id?: string
