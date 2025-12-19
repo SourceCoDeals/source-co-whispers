@@ -421,6 +421,28 @@ function normalizeGeographicFootprint(footprint: string[] | null | undefined): s
       continue;
     }
     
+    // Handle "X states" pattern (e.g., "41 states", "50 states")
+    const statesMatch = lower.match(/^(\d+)\s*states?$/);
+    if (statesMatch) {
+      const count = parseInt(statesMatch[1], 10);
+      if (count >= 40) {  // 40+ states = treat as nationwide
+        console.log(`Expanding "${item}" (${count} states) to all 50 states`);
+        normalized.push(...ALL_US_STATES);
+        continue;
+      }
+    }
+    
+    // Handle "City, State" format (e.g., "San Antonio, TX")
+    const cityStateMatch = trimmed.match(/,\s*([A-Za-z]{2})$/);
+    if (cityStateMatch) {
+      const stateAbbrev = cityStateMatch[1].toUpperCase();
+      if (ALL_US_STATES.includes(stateAbbrev)) {
+        console.log(`Extracted state "${stateAbbrev}" from "${item}"`);
+        normalized.push(stateAbbrev);
+        continue;
+      }
+    }
+    
     // Skip invalid entries (log warning)
     console.warn(`Skipping invalid geographic entry: "${item}"`);
   }
