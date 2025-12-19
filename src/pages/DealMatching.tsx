@@ -492,13 +492,65 @@ export default function DealMatching() {
                   <ScoreBadge score={score?.composite_score || 0} showLabel />
                   <CollapsibleTrigger asChild><Button variant="ghost" size="sm">{isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</Button></CollapsibleTrigger>
                 </div>
-                {score?.fit_reasoning && (
-                  <p className="text-xs text-muted-foreground max-w-xs text-right line-clamp-2">
-                    {score.fit_reasoning}
-                  </p>
-                )}
               </div>
             </div>
+            
+            {/* Detailed Fit Explanation - Always visible */}
+            <div className={`mt-3 p-3 rounded-lg text-sm ${buyer.isDisqualified ? 'bg-destructive/10 border border-destructive/20' : score?.composite_score >= 70 ? 'bg-green-500/10 border border-green-500/20' : 'bg-muted/50'}`}>
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  <p className={`font-medium ${buyer.isDisqualified ? 'text-destructive' : score?.composite_score >= 70 ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                    {score?.fit_reasoning || "Evaluating fit..."}
+                  </p>
+                  
+                  {/* Detailed breakdown */}
+                  <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div className="flex items-center justify-between bg-background/50 rounded px-2 py-1">
+                      <span className="text-muted-foreground">Geography</span>
+                      <span className={`font-semibold ${(score?.geography_score || 0) >= 70 ? 'text-green-600' : (score?.geography_score || 0) >= 40 ? 'text-amber-600' : 'text-destructive'}`}>
+                        {score?.geography_score || 0}%
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between bg-background/50 rounded px-2 py-1">
+                      <span className="text-muted-foreground">Services</span>
+                      <span className={`font-semibold ${(score?.service_score || 0) >= 70 ? 'text-green-600' : 'text-amber-600'}`}>
+                        {score?.service_score || 0}%
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between bg-background/50 rounded px-2 py-1">
+                      <span className="text-muted-foreground">Acquisition</span>
+                      <span className={`font-semibold ${(score?.acquisition_score || 0) >= 70 ? 'text-green-600' : 'text-amber-600'}`}>
+                        {score?.acquisition_score || 0}%
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between bg-background/50 rounded px-2 py-1">
+                      <span className="text-muted-foreground">Portfolio</span>
+                      <span className={`font-semibold ${(score?.portfolio_score || 0) >= 70 ? 'text-green-600' : 'text-amber-600'}`}>
+                        {score?.portfolio_score || 0}%
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Geographic details */}
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    <span className="font-medium">Buyer footprint: </span>
+                    {getServiceLocations(buyer)?.slice(0, 6).join(", ") || buyer.hq_state || "Unknown"}
+                    {getServiceLocations(buyer)?.length > 6 && ` +${getServiceLocations(buyer).length - 6} more`}
+                    <span className="mx-2">→</span>
+                    <span className="font-medium">Deal: </span>
+                    {deal?.geography?.join(", ") || deal?.headquarters || "Unknown"}
+                  </div>
+                  
+                  {/* Disqualification reason if applicable */}
+                  {buyer.disqualificationReason && (
+                    <p className="mt-2 text-xs text-destructive font-medium">
+                      ⚠️ {buyer.disqualificationReason}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+            
             <CollapsibleContent className="mt-4 pl-0 space-y-4">
               {/* Contacts Section - Only shown in Approved tab */}
               {showContacts && (
