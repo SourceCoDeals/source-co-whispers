@@ -369,6 +369,68 @@ async function callAIWithTool(lovableApiKey: string, systemPrompt: string, userP
   }
 }
 
+// All valid US state abbreviations
+const ALL_US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+
+// Map full state names to abbreviations
+const STATE_NAME_TO_ABBREV: Record<string, string> = {
+  'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
+  'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'district of columbia': 'DC', 'florida': 'FL',
+  'georgia': 'GA', 'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN',
+  'iowa': 'IA', 'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME',
+  'maryland': 'MD', 'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS',
+  'missouri': 'MO', 'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH',
+  'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND',
+  'ohio': 'OH', 'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI',
+  'south carolina': 'SC', 'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT',
+  'vermont': 'VT', 'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY'
+};
+
+// Normalize geographic footprint to 2-letter state abbreviations only
+function normalizeGeographicFootprint(footprint: string[] | null | undefined): string[] | null {
+  if (!footprint || !Array.isArray(footprint) || footprint.length === 0) {
+    return null;
+  }
+
+  const normalized: string[] = [];
+  
+  for (const item of footprint) {
+    if (!item || typeof item !== 'string') continue;
+    
+    const trimmed = item.trim();
+    const upper = trimmed.toUpperCase();
+    const lower = trimmed.toLowerCase();
+    
+    // Check if already valid 2-letter abbreviation
+    if (ALL_US_STATES.includes(upper)) {
+      normalized.push(upper);
+      continue;
+    }
+    
+    // Convert full state name to abbreviation
+    const abbrev = STATE_NAME_TO_ABBREV[lower];
+    if (abbrev) {
+      normalized.push(abbrev);
+      continue;
+    }
+    
+    // "national"/"nationwide"/"USA" -> all 50 states
+    if (['national', 'nationwide', 'usa', 'us', 'united states', 'all states'].includes(lower)) {
+      console.log(`Expanding "${item}" to all 50 states`);
+      normalized.push(...ALL_US_STATES);
+      continue;
+    }
+    
+    // Skip invalid entries (log warning)
+    console.warn(`Skipping invalid geographic entry: "${item}"`);
+  }
+  
+  // Remove duplicates and return
+  const unique = [...new Set(normalized)];
+  console.log(`Normalized geographic_footprint: ${unique.length} states`);
+  return unique.length > 0 ? unique : null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -523,10 +585,16 @@ Be thorough - extract EVERY state where they have shops or offices, using 2-lett
 
       const geography = await callAIWithTool(
         lovableApiKey,
-        'You are extracting CURRENT physical location information from a company website. Focus on where they have existing shops, offices, or facilities - not where they might expand.',
+        'You are extracting CURRENT physical location information from a company website. Focus on where they have existing shops, offices, or facilities - not where they might expand. Output 2-letter US state abbreviations ONLY for geographic_footprint.',
         geographyPrompt,
         extractGeographyFootprintTool
       );
+      
+      // Normalize geographic_footprint to ensure only valid 2-letter state abbreviations
+      if (geography.geographic_footprint) {
+        geography.geographic_footprint = normalizeGeographicFootprint(geography.geographic_footprint);
+      }
+      
       Object.assign(extractedData, geography);
 
       // Prompt 3b: Platform Acquisition History
