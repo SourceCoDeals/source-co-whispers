@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, Sparkles } from "lucide-react";
+import { normalizeGeography } from "@/lib/normalizeGeography";
 
 export default function NewDeal() {
   const { trackerId } = useParams();
@@ -40,12 +41,15 @@ export default function NewDeal() {
     if (!form.deal_name.trim()) return;
     setIsLoading(true);
     
+    // Normalize geography to standardized 2-letter state abbreviations
+    const normalizedGeography = normalizeGeography(form.geography);
+    
     const { data, error } = await supabase.from("deals").insert({
       tracker_id: trackerId,
       deal_name: form.deal_name,
       company_website: form.company_website || null,
       industry_type: tracker?.industry_name,
-      geography: form.geography.split(",").map((s) => s.trim()).filter(Boolean),
+      geography: normalizedGeography.length > 0 ? normalizedGeography : null,
       revenue: form.revenue ? parseFloat(form.revenue) : null,
       ebitda_percentage: form.ebitda_percentage ? parseFloat(form.ebitda_percentage) : null,
       service_mix: form.service_mix,
@@ -107,7 +111,7 @@ export default function NewDeal() {
         <form onSubmit={handleSubmit} className="space-y-5 bg-card rounded-lg border p-6">
           <div><Label>Deal Name *</Label><Input value={form.deal_name} onChange={(e) => setForm({ ...form, deal_name: e.target.value })} placeholder="e.g., Southeast Roofing Co." className="mt-1" /></div>
           <div><Label>Company Website</Label><Input type="url" value={form.company_website} onChange={(e) => setForm({ ...form, company_website: e.target.value })} placeholder="e.g., https://example.com" className="mt-1" /></div>
-          <div><Label>Geography (comma-separated states)</Label><Input value={form.geography} onChange={(e) => setForm({ ...form, geography: e.target.value })} placeholder="e.g., GA, FL, SC" className="mt-1" /></div>
+          <div><Label>Geography (2-letter state codes, comma-separated)</Label><Input value={form.geography} onChange={(e) => setForm({ ...form, geography: e.target.value })} placeholder="e.g., GA, FL, SC or Georgia, Florida" className="mt-1" /><p className="text-xs text-muted-foreground mt-1">Accepts state names, abbreviations, or "City, State" format</p></div>
           <div className="grid grid-cols-3 gap-4">
             <div><Label>Revenue ($M)</Label><Input type="number" value={form.revenue} onChange={(e) => setForm({ ...form, revenue: e.target.value })} placeholder="e.g., 6.5" className="mt-1" /></div>
             <div><Label>EBITDA (%)</Label><Input type="number" value={form.ebitda_percentage} onChange={(e) => setForm({ ...form, ebitda_percentage: e.target.value })} placeholder="e.g., 23" className="mt-1" /></div>

@@ -5,6 +5,97 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ============== GEOGRAPHY NORMALIZATION ==============
+// All valid US state abbreviations
+const ALL_US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+
+const STATE_NAME_TO_ABBREV: Record<string, string> = {
+  'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
+  'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'district of columbia': 'DC', 'florida': 'FL',
+  'georgia': 'GA', 'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN',
+  'iowa': 'IA', 'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME',
+  'maryland': 'MD', 'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS',
+  'missouri': 'MO', 'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH',
+  'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND',
+  'ohio': 'OH', 'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI',
+  'south carolina': 'SC', 'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT',
+  'vermont': 'VT', 'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY'
+};
+
+const GEO_MISSPELLINGS: Record<string, string> = {
+  'conneticut': 'CT', 'conecticut': 'CT', 'conneticutt': 'CT',
+  'massachusets': 'MA', 'massachussetts': 'MA', 'massachucetts': 'MA',
+  'pennsilvania': 'PA', 'pensylvania': 'PA', 'tennesee': 'TN', 'tennesse': 'TN',
+  'missisipi': 'MS', 'mississipi': 'MS', 'missisippi': 'MS',
+  'louisianna': 'LA', 'lousiana': 'LA', 'virgina': 'VA',
+  'north carolia': 'NC', 'south carolia': 'SC', 'west virgina': 'WV',
+};
+
+function normalizeGeography(items: string[] | null | undefined): string[] | null {
+  if (!items || !Array.isArray(items) || items.length === 0) return null;
+
+  const normalized: string[] = [];
+  
+  for (const item of items) {
+    if (!item || typeof item !== 'string') continue;
+    const trimmed = item.trim();
+    const upper = trimmed.toUpperCase();
+    const lower = trimmed.toLowerCase();
+    
+    // Skip garbage
+    if (trimmed.length < 2 || trimmed.length > 100) continue;
+    if (/find\s*(a\s*)?shop/i.test(trimmed) || /near\s*(you|me)/i.test(trimmed)) continue;
+    if (/^https?:\/\//i.test(trimmed) || /\.(com|net|org)/i.test(trimmed)) continue;
+    
+    // Valid 2-letter abbreviation
+    if (ALL_US_STATES.includes(upper)) { normalized.push(upper); continue; }
+    
+    // Full state name
+    const abbrev = STATE_NAME_TO_ABBREV[lower];
+    if (abbrev) { normalized.push(abbrev); continue; }
+    
+    // Misspellings
+    if (GEO_MISSPELLINGS[lower]) { normalized.push(GEO_MISSPELLINGS[lower]); continue; }
+    
+    // National/Nationwide
+    if (['national', 'nationwide', 'usa', 'us', 'united states', 'all states'].includes(lower)) {
+      normalized.push(...ALL_US_STATES); continue;
+    }
+    
+    // "X states" pattern
+    const statesMatch = lower.match(/^(\d+)\s*states?$/);
+    if (statesMatch && parseInt(statesMatch[1], 10) >= 30) {
+      normalized.push(...ALL_US_STATES); continue;
+    }
+    
+    // "City, State" format
+    const cityStateMatch = trimmed.match(/,\s*([A-Za-z\s]+)$/);
+    if (cityStateMatch) {
+      const statePart = cityStateMatch[1].trim().toLowerCase().replace(/\s*\([^)]*\)\s*/g, '').trim();
+      if (statePart.length === 2 && ALL_US_STATES.includes(statePart.toUpperCase())) {
+        normalized.push(statePart.toUpperCase()); continue;
+      }
+      const stateAbbrev = STATE_NAME_TO_ABBREV[statePart];
+      if (stateAbbrev) { normalized.push(stateAbbrev); continue; }
+    }
+    
+    // Space-separated abbreviations (e.g., "TX OK AR LA")
+    if (/^[A-Z]{2}(\s+[A-Z]{2})+$/i.test(trimmed)) {
+      for (const part of upper.split(/\s+/)) {
+        if (ALL_US_STATES.includes(part)) normalized.push(part);
+      }
+      continue;
+    }
+    
+    console.warn(`[normalizeGeography] Skipping: "${item}"`);
+  }
+  
+  const unique = [...new Set(normalized)];
+  console.log(`[normalizeGeography] Normalized ${items.length} items to ${unique.length} states`);
+  return unique.length > 0 ? unique : null;
+}
+// ============== END GEOGRAPHY NORMALIZATION ==============
+
 // M&A Financial Extraction Tool with conservative extraction logic
 const extractDealInfoTool = {
   type: "function",
@@ -64,7 +155,7 @@ const extractDealInfoTool = {
         geography: {
           type: "array",
           items: { type: "string" },
-          description: "States or regions where the company operates"
+          description: "US states where the company operates. Use 2-letter state abbreviations (e.g., TX, FL, CA) or full state names. Extract from mentions of locations, service areas, or headquarters."
         },
         service_mix: {
           type: "string",
@@ -378,7 +469,9 @@ Deno.serve(async (req) => {
 
     // Standard fields
     if (extractedInfo.company_overview) updateData.company_overview = extractedInfo.company_overview;
-    if (extractedInfo.geography?.length) updateData.geography = extractedInfo.geography;
+    // Normalize geography to standardized 2-letter state abbreviations
+    const normalizedGeo = normalizeGeography(extractedInfo.geography);
+    if (normalizedGeo) updateData.geography = normalizedGeo;
     if (extractedInfo.service_mix) updateData.service_mix = extractedInfo.service_mix;
     if (extractedInfo.owner_goals) updateData.owner_goals = extractedInfo.owner_goals;
     if (extractedInfo.business_model) updateData.business_model = extractedInfo.business_model;
