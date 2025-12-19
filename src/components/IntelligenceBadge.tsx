@@ -1,8 +1,14 @@
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { Brain, CircleDot } from "lucide-react";
+import { Brain, CircleDot, Info } from "lucide-react";
 import type { Buyer, IntelligenceCoverage } from "@/lib/types";
 import { getIntelligenceCoverage, calculateIntelligencePercentage } from "@/lib/types";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface IntelligenceBadgeProps {
   buyer: Buyer;
@@ -22,9 +28,15 @@ export function IntelligenceBadge({ buyer, showPercentage = false, size = "md", 
   };
 
   const labels = {
-    high: "High Intelligence",
-    medium: "Medium Intelligence",
-    low: "No Intelligence",
+    high: "Strong Thesis Data",
+    medium: "Partial Thesis Data",
+    low: "Needs Research",
+  };
+
+  const tooltips = {
+    high: "We have detailed thesis data from calls or transcripts. This buyer's preferences are well understood and scoring is highly accurate.",
+    medium: "Some thesis data available. Consider adding more call transcripts to improve scoring accuracy.",
+    low: "No thesis data yet. Add a call transcript to understand this buyer's investment preferences and improve match quality.",
   };
 
   const icons = {
@@ -39,13 +51,22 @@ export function IntelligenceBadge({ buyer, showPercentage = false, size = "md", 
   };
 
   return (
-    <Badge 
-      variant={variants[coverage]} 
-      className={cn("gap-1", sizeClasses[size], className)}
-    >
-      <span>{icons[coverage]}</span>
-      {showPercentage ? `${percentage}%` : labels[coverage]}
-    </Badge>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge 
+            variant={variants[coverage]} 
+            className={cn("gap-1 cursor-help", sizeClasses[size], className)}
+          >
+            <span>{icons[coverage]}</span>
+            {showPercentage ? `${percentage}%` : labels[coverage]}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs">
+          <p className="text-sm">{tooltips[coverage]}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
