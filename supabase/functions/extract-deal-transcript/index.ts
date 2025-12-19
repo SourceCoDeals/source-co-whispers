@@ -5,12 +5,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Tool for extracting deal information from transcript
+// M&A Financial Extraction Tool with conservative extraction logic
 const extractDealInfoTool = {
   type: "function",
   function: {
     name: "extract_deal_info",
-    description: "Extract company and deal information from a sales call transcript",
+    description: "Extract company, financial, and deal information from a sales call transcript with a buy-side M&A advisory firm",
     parameters: {
       type: "object",
       properties: {
@@ -18,13 +18,48 @@ const extractDealInfoTool = {
           type: "string",
           description: "Executive summary of the company - what they do, their market position, and key strengths"
         },
+        // Revenue extraction with confidence metadata
         revenue: {
-          type: "number",
-          description: "Annual revenue in millions (e.g., 6.5 for $6.5M)"
+          type: "object",
+          properties: {
+            value: { type: "number", description: "Annual revenue in millions (midpoint if range). E.g., 6.5 for $6.5M" },
+            is_range: { type: "boolean", description: "True if owner gave a range instead of exact figure" },
+            range_low: { type: "number", description: "Low end of range in millions if applicable" },
+            range_high: { type: "number", description: "High end of range in millions if applicable" },
+            is_inferred: { type: "boolean", description: "True if revenue was calculated from margin and profit rather than stated directly" },
+            confidence: { type: "string", enum: ["high", "medium", "low"], description: "High: direct statement. Medium: calculated from clear data. Low: ambiguous or unclear." },
+            source_quote: { type: "string", description: "Exact quote from owner supporting the revenue figure" },
+            inference_method: { type: "string", description: "If inferred, explain how (e.g., 'Calculated from $800k profit at 10% margins')" }
+          },
+          required: ["confidence"],
+          description: "Revenue data with confidence level and source"
         },
-        ebitda_percentage: {
-          type: "number",
-          description: "EBITDA margin as a percentage (e.g., 23 for 23%)"
+        // EBITDA extraction with confidence metadata
+        ebitda: {
+          type: "object",
+          properties: {
+            margin_percentage: { type: "number", description: "EBITDA margin as percentage (e.g., 23 for 23%)" },
+            amount: { type: "number", description: "Actual EBITDA in millions if calculable" },
+            is_explicit: { type: "boolean", description: "True if owner used terms like EBITDA, operating EBITDA, or earnings before interest/taxes/depreciation" },
+            is_inferred: { type: "boolean", description: "True if inferred from operating profit, net profit before taxes, cash flow, owner earnings, or margins" },
+            confidence: { type: "string", enum: ["high", "medium", "low"], description: "High: explicit EBITDA or clear pre-tax/pre-debt profit. Medium: owner income/cash flow discussed. Low: ambiguous or partially personal." },
+            source_quote: { type: "string", description: "Exact quote from owner supporting the EBITDA figure" },
+            inference_method: { type: "string", description: "If inferred, explain the proxy used (e.g., 'Inferred from operating profit statement')" },
+            assumptions: { type: "array", items: { type: "string" }, description: "Any assumptions made during inference" },
+            do_not_use_reason: { type: "string", description: "If EBITDA cannot be inferred (post-tax income, personal distributions, includes debt service), explain why" }
+          },
+          required: ["confidence"],
+          description: "EBITDA data with confidence level and source"
+        },
+        // Follow-up questions for unclear financials
+        financial_followup_questions: {
+          type: "array",
+          items: { type: "string" },
+          description: "Specific questions to ask in follow-up call to clarify financial figures"
+        },
+        financial_notes: {
+          type: "string",
+          description: "Extraction notes, assumptions, and any flags for the deal team"
         },
         geography: {
           type: "array",
@@ -74,6 +109,88 @@ const extractDealInfoTool = {
   }
 };
 
+const MA_ANALYST_SYSTEM_PROMPT = `You are an AI agent supporting a buy-side M&A firm. Your job is to extract revenue and EBITDA from phone call transcripts with business owners. These calls often reference financial performance without using formal accounting terms, so you must interpret owner language carefully and conservatively.
+
+Your output will be used for deal screening and buyer matching. Accuracy matters more than completeness.
+
+## PRIMARY GOAL
+From each call transcript, determine:
+- Revenue (explicit or inferred)
+- EBITDA (explicit or inferred)
+- EBITDA margin (if possible)
+- How confident the data is and what it is based on
+
+If something is unclear, you must flag it rather than guessing.
+
+## REVENUE EXTRACTION
+- If the owner states revenue directly (e.g., "we do about $7 million a year"), record it as revenue.
+- If they give a range, record the midpoint and note that it is a range.
+- If revenue is not stated but can be calculated from margin and profit (e.g., "we make $800k at 10% margins"), you may infer revenue and clearly label it as inferred.
+- Always capture the exact quote that supports the number.
+
+## EBITDA EXTRACTION
+
+### Explicit EBITDA
+If the owner uses terms like:
+- EBITDA
+- Earnings before interest, taxes, depreciation
+- Operating EBITDA
+
+Record the figure as explicit EBITDA.
+
+### Inferred EBITDA (Allowed)
+If EBITDA is not mentioned, you may infer it only when the transcript supports a reasonable proxy.
+
+You may infer EBITDA when the owner refers to:
+- Operating profit
+- Net profit before taxes and debt
+- Cash flow that excludes financing and taxes
+- Owner earnings in an owner-operated business
+- Margins paired with revenue ("we run at about 15% margins")
+
+When inferring EBITDA:
+- Clearly explain how you arrived at the number
+- State any assumptions
+- Assign a confidence level (high, medium, or low)
+- Default to the lower end if there is uncertainty
+
+### Inference Confidence Levels
+- **High confidence**: Revenue and margin are both stated, or profit is clearly pre-tax and pre-debt
+- **Medium confidence**: Owner income or cash flow is discussed without full clarity
+- **Low confidence**: Statements are ambiguous or partially personal
+
+If confidence is low, do not treat the number as firm—flag it for follow-up.
+
+### Do NOT Infer EBITDA From:
+- Post-tax income
+- Personal income after distributions
+- Profit figures that clearly include debt service
+- Statements like "what I take home after everything"
+
+In these cases, note that EBITDA is unclear and recommend clarification questions.
+
+## CONSERVATIVE BIAS RULE
+If there is any ambiguity:
+- Choose the more conservative interpretation
+- Lower the confidence level
+- Flag the issue for follow-up
+
+Never fabricate numbers or assume financial definitions that are not supported by the transcript.
+
+## OUTPUT REQUIREMENTS
+For every transcript, you must clearly communicate:
+- The financial figures you extracted or inferred
+- Whether each number is explicit or inferred
+- The exact language used by the owner
+- Your confidence level
+- Any questions that should be asked in a follow-up call
+
+## FINAL PRINCIPLE
+Your role is not to "fill in the blanks."
+Your role is to translate owner language into investor-usable financial signals without overstating certainty.
+
+When in doubt, flag—not guess.`;
+
 async function scrapeTranscriptUrl(firecrawlApiKey: string, url: string): Promise<string> {
   console.log('Scraping transcript URL:', url);
   
@@ -101,20 +218,21 @@ async function scrapeTranscriptUrl(firecrawlApiKey: string, url: string): Promis
 }
 
 async function extractDealInfo(lovableApiKey: string, transcriptContent: string): Promise<any> {
-  const systemPrompt = `You are extracting company and deal information from a sales call transcript between SourceCo (an M&A advisory firm) and a company owner looking to sell their business.
-
-The transcript contains information about the seller's company, their goals, and relevant deal details.
-
-Extract all available information accurately. Only include fields where you have clear evidence from the transcript. Do not guess or make up information.`;
-
   const userPrompt = `Analyze the following call transcript and extract all relevant deal information.
+
+Apply the M&A financial extraction framework strictly:
+1. Extract revenue with confidence level and source quote
+2. Extract EBITDA only if explicit or if a valid proxy exists - otherwise flag for follow-up
+3. Be conservative - when in doubt, lower confidence and flag
+4. Generate specific follow-up questions for any unclear financial data
 
 Transcript Content:
 ${transcriptContent}
 
-Extract:
+Extract all available information including:
 - Company overview and what they do
-- Revenue and EBITDA if mentioned
+- Revenue with confidence level, source quote, and inference method if applicable
+- EBITDA with confidence level, source quote, and inference method if applicable
 - Geographic footprint
 - Services/products offered
 - Owner's goals for the sale
@@ -123,7 +241,10 @@ Extract:
 - Headquarters location
 - Ownership structure
 - Any special requirements for the deal
-- Primary contact name`;
+- Primary contact name
+- Follow-up questions for unclear financial data`;
+
+  console.log('Calling AI with M&A extraction prompt...');
 
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
@@ -134,7 +255,7 @@ Extract:
     body: JSON.stringify({
       model: 'google/gemini-2.5-flash',
       messages: [
-        { role: 'system', content: systemPrompt },
+        { role: 'system', content: MA_ANALYST_SYSTEM_PROMPT },
         { role: 'user', content: userPrompt }
       ],
       tools: [extractDealInfoTool],
@@ -152,12 +273,16 @@ Extract:
   const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
   
   if (!toolCall) {
+    console.log('No tool call in response');
     return {};
   }
 
   try {
-    return JSON.parse(toolCall.function.arguments);
-  } catch {
+    const result = JSON.parse(toolCall.function.arguments);
+    console.log('Extracted deal info:', JSON.stringify(result, null, 2));
+    return result;
+  } catch (e) {
+    console.error('Failed to parse tool call arguments:', e);
     return {};
   }
 }
@@ -242,18 +367,17 @@ Deno.serve(async (req) => {
 
     console.log('Transcript scraped, length:', transcriptContent.length);
 
-    // Extract deal info using AI
+    // Extract deal info using AI with M&A framework
     const extractedInfo = await extractDealInfo(lovableApiKey, transcriptContent);
-    console.log('Extracted deal info:', extractedInfo);
+    console.log('Extracted deal info with financial metadata');
 
-    // Build update object - only include fields that were extracted
+    // Build update object with enhanced financial metadata
     const updateData: Record<string, any> = {
       updated_at: new Date().toISOString()
     };
 
+    // Standard fields
     if (extractedInfo.company_overview) updateData.company_overview = extractedInfo.company_overview;
-    if (extractedInfo.revenue) updateData.revenue = extractedInfo.revenue;
-    if (extractedInfo.ebitda_percentage) updateData.ebitda_percentage = extractedInfo.ebitda_percentage;
     if (extractedInfo.geography?.length) updateData.geography = extractedInfo.geography;
     if (extractedInfo.service_mix) updateData.service_mix = extractedInfo.service_mix;
     if (extractedInfo.owner_goals) updateData.owner_goals = extractedInfo.owner_goals;
@@ -264,6 +388,31 @@ Deno.serve(async (req) => {
     if (extractedInfo.ownership_structure) updateData.ownership_structure = extractedInfo.ownership_structure;
     if (extractedInfo.special_requirements) updateData.special_requirements = extractedInfo.special_requirements;
     if (extractedInfo.contact_name) updateData.contact_name = extractedInfo.contact_name;
+
+    // Enhanced revenue extraction with metadata
+    if (extractedInfo.revenue) {
+      const rev = extractedInfo.revenue;
+      if (rev.value) updateData.revenue = rev.value;
+      if (rev.confidence) updateData.revenue_confidence = rev.confidence;
+      if (rev.is_inferred !== undefined) updateData.revenue_is_inferred = rev.is_inferred;
+      if (rev.source_quote) updateData.revenue_source_quote = rev.source_quote;
+    }
+
+    // Enhanced EBITDA extraction with metadata
+    if (extractedInfo.ebitda) {
+      const ebitda = extractedInfo.ebitda;
+      if (ebitda.margin_percentage) updateData.ebitda_percentage = ebitda.margin_percentage;
+      if (ebitda.amount) updateData.ebitda_amount = ebitda.amount;
+      if (ebitda.confidence) updateData.ebitda_confidence = ebitda.confidence;
+      if (ebitda.is_inferred !== undefined) updateData.ebitda_is_inferred = ebitda.is_inferred;
+      if (ebitda.source_quote) updateData.ebitda_source_quote = ebitda.source_quote;
+    }
+
+    // Financial notes and follow-up questions
+    if (extractedInfo.financial_notes) updateData.financial_notes = extractedInfo.financial_notes;
+    if (extractedInfo.financial_followup_questions?.length) {
+      updateData.financial_followup_questions = extractedInfo.financial_followup_questions;
+    }
 
     // Update the deal
     const { error: updateError } = await supabase
@@ -279,13 +428,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('Deal updated successfully');
+    console.log('Deal updated successfully with enhanced financial metadata');
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         extractedFields: Object.keys(updateData).filter(k => k !== 'updated_at'),
-        data: extractedInfo
+        data: extractedInfo,
+        hasFollowupQuestions: (extractedInfo.financial_followup_questions?.length || 0) > 0
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
