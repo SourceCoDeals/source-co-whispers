@@ -1,25 +1,25 @@
 project_id = "gsvsyqjgtjuzrgxqkvxw"
 
 [functions.map-csv-columns]
-verify_jwt = false
+verify_jwt = true
 
 [functions.firecrawl-scrape]
-verify_jwt = false
+verify_jwt = true
 
 [functions.enrich-buyer]
-verify_jwt = false
+verify_jwt = true
 
 [functions.extract-transcript]
-verify_jwt = false
+verify_jwt = true
 
 [functions.extract-deal-transcript]
-verify_jwt = false
+verify_jwt = true
 
 [functions.score-buyer-geography]
-verify_jwt = false
+verify_jwt = true
 
 [functions.parse-fit-criteria]
-verify_jwt = false
+verify_jwt = true
 
 [functions.enrich-deal]
-verify_jwt = false
+verify_jwt = true

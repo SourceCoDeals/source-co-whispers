@@ -5,6 +5,39 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+async function authenticateUser(req: Request): Promise<{ user: any; error: Response | null }> {
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader) {
+    return {
+      user: null,
+      error: new Response(
+        JSON.stringify({ success: false, error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    };
+  }
+
+  const supabaseClient = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_ANON_KEY')!,
+    { global: { headers: { Authorization: authHeader } } }
+  );
+
+  const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+  if (authError || !user) {
+    return {
+      user: null,
+      error: new Response(
+        JSON.stringify({ success: false, error: 'Invalid or expired token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    };
+  }
+
+  console.log('Authenticated user:', user.id);
+  return { user, error: null };
+}
+
 // Tool definitions for structured extraction - 6 prompts total
 
 // Prompt 1: Business Overview (Platform Website)
@@ -537,6 +570,10 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Authenticate user
+    const { user, error: authResponse } = await authenticateUser(req);
+    if (authResponse) return authResponse;
+
     const { buyerId } = await req.json();
 
     if (!buyerId) {
