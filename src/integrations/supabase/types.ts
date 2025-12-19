@@ -564,11 +564,14 @@ export type Database = {
           archived: boolean
           created_at: string
           fit_criteria: string | null
+          geography_criteria: Json | null
           geography_weight: number
           id: string
           industry_name: string
           owner_goals_weight: number
+          service_criteria: Json | null
           service_mix_weight: number
+          size_criteria: Json | null
           size_weight: number
           updated_at: string
           user_id: string
@@ -577,11 +580,14 @@ export type Database = {
           archived?: boolean
           created_at?: string
           fit_criteria?: string | null
+          geography_criteria?: Json | null
           geography_weight?: number
           id?: string
           industry_name: string
           owner_goals_weight?: number
+          service_criteria?: Json | null
           service_mix_weight?: number
+          size_criteria?: Json | null
           size_weight?: number
           updated_at?: string
           user_id: string
@@ -590,11 +596,14 @@ export type Database = {
           archived?: boolean
           created_at?: string
           fit_criteria?: string | null
+          geography_criteria?: Json | null
           geography_weight?: number
           id?: string
           industry_name?: string
           owner_goals_weight?: number
+          service_criteria?: Json | null
           service_mix_weight?: number
+          size_criteria?: Json | null
           size_weight?: number
           updated_at?: string
           user_id?: string

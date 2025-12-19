@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.score-buyer-geography]
 verify_jwt = false
+
+[functions.parse-fit-criteria]
+verify_jwt = false
