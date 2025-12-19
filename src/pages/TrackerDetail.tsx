@@ -73,6 +73,13 @@ export default function TrackerDetail() {
     loadData();
   };
 
+  const deleteDeal = async (dealId: string, dealName: string) => {
+    const { error } = await supabase.from("deals").delete().eq("id", dealId);
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Deal deleted", description: `${dealName} has been removed` });
+    loadData();
+  };
+
   const enrichBuyer = async (buyerId: string, buyerName: string) => {
     setEnrichingBuyers(prev => new Set(prev).add(buyerId));
     
@@ -419,13 +426,43 @@ export default function TrackerDetail() {
               {deals.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">No deals yet. List a deal to match it with buyers.</div>
               ) : deals.map((deal) => (
-                <Link key={deal.id} to={`/deals/${deal.id}`} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
-                  <div>
+                <div key={deal.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+                  <Link to={`/deals/${deal.id}`} className="flex-1">
                     <p className="font-medium">{deal.deal_name}</p>
                     <p className="text-sm text-muted-foreground">{deal.geography?.join(", ")} · ${deal.revenue}M · {deal.ebitda_percentage}% EBITDA</p>
+                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Deal?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete "{deal.deal_name}" and all related data. This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteDeal(deal.id, deal.deal_name)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
-                  <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
-                </Link>
+                </div>
               ))}
             </div>
           </TabsContent>
