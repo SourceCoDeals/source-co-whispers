@@ -89,7 +89,7 @@ const extractGeographyFootprintTool = {
   type: "function",
   function: {
     name: "extract_geography_footprint",
-    description: "Extract CURRENT geographic locations where the company has physical locations or operations",
+    description: "Extract CURRENT geographic locations where the company has physical locations or operations. IMPORTANT: geographic_footprint MUST contain ONLY 2-letter US state abbreviations.",
     parameters: {
       type: "object",
       properties: {
@@ -99,7 +99,7 @@ const extractGeographyFootprintTool = {
         },
         hq_state: {
           type: "string",
-          description: "Headquarters state"
+          description: "Headquarters state as 2-letter abbreviation (e.g., 'TX', 'CA')"
         },
         hq_country: {
           type: "string",
@@ -112,7 +112,7 @@ const extractGeographyFootprintTool = {
         geographic_footprint: {
           type: "array",
           items: { type: "string" },
-          description: "ALL states/cities where the company currently has physical shop locations, offices, or operations. List each location separately."
+          description: "US 2-letter state abbreviations ONLY (e.g., 'TX', 'CA', 'NY', 'FL') for each state where the company has physical locations. MUST be valid 2-letter state codes. Do NOT use full state names, 'national', 'USA', or region names."
         },
         service_regions: {
           type: "array",
@@ -500,19 +500,26 @@ WHAT TO DO: Identify where the company CURRENTLY has physical locations (shops, 
 Look for:
 - Where is the company headquartered? (city, state, country)
 - What locations or branches do they currently have? Look for "Locations", "Our Shops", "Service Areas", "Contact Us" pages
-- List EVERY state and city where they mention having a physical presence
+- List EVERY state where they mention having a physical presence
 - This is about CURRENT locations, not where they want to expand
+
+CRITICAL: geographic_footprint MUST contain ONLY 2-letter US state abbreviations.
+- ❌ WRONG: "Texas", "national", "USA", "41 states", "Southwest", "Nationwide"
+- ✅ RIGHT: "TX", "CA", "NY", "FL", "MS", "AL"
+
+If they say "national" or "nationwide", you MUST list all 50 state abbreviations.
+If they say a number like "41 states", try to identify which states from other context, or list all 50 if unclear.
 
 EXAMPLE OUTPUT for a collision repair company:
 - hq_city: "Dallas"
-- hq_state: "Texas"
+- hq_state: "TX"
 - hq_country: "USA"
 - hq_region: "Southwest"
-- geographic_footprint: ["Texas", "Oklahoma", "Louisiana", "Arkansas", "Arizona"]
+- geographic_footprint: ["TX", "OK", "LA", "AR", "AZ"]
 - other_office_locations: ["Houston, TX", "Austin, TX", "San Antonio, TX", "Oklahoma City, OK", "Phoenix, AZ"]
 - service_regions: ["Southwest United States", "South Central United States"]
 
-Be thorough - extract EVERY location mentioned on the website where they have shops or offices.`;
+Be thorough - extract EVERY state where they have shops or offices, using 2-letter abbreviations ONLY.`;
 
       const geography = await callAIWithTool(
         lovableApiKey,
