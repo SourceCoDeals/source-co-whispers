@@ -45,6 +45,29 @@ export default function NewTracker() {
       setIsLoading(false); 
       return; 
     }
+
+    // Parse and save structured criteria if fit_criteria was provided
+    if (fitCriteria.trim()) {
+      try {
+        const { data: parsedData } = await supabase.functions.invoke('parse-fit-criteria', {
+          body: { fit_criteria: fitCriteria.trim() }
+        });
+
+        if (parsedData?.success) {
+          await supabase
+            .from("industry_trackers")
+            .update({
+              size_criteria: parsedData.size_criteria,
+              service_criteria: parsedData.service_criteria,
+              geography_criteria: parsedData.geography_criteria,
+            })
+            .eq("id", data.id);
+        }
+      } catch {
+        // Silently continue - structured criteria is optional
+      }
+    }
+
     toast({ title: "Success", description: `${name} buyer universe created!` });
     navigate(`/trackers/${data.id}`);
   };
