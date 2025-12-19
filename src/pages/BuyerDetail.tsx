@@ -132,7 +132,16 @@ export default function BuyerDetail() {
     if (!file) return;
     setIsUploading(true);
     
-    const fileName = `${id}/${Date.now()}-${file.name}`;
+    // Get current user for storage folder isolation
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast({ title: "Upload failed", description: "You must be logged in to upload files", variant: "destructive" });
+      setIsUploading(false);
+      return;
+    }
+    
+    // Use user ID as first folder for RLS storage policies
+    const fileName = `${user.id}/${id}/${Date.now()}-${file.name}`;
     const { error: uploadError } = await supabase.storage.from("call-transcripts").upload(fileName, file);
     
     if (uploadError) {
