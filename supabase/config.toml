@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.extract-transcript]
 verify_jwt = false
+
+[functions.extract-deal-transcript]
+verify_jwt = false

@@ -4,15 +4,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, ArrowLeft, Users, ExternalLink, FileText, Calendar, Building2, DollarSign, MapPin, Target, User, Phone, Mail, Briefcase, Clock, Hash, Linkedin } from "lucide-react";
+import { Loader2, ArrowLeft, Users, ExternalLink, FileText, Calendar, Building2, DollarSign, MapPin, Target, User, Phone, Mail, Briefcase, Clock, Hash, Linkedin, Sparkles } from "lucide-react";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 export default function DealDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [deal, setDeal] = useState<any>(null);
   const [tracker, setTracker] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isExtracting, setIsExtracting] = useState(false);
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -24,6 +27,36 @@ export default function DealDetail() {
       setTracker(trackerData);
     }
     setIsLoading(false);
+  };
+
+  const handleExtractTranscript = async () => {
+    if (!deal?.transcript_link) {
+      toast({ title: "No transcript", description: "This deal has no transcript link.", variant: "destructive" });
+      return;
+    }
+    
+    setIsExtracting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('extract-deal-transcript', {
+        body: { dealId: id }
+      });
+      
+      if (error) {
+        toast({ title: "Extraction failed", description: error.message, variant: "destructive" });
+      } else if (data?.success) {
+        toast({ 
+          title: "Extraction complete", 
+          description: `Updated ${data.extractedFields?.length || 0} fields from transcript.` 
+        });
+        await loadData(); // Refresh the deal data
+      } else {
+        toast({ title: "Extraction failed", description: data?.error || "Unknown error", variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Extraction failed", description: "Failed to extract transcript", variant: "destructive" });
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   if (isLoading) return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
@@ -53,14 +86,28 @@ export default function DealDetail() {
           </div>
           <div className="flex flex-wrap gap-3">
             {deal.transcript_link && (
-              <a 
-                href={deal.transcript_link.startsWith('http') ? deal.transcript_link : `https://${deal.transcript_link}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-primary hover:underline border rounded-md px-3 py-2"
-              >
-                <FileText className="w-4 h-4" /> View Call Transcript
-              </a>
+              <>
+                <a 
+                  href={deal.transcript_link.startsWith('http') ? deal.transcript_link : `https://${deal.transcript_link}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm text-primary hover:underline border rounded-md px-3 py-2"
+                >
+                  <FileText className="w-4 h-4" /> View Call Transcript
+                </a>
+                <Button 
+                  variant="outline" 
+                  onClick={handleExtractTranscript} 
+                  disabled={isExtracting}
+                >
+                  {isExtracting ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-4 h-4 mr-2" />
+                  )}
+                  {isExtracting ? "Extracting..." : "Extract from Transcript"}
+                </Button>
+              </>
             )}
             <Button onClick={() => navigate(`/deals/${id}/matching`)}>
               <Users className="w-4 h-4 mr-2" />View Buyer Matches
