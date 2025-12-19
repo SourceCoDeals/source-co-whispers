@@ -443,8 +443,14 @@ export type Database = {
           contact_phone: string | null
           created_at: string
           deal_name: string
+          ebitda_amount: number | null
+          ebitda_confidence: string | null
+          ebitda_is_inferred: boolean | null
           ebitda_percentage: number | null
+          ebitda_source_quote: string | null
           employee_count: number | null
+          financial_followup_questions: string[] | null
+          financial_notes: string | null
           founded_year: number | null
           geography: string[] | null
           headquarters: string | null
@@ -453,6 +459,9 @@ export type Database = {
           owner_goals: string | null
           ownership_structure: string | null
           revenue: number | null
+          revenue_confidence: string | null
+          revenue_is_inferred: boolean | null
+          revenue_source_quote: string | null
           service_mix: string | null
           special_requirements: string | null
           status: string | null
@@ -471,8 +480,14 @@ export type Database = {
           contact_phone?: string | null
           created_at?: string
           deal_name: string
+          ebitda_amount?: number | null
+          ebitda_confidence?: string | null
+          ebitda_is_inferred?: boolean | null
           ebitda_percentage?: number | null
+          ebitda_source_quote?: string | null
           employee_count?: number | null
+          financial_followup_questions?: string[] | null
+          financial_notes?: string | null
           founded_year?: number | null
           geography?: string[] | null
           headquarters?: string | null
@@ -481,6 +496,9 @@ export type Database = {
           owner_goals?: string | null
           ownership_structure?: string | null
           revenue?: number | null
+          revenue_confidence?: string | null
+          revenue_is_inferred?: boolean | null
+          revenue_source_quote?: string | null
           service_mix?: string | null
           special_requirements?: string | null
           status?: string | null
@@ -499,8 +517,14 @@ export type Database = {
           contact_phone?: string | null
           created_at?: string
           deal_name?: string
+          ebitda_amount?: number | null
+          ebitda_confidence?: string | null
+          ebitda_is_inferred?: boolean | null
           ebitda_percentage?: number | null
+          ebitda_source_quote?: string | null
           employee_count?: number | null
+          financial_followup_questions?: string[] | null
+          financial_notes?: string | null
           founded_year?: number | null
           geography?: string[] | null
           headquarters?: string | null
@@ -509,6 +533,9 @@ export type Database = {
           owner_goals?: string | null
           ownership_structure?: string | null
           revenue?: number | null
+          revenue_confidence?: string | null
+          revenue_is_inferred?: boolean | null
+          revenue_source_quote?: string | null
           service_mix?: string | null
           special_requirements?: string | null
           status?: string | null
