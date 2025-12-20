@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { 
   Building2, 
@@ -9,11 +9,14 @@ import {
   ChevronRight,
   Menu,
   X,
-  Plus
+  Plus,
+  LogIn,
+  LogOut
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-
+import { supabase } from "@/integrations/supabase/client";
+import { User } from "@supabase/supabase-js";
 interface AppLayoutProps {
   children: ReactNode;
 }
@@ -28,8 +31,28 @@ const navigation = [
 export function AppLayout({ children }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setUser(session?.user ?? null);
+      }
+    );
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/auth");
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -61,7 +84,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       )}>
         <nav className="flex flex-col h-full p-4">
           <div className="space-y-1">
-            {navigation.map((item) => {
+          {navigation.map((item) => {
               const isActive = location.pathname === item.href || 
                 (item.href !== "/" && location.pathname.startsWith(item.href));
               return (
@@ -81,6 +104,40 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </Link>
               );
             })}
+          </div>
+
+          {/* Mobile Auth Section */}
+          <div className="mt-auto pt-4 border-t border-sidebar-border">
+            {user ? (
+              <div className="space-y-2">
+                <p className="text-xs text-sidebar-foreground/70 truncate px-3">
+                  {user.email}
+                </p>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent"
+                  onClick={() => {
+                    handleSignOut();
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent"
+                onClick={() => {
+                  navigate("/auth");
+                  setMobileMenuOpen(false);
+                }}
+              >
+                <LogIn className="w-4 h-4" />
+                Sign In
+              </Button>
+            )}
           </div>
         </nav>
       </aside>
@@ -149,8 +206,42 @@ export function AppLayout({ children }: AppLayoutProps) {
           )}
         </nav>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-sidebar-border">
+        {/* Footer with Auth */}
+        <div className="p-4 border-t border-sidebar-border space-y-3">
+          {user ? (
+            <>
+              {sidebarOpen && (
+                <p className="text-xs text-sidebar-foreground/70 truncate">
+                  {user.email}
+                </p>
+              )}
+              <Button
+                variant="ghost"
+                className={cn(
+                  "w-full gap-2 text-sidebar-foreground hover:bg-sidebar-accent",
+                  sidebarOpen ? "justify-start" : "justify-center"
+                )}
+                onClick={handleSignOut}
+                title={!sidebarOpen ? "Sign Out" : undefined}
+              >
+                <LogOut className="w-4 h-4" />
+                {sidebarOpen && "Sign Out"}
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="ghost"
+              className={cn(
+                "w-full gap-2 text-sidebar-foreground hover:bg-sidebar-accent",
+                sidebarOpen ? "justify-start" : "justify-center"
+              )}
+              onClick={() => navigate("/auth")}
+              title={!sidebarOpen ? "Sign In" : undefined}
+            >
+              <LogIn className="w-4 h-4" />
+              {sidebarOpen && "Sign In"}
+            </Button>
+          )}
           <p className={cn(
             "text-xs text-sidebar-foreground/50",
             !sidebarOpen && "text-center"
