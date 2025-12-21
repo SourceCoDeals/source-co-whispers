@@ -23,12 +23,16 @@ export type Database = {
           email_confidence: string | null
           fee_agreement_status: string | null
           id: string
+          is_deal_team: boolean | null
           last_contacted_date: string | null
           linkedin_url: string | null
           name: string
           phone: string | null
           priority_level: number | null
+          role_category: string | null
           salesforce_id: string | null
+          source: string | null
+          source_url: string | null
           title: string | null
         }
         Insert: {
@@ -39,12 +43,16 @@ export type Database = {
           email_confidence?: string | null
           fee_agreement_status?: string | null
           id?: string
+          is_deal_team?: boolean | null
           last_contacted_date?: string | null
           linkedin_url?: string | null
           name: string
           phone?: string | null
           priority_level?: number | null
+          role_category?: string | null
           salesforce_id?: string | null
+          source?: string | null
+          source_url?: string | null
           title?: string | null
         }
         Update: {
@@ -55,12 +63,16 @@ export type Database = {
           email_confidence?: string | null
           fee_agreement_status?: string | null
           id?: string
+          is_deal_team?: boolean | null
           last_contacted_date?: string | null
           linkedin_url?: string | null
           name?: string
           phone?: string | null
           priority_level?: number | null
+          role_category?: string | null
           salesforce_id?: string | null
+          source?: string | null
+          source_url?: string | null
           title?: string | null
         }
         Relationships: [

@@ -156,12 +156,38 @@ export default function DealMatching() {
 
   const approveBuyers = async () => {
     if (selected.size === 0) return;
-    const updates = Array.from(selected).map(buyerId => 
+    const selectedArray = Array.from(selected);
+    
+    // Update scores to mark as approved
+    const updates = selectedArray.map(buyerId => 
       supabase.from("buyer_deal_scores").update({ selected_for_outreach: true }).eq("deal_id", id).eq("buyer_id", buyerId)
     );
     await Promise.all(updates);
     setScores(scores.map(s => selected.has(s.buyer_id) ? { ...s, selected_for_outreach: true } : s));
-    toast({ title: `${selected.size} buyers approved as fit` });
+    
+    // Trigger contact discovery for each approved buyer
+    toast({ title: `${selected.size} buyers approved. Finding contacts...` });
+    
+    for (const buyerId of selectedArray) {
+      const buyer = buyers.find(b => b.id === buyerId);
+      if (buyer) {
+        supabase.functions.invoke('find-buyer-contacts', {
+          body: { 
+            buyerId, 
+            platformCompanyName: buyer.platform_company_name,
+            dealId: id 
+          }
+        }).then(({ data, error }) => {
+          if (error) {
+            console.error(`Contact discovery failed for ${buyer.platform_company_name || buyer.pe_firm_name}:`, error);
+          } else if (data?.success) {
+            console.log(`Found ${data.contacts_inserted} contacts for ${buyer.platform_company_name || buyer.pe_firm_name}`);
+            // Reload contacts
+            loadData();
+          }
+        });
+      }
+    }
   };
 
   const getHQ = (buyer: any) => {
@@ -226,19 +252,7 @@ export default function DealMatching() {
     return getBuyerContacts(buyerId).filter(c => c.company_type === companyType);
   };
 
-  // Mock contacts for demo purposes
-  const getMockContacts = (companyType: string) => {
-    if (companyType === "PE Firm") {
-      return [
-        { id: 'mock-1', name: 'Sarah Mitchell', title: 'Managing Director', email: 'smitchell@pegroup.com', phone: '(312) 555-0147', linkedin_url: 'https://linkedin.com/in/sarah-mitchell' },
-        { id: 'mock-2', name: 'David Chen', title: 'Vice President', email: 'dchen@pegroup.com', phone: '(312) 555-0198', linkedin_url: 'https://linkedin.com/in/david-chen' },
-      ];
-    }
-    return [
-      { id: 'mock-3', name: 'Michael Torres', title: 'CEO', email: 'mtorres@platformco.com', phone: '(847) 555-0234', linkedin_url: 'https://linkedin.com/in/michael-torres' },
-      { id: 'mock-4', name: 'Jennifer Park', title: 'VP Business Development', email: 'jpark@platformco.com', phone: '(847) 555-0312', linkedin_url: 'https://linkedin.com/in/jennifer-park' },
-    ];
-  };
+  // Removed mock contacts - now using real contact discovery
 
   const generateEmailBody = (buyer: any, contactName: string) => {
     const subject = encodeURIComponent(`Introduction: ${deal?.deal_name || 'Acquisition Opportunity'}`);
@@ -260,9 +274,38 @@ export default function DealMatching() {
 
   const renderContactSection = (buyer: any, companyType: string, companyName: string) => {
     const typeContacts = getContactsByType(buyer.id, companyType);
-    // Use mock contacts if no real contacts exist
-    const displayContacts = typeContacts.length > 0 ? typeContacts : getMockContacts(companyType);
-    const isMockData = typeContacts.length === 0;
+    // Sort by priority_level and is_deal_team
+    const sortedContacts = [...typeContacts].sort((a, b) => {
+      if (a.is_deal_team && !b.is_deal_team) return -1;
+      if (!a.is_deal_team && b.is_deal_team) return 1;
+      return (a.priority_level || 99) - (b.priority_level || 99);
+    });
+    
+    const hasContacts = sortedContacts.length > 0;
+    const hasDealTeam = sortedContacts.some(c => c.is_deal_team);
+    
+    const handleFindContacts = async (e: React.MouseEvent) => {
+      e.stopPropagation();
+      toast({ title: "Finding contacts...", description: `Scanning ${companyName} website` });
+      
+      const { data, error } = await supabase.functions.invoke('find-buyer-contacts', {
+        body: { 
+          buyerId: buyer.id, 
+          platformCompanyName: buyer.platform_company_name,
+          dealId: id 
+        }
+      });
+      
+      if (error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      } else if (data?.success) {
+        toast({ 
+          title: "Contacts found", 
+          description: `Added ${data.contacts_inserted} new contacts from ${companyName}`
+        });
+        loadData();
+      }
+    };
     
     return (
       <div className="space-y-2">
@@ -270,30 +313,58 @@ export default function DealMatching() {
           <span className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
             <Building2 className="w-3.5 h-3.5" />
             {companyName}
-            {isMockData && <Badge variant="outline" className="text-[10px] h-4 ml-1">Demo Data</Badge>}
+            {hasDealTeam && (
+              <Badge className="text-[10px] h-4 ml-1 bg-green-500/20 text-green-600 border-green-500/30">
+                Deal Team Found
+              </Badge>
+            )}
+            {hasContacts && !hasDealTeam && (
+              <Badge variant="secondary" className="text-[10px] h-4 ml-1">
+                {sortedContacts.length} contact{sortedContacts.length !== 1 ? 's' : ''}
+              </Badge>
+            )}
           </span>
           <Button 
             variant="outline" 
             size="sm" 
             className="h-7 text-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              toast({ title: "Contact discovery", description: `Finding contacts for ${companyName}...` });
-            }}
+            onClick={handleFindContacts}
           >
             <UserSearch className="w-3 h-3 mr-1" />
-            Find Contacts
+            {hasContacts ? 'Refresh' : 'Find Contacts'}
           </Button>
         </div>
+        
+        {!hasContacts && (
+          <div className="text-xs text-muted-foreground italic py-2 px-3 bg-muted/30 rounded">
+            No contacts found yet. Click "Find Contacts" to scan the website.
+          </div>
+        )}
+        
         <div className="space-y-2">
-          {displayContacts.map((contact: any) => (
+          {sortedContacts.map((contact: any) => (
             <div key={contact.id} className="bg-muted/50 rounded px-3 py-2.5 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <User className="w-3.5 h-3.5 text-muted-foreground" />
-                  <div>
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium">{contact.name}</span>
-                    {contact.title && <span className="text-xs text-muted-foreground ml-2">{contact.title}</span>}
+                    {contact.title && <span className="text-xs text-muted-foreground">{contact.title}</span>}
+                    {contact.is_deal_team && (
+                      <Badge className="text-[9px] h-4 bg-primary/20 text-primary border-primary/30">
+                        Deal Team
+                      </Badge>
+                    )}
+                    {contact.role_category && contact.role_category !== 'other' && !contact.is_deal_team && (
+                      <Badge variant="outline" className="text-[9px] h-4 capitalize">
+                        {contact.role_category.replace(/_/g, ' ')}
+                      </Badge>
+                    )}
+                    {contact.source === 'website' && (
+                      <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                        <Globe className="w-2.5 h-2.5" /> Website
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -338,18 +409,20 @@ export default function DealMatching() {
                 )}
               </div>
               <div className="flex gap-2 pl-5">
-                <Button
-                  size="sm"
-                  variant="default"
-                  className="h-7 text-xs"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    window.location.href = generateEmailBody(buyer, contact.name);
-                  }}
-                >
-                  <Send className="w-3 h-3 mr-1" />
-                  Send Email
-                </Button>
+                {contact.email && (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.location.href = generateEmailBody(buyer, contact.name);
+                    }}
+                  >
+                    <Send className="w-3 h-3 mr-1" />
+                    Send Email
+                  </Button>
+                )}
                 {contact.linkedin_url && (
                   <Button
                     size="sm"
