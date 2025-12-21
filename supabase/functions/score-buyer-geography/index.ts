@@ -208,6 +208,7 @@ function getAdjacentStates(state: string): string[] {
 interface BuyerGeographicProfile {
   buyerId: string;
   hqState: string | null;
+  hqCity: string | null; // Fallback for extracting state from city field
   targetGeographies: string[];
   serviceRegions: string[];
   geographicFootprint: string[];
@@ -230,11 +231,19 @@ function scoreBuyerGeography(
   const buyerStates = new Set<string>();
   
   // Collect all buyer geographic data with national keyword expansion
-  if (buyer.hqState) buyerStates.add(normalizeState(buyer.hqState));
+  if (buyer.hqState) {
+    buyerStates.add(normalizeState(buyer.hqState));
+  } else if (buyer.hqCity) {
+    // Fallback: try to extract state from hq_city field (handles misformatted data like "Pacific Northwest WA")
+    const statesFromCity = extractStatesFromText(buyer.hqCity);
+    statesFromCity.forEach(s => buyerStates.add(s));
+    if (statesFromCity.length > 0) {
+      console.log(`Extracted state(s) ${statesFromCity.join(",")} from hq_city "${buyer.hqCity}" for buyer ${buyer.buyerId}`);
+    }
+  }
   extractStatesFromGeography(buyer.targetGeographies).forEach(s => buyerStates.add(s));
   extractStatesFromGeography(buyer.serviceRegions).forEach(s => buyerStates.add(s));
   extractStatesFromGeography(buyer.geographicFootprint).forEach(s => buyerStates.add(s));
-  
   const buyerStateArray = Array.from(buyerStates).filter(Boolean);
   
   // Check if buyer is Canada-only
@@ -405,7 +414,7 @@ serve(async (req) => {
     // Fetch buyers
     let buyerQuery = supabase
       .from("buyers")
-      .select("id, pe_firm_name, platform_company_name, hq_state, target_geographies, service_regions, geographic_footprint, operating_locations");
+      .select("id, pe_firm_name, platform_company_name, hq_state, hq_city, target_geographies, service_regions, geographic_footprint, operating_locations");
     
     if (buyerIds?.length > 0) {
       buyerQuery = buyerQuery.in("id", buyerIds);
@@ -437,6 +446,7 @@ serve(async (req) => {
       const profile: BuyerGeographicProfile = {
         buyerId: buyer.id,
         hqState: buyer.hq_state,
+        hqCity: buyer.hq_city,
         targetGeographies: buyer.target_geographies || [],
         serviceRegions: buyer.service_regions || [],
         geographicFootprint: buyer.geographic_footprint || [],
