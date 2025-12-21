@@ -364,6 +364,53 @@ async function scrapeUrl(url: string, firecrawlApiKey: string): Promise<string |
   }
 }
 
+// Scrape platform website plus location pages
+async function scrapeWithLocationPages(baseUrl: string, firecrawlApiKey: string): Promise<{ main: string | null; locations: string | null }> {
+  // Scrape main page
+  const mainContent = await scrapeUrl(baseUrl, firecrawlApiKey);
+  
+  // Common location page paths for multi-location businesses
+  const locationPaths = [
+    '/locations',
+    '/our-locations',
+    '/find-a-shop',
+    '/find-a-location',
+    '/our-shops',
+    '/stores',
+    '/branches',
+    '/service-areas',
+    '/find-us',
+    '/contact',
+    '/about/locations',
+    '/about-us/locations'
+  ];
+  
+  let locationsContent: string | null = null;
+  
+  // Format base URL
+  let formattedBase = baseUrl.trim();
+  if (!formattedBase.startsWith('http://') && !formattedBase.startsWith('https://')) {
+    formattedBase = `https://${formattedBase}`;
+  }
+  // Remove trailing slash
+  formattedBase = formattedBase.replace(/\/$/, '');
+  
+  // Try each location path until we find one that works
+  for (const path of locationPaths) {
+    const locationUrl = `${formattedBase}${path}`;
+    console.log('Trying location page:', locationUrl);
+    
+    const content = await scrapeUrl(locationUrl, firecrawlApiKey);
+    if (content && content.length > 500) {
+      console.log(`Found location page at ${path} with ${content.length} characters`);
+      locationsContent = content;
+      break;
+    }
+  }
+  
+  return { main: mainContent, locations: locationsContent };
+}
+
 async function callAIWithTool(lovableApiKey: string, systemPrompt: string, userPrompt: string, tool: any): Promise<any> {
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
@@ -620,10 +667,21 @@ Deno.serve(async (req) => {
 
     console.log('Enriching buyer:', buyer.pe_firm_name, buyer.platform_company_name);
 
-    // Scrape websites
-    const platformContent = buyer.platform_website 
-      ? await scrapeUrl(buyer.platform_website, firecrawlApiKey)
-      : null;
+    // Scrape websites (with location page discovery for platform website)
+    let platformContent: string | null = null;
+    let platformLocationsContent: string | null = null;
+    
+    if (buyer.platform_website) {
+      const { main, locations } = await scrapeWithLocationPages(buyer.platform_website, firecrawlApiKey);
+      platformContent = main;
+      platformLocationsContent = locations;
+      
+      if (platformLocationsContent) {
+        console.log(`Found location page content: ${platformLocationsContent.length} characters`);
+      } else {
+        console.log('No location page found, will use main page only for geography');
+      }
+    }
     
     const peFirmContent = buyer.pe_firm_website
       ? await scrapeUrl(buyer.pe_firm_website, firecrawlApiKey)
@@ -693,12 +751,27 @@ EXAMPLE OUTPUT:
       Object.assign(extractedData, customers);
 
       // Prompt 3: Geography / Footprint - CURRENT LOCATIONS
+      // Use combined main page + locations page content for better extraction
       console.log('Running Prompt 3: Current Geographic Footprint');
-      const geographyPrompt = platformPromptBase + `
+      
+      // Combine main page and locations page content for geography extraction
+      let geographyContent = platformContent.substring(0, 15000);
+      if (platformLocationsContent) {
+        geographyContent += '\n\n--- LOCATIONS PAGE CONTENT ---\n' + platformLocationsContent.substring(0, 25000);
+        console.log(`Geography extraction using ${geographyContent.length} total characters (main + locations page)`);
+      } else {
+        console.log(`Geography extraction using ${geographyContent.length} characters (main page only)`);
+      }
+      
+      const geographyPrompt = `Analyze the following website content for ${buyer.platform_company_name || 'this company'}.
+
+Website Content:
+${geographyContent}
+
 WHAT TO DO: Identify where the company CURRENTLY has physical locations (shops, offices, facilities).
 Look for:
 - Where is the company headquartered? (city, state, country)
-- What locations or branches do they currently have? Look for "Locations", "Our Shops", "Service Areas", "Contact Us" pages
+- What locations or branches do they currently have? Look for lists of cities, states, or addresses
 - List EVERY state where they mention having a physical presence
 - This is about CURRENT locations, not where they want to expand
 
@@ -706,30 +779,36 @@ CRITICAL: geographic_footprint MUST contain ONLY 2-letter US state abbreviations
 - ❌ WRONG: "Texas", "national", "USA", "41 states", "Southwest", "Nationwide"
 - ✅ RIGHT: "TX", "CA", "NY", "FL", "MS", "AL"
 
-If they say "national" or "nationwide", you MUST list all 50 state abbreviations.
-If they say a number like "41 states", try to identify which states from other context, or list all 50 if unclear.
+If they say "national" or "nationwide" or have locations in 30+ states, list all 50 state abbreviations.
+If you see a list of cities/states, extract EVERY state mentioned.
 
 EXAMPLE OUTPUT for a collision repair company:
 - hq_city: "Dallas"
 - hq_state: "TX"
 - hq_country: "USA"
 - hq_region: "Southwest"
-- geographic_footprint: ["TX", "OK", "LA", "AR", "AZ"]
+- geographic_footprint: ["TX", "OK", "LA", "AR", "AZ", "CA", "CO", "FL", "GA", "IL", "IN"]
 - other_office_locations: ["Houston, TX", "Austin, TX", "San Antonio, TX", "Oklahoma City, OK", "Phoenix, AZ"]
 - service_regions: ["Southwest United States", "South Central United States"]
 
-Be thorough - extract EVERY state where they have shops or offices, using 2-letter abbreviations ONLY.`;
+Be THOROUGH - extract EVERY state where they have shops or offices, using 2-letter abbreviations ONLY.`;
 
       const geography = await callAIWithTool(
         lovableApiKey,
-        'You are extracting CURRENT physical location information from a company website. Focus on where they have existing shops, offices, or facilities - not where they might expand. Output 2-letter US state abbreviations ONLY for geographic_footprint.',
+        'You are extracting CURRENT physical location information from a company website. Focus on where they have existing shops, offices, or facilities. Look carefully at any locations page content. Output 2-letter US state abbreviations ONLY for geographic_footprint. Be exhaustive - list every state mentioned.',
         geographyPrompt,
         extractGeographyFootprintTool
       );
       
+      console.log('Geography extraction raw result:', JSON.stringify(geography));
+      
       // Normalize geographic_footprint to ensure only valid 2-letter state abbreviations
       if (geography.geographic_footprint) {
+        console.log('Raw geographic_footprint before normalization:', geography.geographic_footprint);
         geography.geographic_footprint = normalizeGeographicFootprint(geography.geographic_footprint);
+        console.log('Normalized geographic_footprint:', geography.geographic_footprint);
+      } else {
+        console.log('No geographic_footprint extracted from AI');
       }
       
       // Also normalize service_regions (may contain "X states" or "City, State" patterns)
