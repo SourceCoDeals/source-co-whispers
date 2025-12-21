@@ -64,7 +64,7 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `You are an expert at parsing M&A buyer fit criteria. Extract structured data from natural language descriptions of what makes a good buyer fit for an acquisition target.`
+            content: `You are an expert at parsing M&A buyer fit criteria. Extract structured data from natural language descriptions of what makes a good buyer fit for an acquisition target. Pay special attention to different buyer segments/types that may have different requirements.`
           },
           {
             role: 'user',
@@ -117,9 +117,35 @@ serve(async (req) => {
                       hq_requirements: { type: 'string', description: 'Headquarters location requirements' },
                       other: { type: 'array', items: { type: 'string' }, description: 'Other geography-related criteria' }
                     }
+                  },
+                  buyer_types_criteria: {
+                    type: 'object',
+                    description: 'Different buyer segments with their specific requirements',
+                    properties: {
+                      buyer_types: {
+                        type: 'array',
+                        description: 'Array of distinct buyer types/segments',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            type_name: { type: 'string', description: 'Name of the buyer category (e.g., "Large MSO", "Regional MSO", "PE Platform Seeker")' },
+                            description: { type: 'string', description: 'Brief description of this buyer type' },
+                            ownership_profile: { type: 'string', description: 'Typical ownership (e.g., "Large PE-backed", "Private", "Regional PE-backed")' },
+                            min_locations: { type: 'string', description: 'Minimum locations required (e.g., "3+ locations")' },
+                            min_revenue_per_location: { type: 'string', description: 'Revenue per location requirement (e.g., "$2M+ per location")' },
+                            min_ebitda: { type: 'string', description: 'EBITDA requirements (e.g., "$1.5M-3M")' },
+                            min_sqft_per_location: { type: 'string', description: 'Sq ft per location (e.g., "7,500 sq ft")' },
+                            geographic_scope: { type: 'string', description: 'Geographic scope (e.g., "National", "Regional", "Adjacent regions")' },
+                            acquisition_style: { type: 'string', description: 'How they acquire (e.g., "Multi-location", "Single location", "Platform only")' },
+                            typical_deal_size: { type: 'string', description: 'Description of typical acquisitions' },
+                            priority_order: { type: 'number', description: 'Priority ranking (1 = highest priority)' }
+                          }
+                        }
+                      }
+                    }
                   }
                 },
-                required: ['size_criteria', 'service_criteria', 'geography_criteria']
+                required: ['size_criteria', 'service_criteria', 'geography_criteria', 'buyer_types_criteria']
               }
             }
           }
@@ -164,7 +190,8 @@ serve(async (req) => {
         success: true,
         size_criteria: extractedCriteria.size_criteria || {},
         service_criteria: extractedCriteria.service_criteria || {},
-        geography_criteria: extractedCriteria.geography_criteria || {}
+        geography_criteria: extractedCriteria.geography_criteria || {},
+        buyer_types_criteria: extractedCriteria.buyer_types_criteria || {}
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

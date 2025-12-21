@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { CSVImport } from "@/components/CSVImport";
 import { StructuredCriteriaPanel } from "@/components/StructuredCriteriaPanel";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, Target } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -48,6 +48,7 @@ export default function TrackerDetail() {
   const [editedSizeCriteria, setEditedSizeCriteria] = useState("");
   const [editedServiceCriteria, setEditedServiceCriteria] = useState("");
   const [editedGeographyCriteria, setEditedGeographyCriteria] = useState("");
+  const [editedBuyerTypesCriteria, setEditedBuyerTypesCriteria] = useState("");
   const [isSavingFitCriteria, setIsSavingFitCriteria] = useState(false);
   const [isParsingCriteria, setIsParsingCriteria] = useState(false);
 
@@ -229,6 +230,7 @@ export default function TrackerDetail() {
     setEditedSizeCriteria(tracker?.fit_criteria_size || "");
     setEditedServiceCriteria(tracker?.fit_criteria_service || "");
     setEditedGeographyCriteria(tracker?.fit_criteria_geography || "");
+    setEditedBuyerTypesCriteria(tracker?.fit_criteria_buyer_types || "");
     setIsEditingFitCriteria(true);
   };
 
@@ -237,6 +239,7 @@ export default function TrackerDetail() {
     setEditedSizeCriteria("");
     setEditedServiceCriteria("");
     setEditedGeographyCriteria("");
+    setEditedBuyerTypesCriteria("");
   };
 
   const saveFitCriteria = async () => {
@@ -247,6 +250,7 @@ export default function TrackerDetail() {
         fit_criteria_size: editedSizeCriteria,
         fit_criteria_service: editedServiceCriteria,
         fit_criteria_geography: editedGeographyCriteria,
+        fit_criteria_buyer_types: editedBuyerTypesCriteria,
         updated_at: new Date().toISOString() 
       })
       .eq("id", id);
@@ -259,7 +263,8 @@ export default function TrackerDetail() {
         ...tracker, 
         fit_criteria_size: editedSizeCriteria,
         fit_criteria_service: editedServiceCriteria,
-        fit_criteria_geography: editedGeographyCriteria
+        fit_criteria_geography: editedGeographyCriteria,
+        fit_criteria_buyer_types: editedBuyerTypesCriteria
       });
       setIsEditingFitCriteria(false);
     }
@@ -271,12 +276,12 @@ export default function TrackerDetail() {
     let criteriaText = tracker?.fit_criteria || '';
     
     if (isEditingFitCriteria) {
-      criteriaText = `Size Criteria: ${editedSizeCriteria}\n\nService/Product Criteria: ${editedServiceCriteria}\n\nGeography Criteria: ${editedGeographyCriteria}`;
-    } else if (tracker?.fit_criteria_size || tracker?.fit_criteria_service || tracker?.fit_criteria_geography) {
-      criteriaText = `Size Criteria: ${tracker?.fit_criteria_size || ''}\n\nService/Product Criteria: ${tracker?.fit_criteria_service || ''}\n\nGeography Criteria: ${tracker?.fit_criteria_geography || ''}`;
+      criteriaText = `Size Criteria: ${editedSizeCriteria}\n\nService/Product Criteria: ${editedServiceCriteria}\n\nGeography Criteria: ${editedGeographyCriteria}\n\nBuyer Types: ${editedBuyerTypesCriteria}`;
+    } else if (tracker?.fit_criteria_size || tracker?.fit_criteria_service || tracker?.fit_criteria_geography || tracker?.fit_criteria_buyer_types) {
+      criteriaText = `Size Criteria: ${tracker?.fit_criteria_size || ''}\n\nService/Product Criteria: ${tracker?.fit_criteria_service || ''}\n\nGeography Criteria: ${tracker?.fit_criteria_geography || ''}\n\nBuyer Types: ${tracker?.fit_criteria_buyer_types || ''}`;
     }
     
-    if (!criteriaText.trim() || criteriaText === 'Size Criteria: \n\nService/Product Criteria: \n\nGeography Criteria: ') {
+    if (!criteriaText.trim() || criteriaText === 'Size Criteria: \n\nService/Product Criteria: \n\nGeography Criteria: \n\nBuyer Types: ') {
       toast({ title: "No criteria to parse", description: "Please add fit criteria text first", variant: "destructive" });
       return;
     }
@@ -304,6 +309,7 @@ export default function TrackerDetail() {
           size_criteria: data.size_criteria,
           service_criteria: data.service_criteria,
           geography_criteria: data.geography_criteria,
+          buyer_types_criteria: data.buyer_types_criteria,
           updated_at: new Date().toISOString()
         })
         .eq("id", id);
@@ -317,7 +323,8 @@ export default function TrackerDetail() {
         ...tracker,
         size_criteria: data.size_criteria,
         service_criteria: data.service_criteria,
-        geography_criteria: data.geography_criteria
+        geography_criteria: data.geography_criteria,
+        buyer_types_criteria: data.buyer_types_criteria
       });
 
       toast({ title: "Criteria parsed", description: "Structured criteria extracted successfully" });
@@ -360,7 +367,7 @@ export default function TrackerDetail() {
           
           {isEditingFitCriteria ? (
             <div className="mt-3 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-2">
                   <Label className="text-xs font-medium flex items-center gap-1.5">
                     <DollarSign className="w-3.5 h-3.5 text-primary" />
@@ -397,6 +404,22 @@ export default function TrackerDetail() {
                     className="min-h-[100px] text-sm"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5 text-primary" />
+                    Buyer Types
+                  </Label>
+                  <Textarea
+                    value={editedBuyerTypesCriteria}
+                    onChange={(e) => setEditedBuyerTypesCriteria(e.target.value)}
+                    placeholder="Large MSOs: National presence, 3+ locations, $2M+ per location...
+
+Regional MSOs: 6-50 locations, 7,500+ sq ft, $1.2M+/location...
+
+PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
+                    className="min-h-[100px] text-sm"
+                  />
+                </div>
               </div>
               <div className="flex items-center gap-2 justify-end">
                 <Button variant="ghost" size="sm" onClick={cancelEditingFitCriteria} disabled={isSavingFitCriteria || isParsingCriteria}>
@@ -423,8 +446,8 @@ export default function TrackerDetail() {
             </div>
           ) : (
             <>
-              {(tracker.fit_criteria_size || tracker.fit_criteria_service || tracker.fit_criteria_geography) ? (
-                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+              {(tracker.fit_criteria_size || tracker.fit_criteria_service || tracker.fit_criteria_geography || tracker.fit_criteria_buyer_types) ? (
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   {tracker.fit_criteria_size && (
                     <div className="bg-muted/30 rounded-lg p-3 border">
                       <div className="flex items-center gap-1.5 mb-2">
@@ -450,6 +473,15 @@ export default function TrackerDetail() {
                         <span className="text-xs font-medium">Geography</span>
                       </div>
                       <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_geography}</p>
+                    </div>
+                  )}
+                  {tracker.fit_criteria_buyer_types && (
+                    <div className="bg-muted/30 rounded-lg p-3 border">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Target className="w-3.5 h-3.5 text-primary" />
+                        <span className="text-xs font-medium">Buyer Types</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_buyer_types}</p>
                     </div>
                   )}
                 </div>
@@ -486,6 +518,7 @@ export default function TrackerDetail() {
                 sizeCriteria={tracker.size_criteria}
                 serviceCriteria={tracker.service_criteria}
                 geographyCriteria={tracker.geography_criteria}
+                buyerTypesCriteria={tracker.buyer_types_criteria}
               />
             </>
           )}

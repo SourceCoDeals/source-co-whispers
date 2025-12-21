@@ -574,8 +574,10 @@ export type Database = {
       industry_trackers: {
         Row: {
           archived: boolean
+          buyer_types_criteria: Json | null
           created_at: string
           fit_criteria: string | null
+          fit_criteria_buyer_types: string | null
           fit_criteria_geography: string | null
           fit_criteria_service: string | null
           fit_criteria_size: string | null
@@ -593,8 +595,10 @@ export type Database = {
         }
         Insert: {
           archived?: boolean
+          buyer_types_criteria?: Json | null
           created_at?: string
           fit_criteria?: string | null
+          fit_criteria_buyer_types?: string | null
           fit_criteria_geography?: string | null
           fit_criteria_service?: string | null
           fit_criteria_size?: string | null
@@ -612,8 +616,10 @@ export type Database = {
         }
         Update: {
           archived?: boolean
+          buyer_types_criteria?: Json | null
           created_at?: string
           fit_criteria?: string | null
+          fit_criteria_buyer_types?: string | null
           fit_criteria_geography?: string | null
           fit_criteria_service?: string | null
           fit_criteria_size?: string | null
