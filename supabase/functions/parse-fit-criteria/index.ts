@@ -64,11 +64,31 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `You are an expert at parsing M&A buyer fit criteria. Extract structured data from natural language descriptions of what makes a good buyer fit for an acquisition target. Pay special attention to different buyer segments/types that may have different requirements.`
+            content: `You are an expert M&A analyst who parses buyer fit criteria into structured data. Your job is to extract EVERY distinct buyer segment/type mentioned in the text.
+
+CRITICAL INSTRUCTIONS:
+1. Identify ALL buyer types/segments mentioned - there may be 2-6+ different buyer categories
+2. Look for distinct segments like: "Large MSOs", "Regional MSOs", "PE Platform Seekers", "Small Local Buyers", "Strategic Buyers", etc.
+3. Each buyer type has different requirements - extract the SPECIFIC thresholds for EACH type
+4. Pay close attention to numbered lists, bullet points, or paragraph breaks that indicate different buyer categories
+5. Extract geographic rules and deal requirements for each buyer type separately
+6. Include priority ordering if mentioned (1st priority, 2nd priority, etc.)
+
+Common buyer type patterns to look for:
+- Size-based: "Large MSO", "Regional MSO", "Small/Local buyers"
+- Ownership-based: "PE-backed", "Family office", "Strategic"
+- Strategy-based: "Platform seekers", "Add-on focused", "Roll-up"
+- Geographic-based: "National players", "Regional players", "Local operators"
+
+For each buyer type, extract ALL of these if mentioned:
+- Min/max locations, revenue, EBITDA, sq ft requirements
+- Geographic scope and specific geographic rules
+- Deal requirements (single vs multi-location, timing, etc.)
+- What makes them a good/bad fit`
           },
           {
             role: 'user',
-            content: `Parse the following buyer fit criteria into structured categories:\n\n${fit_criteria}`
+            content: `Parse the following buyer fit criteria. Make sure to extract EVERY distinct buyer type/segment mentioned, along with their specific requirements:\n\n${fit_criteria}`
           }
         ],
         tools: [
@@ -120,26 +140,32 @@ serve(async (req) => {
                   },
                   buyer_types_criteria: {
                     type: 'object',
-                    description: 'Different buyer segments with their specific requirements',
+                    description: 'Different buyer segments with their specific requirements. EXTRACT ALL DISTINCT BUYER TYPES MENTIONED.',
                     properties: {
                       buyer_types: {
                         type: 'array',
-                        description: 'Array of distinct buyer types/segments',
+                        description: 'Array of ALL distinct buyer types/segments. Look for numbered lists, bullet points, or different categories mentioned.',
                         items: {
                           type: 'object',
                           properties: {
-                            type_name: { type: 'string', description: 'Name of the buyer category (e.g., "Large MSO", "Regional MSO", "PE Platform Seeker")' },
-                            description: { type: 'string', description: 'Brief description of this buyer type' },
-                            ownership_profile: { type: 'string', description: 'Typical ownership (e.g., "Large PE-backed", "Private", "Regional PE-backed")' },
-                            min_locations: { type: 'string', description: 'Minimum locations required (e.g., "3+ locations")' },
+                            type_name: { type: 'string', description: 'Name of the buyer category (e.g., "Large MSOs", "Regional MSOs", "PE Platform Seekers", "Small Local Buyers")' },
+                            priority_order: { type: 'number', description: 'Priority ranking (1 = highest priority). Infer from text order if not explicit.' },
+                            description: { type: 'string', description: 'Brief one-line description of this buyer type' },
+                            ownership_profile: { type: 'string', description: 'Typical ownership (e.g., "Large PE-backed", "Private", "Regional PE-backed", "Family office")' },
+                            min_locations: { type: 'string', description: 'Minimum locations required (e.g., "3+ locations", "6-50 locations")' },
+                            max_locations: { type: 'string', description: 'Maximum locations if mentioned' },
                             min_revenue_per_location: { type: 'string', description: 'Revenue per location requirement (e.g., "$2M+ per location")' },
-                            min_ebitda: { type: 'string', description: 'EBITDA requirements (e.g., "$1.5M-3M")' },
-                            min_sqft_per_location: { type: 'string', description: 'Sq ft per location (e.g., "7,500 sq ft")' },
-                            geographic_scope: { type: 'string', description: 'Geographic scope (e.g., "National", "Regional", "Adjacent regions")' },
-                            acquisition_style: { type: 'string', description: 'How they acquire (e.g., "Multi-location", "Single location", "Platform only")' },
-                            typical_deal_size: { type: 'string', description: 'Description of typical acquisitions' },
-                            priority_order: { type: 'number', description: 'Priority ranking (1 = highest priority)' }
-                          }
+                            min_ebitda: { type: 'string', description: 'Minimum EBITDA requirements (e.g., "$1.5M+")' },
+                            max_ebitda: { type: 'string', description: 'Maximum EBITDA if mentioned (e.g., "$3M")' },
+                            min_sqft_per_location: { type: 'string', description: 'Sq ft per location requirement (e.g., "7,500+ sq ft")' },
+                            geographic_scope: { type: 'string', description: 'Geographic scope (e.g., "National", "Regional", "Adjacent regions only")' },
+                            geographic_rules: { type: 'string', description: 'Specific geographic matching rules (e.g., "1 shop must be in exact footprint, 2-4 shops can be adjacent regions")' },
+                            deal_requirements: { type: 'string', description: 'Deal structure requirements (e.g., "Multi-location preferred", "Single location OK", "Platform with ability to scale")' },
+                            acquisition_style: { type: 'string', description: 'How they acquire (e.g., "Multi-location deals", "Single location", "Platform only", "Add-ons")' },
+                            exclusions: { type: 'string', description: 'What disqualifies a deal for this buyer type' },
+                            fit_notes: { type: 'string', description: 'Additional notes about what makes a good fit for this buyer type' }
+                          },
+                          required: ['type_name', 'priority_order']
                         }
                       }
                     }

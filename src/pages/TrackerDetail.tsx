@@ -446,54 +446,46 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
             </div>
           ) : (
             <>
-              {(tracker.fit_criteria_size || tracker.fit_criteria_service || tracker.fit_criteria_geography || tracker.fit_criteria_buyer_types) ? (
-                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {tracker.fit_criteria_size && (
-                    <div className="bg-muted/30 rounded-lg p-3 border">
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <DollarSign className="w-3.5 h-3.5 text-primary" />
-                        <span className="text-xs font-medium">Size</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_size}</p>
-                    </div>
+              {/* Show structured criteria if available */}
+              {(tracker.size_criteria || tracker.service_criteria || tracker.geography_criteria || tracker.buyer_types_criteria) ? (
+                <>
+                  <StructuredCriteriaPanel
+                    sizeCriteria={tracker.size_criteria}
+                    serviceCriteria={tracker.service_criteria}
+                    geographyCriteria={tracker.geography_criteria}
+                    buyerTypesCriteria={tracker.buyer_types_criteria}
+                  />
+                  {/* Show raw text in collapsible if it exists */}
+                  {(tracker.fit_criteria || tracker.fit_criteria_size || tracker.fit_criteria_service || tracker.fit_criteria_geography || tracker.fit_criteria_buyer_types) && (
+                    <Collapsible defaultOpen={false} className="mt-4">
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground hover:text-foreground">
+                          <ChevronRight className="w-4 h-4 transition-transform duration-200 [[data-state=open]>&]:rotate-90" />
+                          View Source Text
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="bg-muted/20 rounded-lg p-3 border mt-2 text-xs text-muted-foreground">
+                          {tracker.fit_criteria && (
+                            <p className="whitespace-pre-wrap">{tracker.fit_criteria}</p>
+                          )}
+                          {(tracker.fit_criteria_size || tracker.fit_criteria_service || tracker.fit_criteria_geography || tracker.fit_criteria_buyer_types) && (
+                            <div className="grid grid-cols-2 gap-3 mt-2">
+                              {tracker.fit_criteria_size && <div><strong>Size:</strong> {tracker.fit_criteria_size}</div>}
+                              {tracker.fit_criteria_service && <div><strong>Service:</strong> {tracker.fit_criteria_service}</div>}
+                              {tracker.fit_criteria_geography && <div><strong>Geography:</strong> {tracker.fit_criteria_geography}</div>}
+                              {tracker.fit_criteria_buyer_types && <div><strong>Buyer Types:</strong> {tracker.fit_criteria_buyer_types}</div>}
+                            </div>
+                          )}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                   )}
-                  {tracker.fit_criteria_service && (
-                    <div className="bg-muted/30 rounded-lg p-3 border">
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <Briefcase className="w-3.5 h-3.5 text-primary" />
-                        <span className="text-xs font-medium">Service/Product Mix</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_service}</p>
-                    </div>
-                  )}
-                  {tracker.fit_criteria_geography && (
-                    <div className="bg-muted/30 rounded-lg p-3 border">
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <MapPin className="w-3.5 h-3.5 text-primary" />
-                        <span className="text-xs font-medium">Geography</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_geography}</p>
-                    </div>
-                  )}
-                  {tracker.fit_criteria_buyer_types && (
-                    <div className="bg-muted/30 rounded-lg p-3 border">
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <Target className="w-3.5 h-3.5 text-primary" />
-                        <span className="text-xs font-medium">Buyer Types</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_buyer_types}</p>
-                    </div>
-                  )}
-                </div>
-              ) : tracker.fit_criteria ? (
-                <Collapsible defaultOpen={false} className="mt-3">
-                  <div className="flex items-center gap-2">
-                    <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground hover:text-foreground">
-                        <ChevronRight className="w-4 h-4 transition-transform duration-200 [[data-state=open]>&]:rotate-90" />
-                        Show Original Criteria
-                      </Button>
-                    </CollapsibleTrigger>
+                </>
+              ) : (tracker.fit_criteria || tracker.fit_criteria_size || tracker.fit_criteria_service || tracker.fit_criteria_geography || tracker.fit_criteria_buyer_types) ? (
+                <>
+                  {/* Show raw criteria with parse button */}
+                  <div className="mt-3 flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={parseFitCriteria} disabled={isParsingCriteria}>
                       {isParsingCriteria ? (
                         <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
@@ -503,23 +495,55 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                       Parse into Structured Criteria
                     </Button>
                   </div>
-                  <CollapsibleContent>
-                    <div className="bg-muted/30 rounded-lg p-3 border mt-2">
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {tracker.fit_criteria_size && (
+                      <div className="bg-muted/30 rounded-lg p-3 border">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <DollarSign className="w-3.5 h-3.5 text-primary" />
+                          <span className="text-xs font-medium">Size</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_size}</p>
+                      </div>
+                    )}
+                    {tracker.fit_criteria_service && (
+                      <div className="bg-muted/30 rounded-lg p-3 border">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <Briefcase className="w-3.5 h-3.5 text-primary" />
+                          <span className="text-xs font-medium">Service/Product Mix</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_service}</p>
+                      </div>
+                    )}
+                    {tracker.fit_criteria_geography && (
+                      <div className="bg-muted/30 rounded-lg p-3 border">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <MapPin className="w-3.5 h-3.5 text-primary" />
+                          <span className="text-xs font-medium">Geography</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_geography}</p>
+                      </div>
+                    )}
+                    {tracker.fit_criteria_buyer_types && (
+                      <div className="bg-muted/30 rounded-lg p-3 border">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <Target className="w-3.5 h-3.5 text-primary" />
+                          <span className="text-xs font-medium">Buyer Types</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_buyer_types}</p>
+                      </div>
+                    )}
+                  </div>
+                  {tracker.fit_criteria && !tracker.fit_criteria_size && !tracker.fit_criteria_service && !tracker.fit_criteria_geography && !tracker.fit_criteria_buyer_types && (
+                    <div className="bg-muted/30 rounded-lg p-3 border mt-3">
                       <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria}</p>
                     </div>
-                  </CollapsibleContent>
-                </Collapsible>
+                  )}
+                </>
               ) : (
                 <p className="mt-2 text-sm text-muted-foreground italic">
                   No fit criteria defined. Click Edit to add criteria that will guide buyer matching.
                 </p>
               )}
-              <StructuredCriteriaPanel
-                sizeCriteria={tracker.size_criteria}
-                serviceCriteria={tracker.service_criteria}
-                geographyCriteria={tracker.geography_criteria}
-                buyerTypesCriteria={tracker.buyer_types_criteria}
-              />
             </>
           )}
         </div>

@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
-import { DollarSign, MapPin, Briefcase, Users, Building2, Target, TrendingUp } from "lucide-react";
+import { DollarSign, MapPin, Briefcase, Users, Building2, Target, TrendingUp, Store, Landmark, MapPinned, Ruler, Ban, Lightbulb } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface SizeCriteria {
   min_revenue?: string;
@@ -35,11 +36,17 @@ interface BuyerType {
   description?: string;
   ownership_profile?: string;
   min_locations?: string;
+  max_locations?: string;
   min_revenue_per_location?: string;
   min_ebitda?: string;
+  max_ebitda?: string;
   min_sqft_per_location?: string;
   geographic_scope?: string;
+  geographic_rules?: string;
+  deal_requirements?: string;
   acquisition_style?: string;
+  exclusions?: string;
+  fit_notes?: string;
   typical_deal_size?: string;
   priority_order?: number;
 }
@@ -53,6 +60,157 @@ interface StructuredCriteriaPanelProps {
   serviceCriteria?: ServiceCriteria | null;
   geographyCriteria?: GeographyCriteria | null;
   buyerTypesCriteria?: BuyerTypesCriteria | null;
+}
+
+// Priority color mapping
+const priorityColors: Record<number, { bg: string; border: string; badge: string }> = {
+  1: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', badge: 'bg-emerald-500 text-white' },
+  2: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', badge: 'bg-blue-500 text-white' },
+  3: { bg: 'bg-amber-500/10', border: 'border-amber-500/30', badge: 'bg-amber-500 text-white' },
+  4: { bg: 'bg-purple-500/10', border: 'border-purple-500/30', badge: 'bg-purple-500 text-white' },
+  5: { bg: 'bg-slate-500/10', border: 'border-slate-500/30', badge: 'bg-slate-500 text-white' },
+};
+
+function getPriorityColor(priority?: number) {
+  return priorityColors[priority || 5] || priorityColors[5];
+}
+
+function MetricChip({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value?: string | null }) {
+  if (!value) return null;
+  return (
+    <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-muted/50 border text-xs">
+      <Icon className="w-3 h-3 text-muted-foreground" />
+      <span className="text-muted-foreground">{label}:</span>
+      <span className="font-medium">{value}</span>
+    </div>
+  );
+}
+
+function RequirementCallout({ icon: Icon, label, text, variant = "default" }: { 
+  icon: React.ElementType; 
+  label: string; 
+  text?: string | null;
+  variant?: "default" | "warning" | "info";
+}) {
+  if (!text) return null;
+  
+  const variantStyles = {
+    default: "bg-muted/30 border-muted",
+    warning: "bg-destructive/5 border-destructive/20",
+    info: "bg-primary/5 border-primary/20"
+  };
+  
+  return (
+    <div className={cn("rounded-md p-2.5 border text-xs", variantStyles[variant])}>
+      <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
+        <Icon className="w-3 h-3" />
+        <span className="font-medium">{label}</span>
+      </div>
+      <p className="text-foreground/80">{text}</p>
+    </div>
+  );
+}
+
+function BuyerTypeCard({ buyerType, index }: { buyerType: BuyerType; index: number }) {
+  const priority = buyerType.priority_order || (index + 1);
+  const colors = getPriorityColor(priority);
+  
+  const getTypeIcon = (typeName?: string) => {
+    const name = typeName?.toLowerCase() || '';
+    if (name.includes('large') || name.includes('national') || name.includes('mso')) return Building2;
+    if (name.includes('regional')) return Target;
+    if (name.includes('pe') || name.includes('platform') || name.includes('seeker')) return TrendingUp;
+    if (name.includes('small') || name.includes('local')) return Store;
+    if (name.includes('strategic')) return Landmark;
+    return Users;
+  };
+  
+  const Icon = getTypeIcon(buyerType.type_name);
+  
+  // Combine EBITDA range
+  const ebitdaRange = buyerType.min_ebitda && buyerType.max_ebitda 
+    ? `${buyerType.min_ebitda} - ${buyerType.max_ebitda}`
+    : buyerType.min_ebitda || buyerType.max_ebitda;
+    
+  // Combine location range
+  const locationRange = buyerType.min_locations && buyerType.max_locations
+    ? `${buyerType.min_locations} - ${buyerType.max_locations}`
+    : buyerType.min_locations || buyerType.max_locations;
+  
+  return (
+    <div className={cn(
+      "rounded-xl border-2 p-4 transition-all hover:shadow-md",
+      colors.bg,
+      colors.border
+    )}>
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2.5">
+          <div className={cn("p-1.5 rounded-lg", colors.bg)}>
+            <Icon className="w-4 h-4 text-foreground" />
+          </div>
+          <div>
+            <h4 className="font-semibold text-sm leading-tight">
+              {buyerType.type_name || `Buyer Type ${index + 1}`}
+            </h4>
+            {buyerType.ownership_profile && (
+              <span className="text-xs text-muted-foreground">{buyerType.ownership_profile}</span>
+            )}
+          </div>
+        </div>
+        <span className={cn(
+          "px-2 py-0.5 rounded-full text-xs font-bold tabular-nums",
+          colors.badge
+        )}>
+          #{priority}
+        </span>
+      </div>
+      
+      {/* Description */}
+      {buyerType.description && (
+        <p className="text-sm text-muted-foreground mb-3 leading-relaxed">
+          {buyerType.description}
+        </p>
+      )}
+      
+      {/* Key Metrics */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        <MetricChip icon={MapPinned} label="Locations" value={locationRange} />
+        <MetricChip icon={DollarSign} label="Rev/Loc" value={buyerType.min_revenue_per_location} />
+        <MetricChip icon={TrendingUp} label="EBITDA" value={ebitdaRange} />
+        <MetricChip icon={Ruler} label="Sq Ft" value={buyerType.min_sqft_per_location} />
+        <MetricChip icon={MapPin} label="Scope" value={buyerType.geographic_scope} />
+      </div>
+      
+      {/* Requirements Section */}
+      <div className="space-y-2">
+        <RequirementCallout 
+          icon={MapPin} 
+          label="Geographic Rules" 
+          text={buyerType.geographic_rules} 
+          variant="info"
+        />
+        <RequirementCallout 
+          icon={Target} 
+          label="Deal Requirements" 
+          text={buyerType.deal_requirements || buyerType.acquisition_style || buyerType.typical_deal_size} 
+          variant="default"
+        />
+        <RequirementCallout 
+          icon={Lightbulb} 
+          label="Fit Notes" 
+          text={buyerType.fit_notes} 
+          variant="info"
+        />
+        <RequirementCallout 
+          icon={Ban} 
+          label="Exclusions" 
+          text={buyerType.exclusions} 
+          variant="warning"
+        />
+      </div>
+    </div>
+  );
 }
 
 function CriteriaCard({ 
@@ -115,45 +273,6 @@ function CriteriaBadges({
   );
 }
 
-function BuyerTypeCard({ buyerType, index }: { buyerType: BuyerType; index: number }) {
-  const getTypeIcon = (typeName?: string) => {
-    const name = typeName?.toLowerCase() || '';
-    if (name.includes('large') || name.includes('national')) return Building2;
-    if (name.includes('regional')) return Target;
-    if (name.includes('pe') || name.includes('platform')) return TrendingUp;
-    return Users;
-  };
-  
-  const Icon = getTypeIcon(buyerType.type_name);
-  
-  return (
-    <div className="bg-muted/30 rounded-lg p-4 border">
-      <div className="flex items-center gap-2 mb-3">
-        <Icon className="w-4 h-4 text-primary" />
-        <h4 className="font-medium text-sm">{buyerType.type_name || `Buyer Type ${index + 1}`}</h4>
-        {buyerType.priority_order && (
-          <Badge variant="outline" className="text-xs ml-auto">
-            Priority {buyerType.priority_order}
-          </Badge>
-        )}
-      </div>
-      <div className="space-y-2 text-sm">
-        {buyerType.description && (
-          <p className="text-muted-foreground text-xs mb-2">{buyerType.description}</p>
-        )}
-        <CriteriaRow label="Ownership" value={buyerType.ownership_profile} />
-        <CriteriaRow label="Min Locations" value={buyerType.min_locations} />
-        <CriteriaRow label="Rev/Location" value={buyerType.min_revenue_per_location} />
-        <CriteriaRow label="Min EBITDA" value={buyerType.min_ebitda} />
-        <CriteriaRow label="Min Sq Ft" value={buyerType.min_sqft_per_location} />
-        <CriteriaRow label="Geography" value={buyerType.geographic_scope} />
-        <CriteriaRow label="Acq. Style" value={buyerType.acquisition_style} />
-        <CriteriaRow label="Typical Deal" value={buyerType.typical_deal_size} />
-      </div>
-    </div>
-  );
-}
-
 function isSizeEmpty(criteria?: SizeCriteria | null): boolean {
   if (!criteria) return true;
   return !criteria.min_revenue && !criteria.max_revenue && !criteria.min_ebitda && 
@@ -200,17 +319,25 @@ export function StructuredCriteriaPanel({
   const hasBuyerTypes = !isBuyerTypesEmpty(buyerTypesCriteria);
   const hasOtherCriteria = !isSizeEmpty(sizeCriteria) || !isServiceEmpty(serviceCriteria) || !isGeographyEmpty(geographyCriteria);
 
+  // Sort buyer types by priority
+  const sortedBuyerTypes = [...(buyerTypesCriteria?.buyer_types || [])].sort((a, b) => 
+    (a.priority_order || 99) - (b.priority_order || 99)
+  );
+
   return (
-    <div className="space-y-4 mt-4">
+    <div className="space-y-6 mt-4">
       {/* Buyer Types Section */}
       {hasBuyerTypes && (
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Users className="w-4 h-4 text-primary" />
-            <h4 className="font-medium text-sm">Buyer Types</h4>
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="w-5 h-5 text-primary" />
+            <h3 className="font-semibold">Target Buyer Types</h3>
+            <Badge variant="secondary" className="text-xs">
+              {sortedBuyerTypes.length} {sortedBuyerTypes.length === 1 ? 'type' : 'types'}
+            </Badge>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {buyerTypesCriteria?.buyer_types?.map((bt, i) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {sortedBuyerTypes.map((bt, i) => (
               <BuyerTypeCard key={i} buyerType={bt} index={i} />
             ))}
           </div>
@@ -219,35 +346,41 @@ export function StructuredCriteriaPanel({
 
       {/* Other Criteria */}
       {hasOtherCriteria && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <CriteriaCard title="Size Criteria" icon={DollarSign} isEmpty={isSizeEmpty(sizeCriteria)}>
-            <CriteriaRow label="Min Revenue" value={sizeCriteria?.min_revenue} />
-            <CriteriaRow label="Max Revenue" value={sizeCriteria?.max_revenue} />
-            <CriteriaRow label="Min EBITDA" value={sizeCriteria?.min_ebitda} />
-            <CriteriaRow label="Max EBITDA" value={sizeCriteria?.max_ebitda} />
-            <CriteriaRow label="Employees" value={sizeCriteria?.employee_count} />
-            <CriteriaRow label="Locations" value={sizeCriteria?.location_count} />
-            <CriteriaRow label="Sq Ft" value={sizeCriteria?.sqft_requirements} />
-            <CriteriaBadges label="Other" items={sizeCriteria?.other} />
-          </CriteriaCard>
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Briefcase className="w-4 h-4 text-primary" />
+            <h4 className="font-medium text-sm">Additional Criteria</h4>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <CriteriaCard title="Size Criteria" icon={DollarSign} isEmpty={isSizeEmpty(sizeCriteria)}>
+              <CriteriaRow label="Min Revenue" value={sizeCriteria?.min_revenue} />
+              <CriteriaRow label="Max Revenue" value={sizeCriteria?.max_revenue} />
+              <CriteriaRow label="Min EBITDA" value={sizeCriteria?.min_ebitda} />
+              <CriteriaRow label="Max EBITDA" value={sizeCriteria?.max_ebitda} />
+              <CriteriaRow label="Employees" value={sizeCriteria?.employee_count} />
+              <CriteriaRow label="Locations" value={sizeCriteria?.location_count} />
+              <CriteriaRow label="Sq Ft" value={sizeCriteria?.sqft_requirements} />
+              <CriteriaBadges label="Other" items={sizeCriteria?.other} />
+            </CriteriaCard>
 
-          <CriteriaCard title="Service/Product Mix" icon={Briefcase} isEmpty={isServiceEmpty(serviceCriteria)}>
-            <CriteriaBadges label="Required" items={serviceCriteria?.required_services} variant="default" />
-            <CriteriaBadges label="Preferred" items={serviceCriteria?.preferred_services} variant="secondary" />
-            <CriteriaBadges label="Excluded" items={serviceCriteria?.excluded_services} variant="destructive" />
-            <CriteriaRow label="Business Model" value={serviceCriteria?.business_model} />
-            <CriteriaRow label="Customer Profile" value={serviceCriteria?.customer_profile} />
-            <CriteriaBadges label="Other" items={serviceCriteria?.other} />
-          </CriteriaCard>
+            <CriteriaCard title="Service/Product Mix" icon={Briefcase} isEmpty={isServiceEmpty(serviceCriteria)}>
+              <CriteriaBadges label="Required" items={serviceCriteria?.required_services} variant="default" />
+              <CriteriaBadges label="Preferred" items={serviceCriteria?.preferred_services} variant="secondary" />
+              <CriteriaBadges label="Excluded" items={serviceCriteria?.excluded_services} variant="destructive" />
+              <CriteriaRow label="Business Model" value={serviceCriteria?.business_model} />
+              <CriteriaRow label="Customer Profile" value={serviceCriteria?.customer_profile} />
+              <CriteriaBadges label="Other" items={serviceCriteria?.other} />
+            </CriteriaCard>
 
-          <CriteriaCard title="Geography" icon={MapPin} isEmpty={isGeographyEmpty(geographyCriteria)}>
-            <CriteriaBadges label="Required Regions" items={geographyCriteria?.required_regions} variant="default" />
-            <CriteriaBadges label="Preferred" items={geographyCriteria?.preferred_regions} variant="secondary" />
-            <CriteriaBadges label="Excluded" items={geographyCriteria?.excluded_regions} variant="destructive" />
-            <CriteriaRow label="Coverage" value={geographyCriteria?.coverage_type} />
-            <CriteriaRow label="HQ Requirements" value={geographyCriteria?.hq_requirements} />
-            <CriteriaBadges label="Other" items={geographyCriteria?.other} />
-          </CriteriaCard>
+            <CriteriaCard title="Geography" icon={MapPin} isEmpty={isGeographyEmpty(geographyCriteria)}>
+              <CriteriaBadges label="Required Regions" items={geographyCriteria?.required_regions} variant="default" />
+              <CriteriaBadges label="Preferred" items={geographyCriteria?.preferred_regions} variant="secondary" />
+              <CriteriaBadges label="Excluded" items={geographyCriteria?.excluded_regions} variant="destructive" />
+              <CriteriaRow label="Coverage" value={geographyCriteria?.coverage_type} />
+              <CriteriaRow label="HQ Requirements" value={geographyCriteria?.hq_requirements} />
+              <CriteriaBadges label="Other" items={geographyCriteria?.other} />
+            </CriteriaCard>
+          </div>
         </div>
       )}
     </div>
