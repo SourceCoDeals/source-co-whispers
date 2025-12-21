@@ -23,3 +23,6 @@ verify_jwt = true
 
 [functions.enrich-deal]
 verify_jwt = true
+
+[functions.find-buyer-contacts]
+verify_jwt = true
