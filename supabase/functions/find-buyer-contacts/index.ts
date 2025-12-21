@@ -169,14 +169,14 @@ ${content.slice(0, 15000)}`;
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'openai/gpt-5-mini',
+        model: 'google/gemini-2.5-flash',
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,
       }),
     });
 
     if (!response.ok) {
-      console.error('AI extraction failed:', await response.text());
+      const errorText = await response.text();
+      console.error(`AI extraction failed (${response.status}):`, errorText);
       return { contacts: [], deal_team_found: false, source_url: '' };
     }
 
@@ -267,16 +267,17 @@ Deno.serve(async (req) => {
 
     // PE Firm contact discovery
     if (buyer.pe_firm_website) {
+      // Prioritize team/people pages for contact discovery
       const pePaths = [
+        '/people',
+        '/team',
+        '/our-team',
+        '/leadership',
+        '/about',
+        '/about-us',
         '/portfolio',
         '/investments',
         '/companies',
-        '/team',
-        '/people',
-        '/about',
-        '/about-us',
-        '/our-team',
-        '/leadership',
       ];
 
       const peResult = await findBestUrl(buyer.pe_firm_website, pePaths, firecrawlKey);
