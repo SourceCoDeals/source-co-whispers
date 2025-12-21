@@ -33,6 +33,7 @@ export default function BuyerDetail() {
   const [isUploading, setIsUploading] = useState(false);
   const [processingTranscripts, setProcessingTranscripts] = useState<Set<string>>(new Set());
   const [expandedTranscripts, setExpandedTranscripts] = useState<Set<string>>(new Set());
+  const [isEnriching, setIsEnriching] = useState(false);
   
   // Deal context state
   const [deal, setDeal] = useState<any>(null);
@@ -243,6 +244,31 @@ export default function BuyerDetail() {
     return 'pending';
   };
 
+  const enrichFromWebsite = async () => {
+    setIsEnriching(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('enrich-buyer', {
+        body: { buyerId: id }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Enrichment complete",
+        description: `Updated ${buyer.platform_company_name || buyer.pe_firm_name} with website data`
+      });
+      loadData();
+    } catch (err: any) {
+      toast({
+        title: "Enrichment failed",
+        description: err.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsEnriching(false);
+    }
+  };
+
   const saveIntelligence = async () => {
     const { error } = await supabase.from("buyers").update({
       // A. Company & Firm Identification
@@ -392,6 +418,18 @@ export default function BuyerDetail() {
               ) : null}
             </div>
           </div>
+          <Button
+            variant="outline"
+            onClick={enrichFromWebsite}
+            disabled={isEnriching || (!buyer.platform_website && !buyer.pe_firm_website)}
+          >
+            {isEnriching ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4 mr-2" />
+            )}
+            Enrich from Website
+          </Button>
         </div>
 
         <Tabs defaultValue="overview" className="space-y-4">
