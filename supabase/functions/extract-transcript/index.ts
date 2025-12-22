@@ -546,28 +546,48 @@ ${transcriptContent}
     const allKeyQuotes: string[] = [];
 
     // Prompt 7: Investment Thesis (OVERRIDE) - Platform-specific, not PE firm
+    // Improved prompt to be more flexible and synthesize thesis even if not explicitly stated
     console.log('Running Prompt 7: Investment Thesis from Transcript for', industryName);
     const thesisPrompt = transcriptPromptBase + `
-WHAT TO DO: Extract ${platformName}'s investment thesis for ${industryName} add-on acquisitions.
+WHAT TO DO: Extract or SYNTHESIZE ${platformName}'s investment thesis for ${industryName} add-on acquisitions.
+
+**CRITICAL - ALWAYS GENERATE A THESIS SUMMARY:**
+Even if the buyer doesn't explicitly say "our thesis is...", you MUST synthesize a thesis_summary from what they discuss:
+- What type of ${industryName} businesses are they looking for?
+- What size criteria do they mention?
+- What geographic preferences do they have?
+- What makes them excited about a deal?
+
+**Example synthesis:** If they say "we want $10M+ revenue shops in the Midwest with good insurance relationships" → 
+thesis_summary should be: "Seeking established ${industryName} operations with $10M+ revenue in Midwest markets with strong insurance/DRP relationships"
 
 **CRITICAL:** 
 - We want the PLATFORM's thesis (${platformName}), not the PE firm's general thesis (${peFirmName})
 - ${peFirmName} may describe their firm as "investing in environmental services, business services, manufacturing" - IGNORE this
 - We want to know what ${platformName} is specifically looking for in ${industryName} add-ons
 
-Look for:
+Look for and synthesize from:
 - What makes an attractive ${industryName} acquisition target for ${platformName}
 - Geographic expansion goals for the ${industryName} platform
+- Size criteria mentioned (revenue, EBITDA ranges)
 - Service line expansion goals within ${industryName}
 - Strategic priorities for growing the ${industryName} business
+- Deal structure preferences
+
+**thesis_confidence levels:**
+- "high" = They explicitly stated a thesis or strategy
+- "medium" = Clear preferences discussed but not framed as thesis (most common)
+- "low" = Had to infer from scattered comments
 
 **DO NOT include:** The PE firm's general description of their investment focus across industries.
 
 EXAMPLE OUTPUT for a collision repair platform:
-- thesis_summary: "Building a regional collision repair platform focused on the Midwest, targeting shops with strong insurance relationships"
+- thesis_summary: "Building a regional collision repair platform focused on the Midwest, targeting shops with $5-25M revenue and strong insurance relationships"
 - strategic_priorities: "Geographic density in core markets, adding OEM certifications, growing fleet/commercial business"
-- thesis_confidence: "high"
-- key_quotes_thesis: ["We want shops with strong DRP relationships", "Looking to get denser in our core Midwest markets"]`;
+- thesis_confidence: "medium"
+- key_quotes_thesis: ["We want shops with strong DRP relationships", "Looking to get denser in our core Midwest markets"]
+
+**IMPORTANT:** You MUST provide a thesis_summary - do NOT leave it empty. Synthesize from ALL available information in the transcript.`;
 
     const thesis = await callAIWithTool(lovableApiKey, systemPrompt, thesisPrompt, extractTranscriptThesisTool);
     Object.assign(extractedData, thesis);
@@ -686,6 +706,53 @@ EXAMPLE OUTPUT for a collision repair tracker:
     // Add all key quotes
     extractedData.key_quotes = allKeyQuotes;
 
+    // FALLBACK: If no thesis_summary was extracted but we have key quotes, synthesize one
+    if ((!extractedData.thesis_summary || extractedData.thesis_summary.trim() === '') && allKeyQuotes.length > 0) {
+      console.log('[Fallback] No thesis_summary extracted, synthesizing from key quotes...');
+      try {
+        const synthesisPrompt = `Based on these direct quotes from a call with ${platformName} (${peFirmName}'s ${industryName} platform), synthesize a 1-2 sentence investment thesis summary:
+
+Key Quotes:
+${allKeyQuotes.map((q, i) => `${i + 1}. "${q}"`).join('\n')}
+
+Synthesize these into a thesis_summary that describes what they're looking for in ${industryName} acquisitions. Focus on:
+- Size/revenue criteria if mentioned
+- Geographic preferences if mentioned
+- Business characteristics they value
+- Any deal structure preferences
+
+Return ONLY a JSON object like: {"thesis_summary": "...", "thesis_confidence": "Medium"}`;
+
+        const synthesisResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${lovableApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-2.5-flash',
+            messages: [{ role: 'user', content: synthesisPrompt }],
+            response_format: { type: 'json_object' }
+          }),
+        });
+
+        if (synthesisResponse.ok) {
+          const synthesisData = await synthesisResponse.json();
+          const content = synthesisData.choices?.[0]?.message?.content;
+          if (content) {
+            const parsed = JSON.parse(content);
+            if (parsed.thesis_summary) {
+              extractedData.thesis_summary = parsed.thesis_summary;
+              extractedData.thesis_confidence = parsed.thesis_confidence || 'Medium';
+              console.log('[Fallback] Synthesized thesis_summary:', extractedData.thesis_summary);
+            }
+          }
+        }
+      } catch (synthError) {
+        console.error('[Fallback] Failed to synthesize thesis:', synthError);
+      }
+    }
+
     // FIX: Capitalize thesis_confidence to match database constraint
     // Database expects 'High', 'Medium', 'Low' but AI returns 'high', 'medium', 'low'
     if (extractedData.thesis_confidence && typeof extractedData.thesis_confidence === 'string') {
@@ -776,6 +843,26 @@ EXAMPLE OUTPUT for a collision repair tracker:
       const buyerUpdateData: Record<string, any> = {
         data_last_updated: new Date().toISOString(),
       };
+
+      // CLEAR BAD PLACEHOLDER DATA: If thesis_summary contains useless website scrape placeholders, clear it
+      // This handles cases where the website scrape returned "The provided website content does not clearly define..."
+      const badThesisPatterns = [
+        'does not clearly define',
+        'does not provide specific',
+        'could not find',
+        'no specific thesis',
+        'unavailable',
+        'not available'
+      ];
+      
+      if (buyer.thesis_summary) {
+        const lowerThesis = buyer.thesis_summary.toLowerCase();
+        const isBadThesis = badThesisPatterns.some(pattern => lowerThesis.includes(pattern));
+        if (isBadThesis) {
+          console.log('[Cleanup] Clearing bad placeholder thesis_summary:', buyer.thesis_summary.substring(0, 100));
+          buyerUpdateData.thesis_summary = null; // Clear it so transcript data can take over
+        }
+      }
 
       // OVERRIDE fields - transcript always wins for these
       const overrideFields = [
