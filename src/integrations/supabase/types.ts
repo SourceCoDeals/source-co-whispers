@@ -97,6 +97,8 @@ export type Database = {
           geography_score: number | null
           human_override_score: number | null
           id: string
+          interested: boolean | null
+          interested_at: string | null
           pass_category: string | null
           pass_notes: string | null
           pass_reason: string | null
@@ -119,6 +121,8 @@ export type Database = {
           geography_score?: number | null
           human_override_score?: number | null
           id?: string
+          interested?: boolean | null
+          interested_at?: string | null
           pass_category?: string | null
           pass_notes?: string | null
           pass_reason?: string | null
@@ -141,6 +145,8 @@ export type Database = {
           geography_score?: number | null
           human_override_score?: number | null
           id?: string
+          interested?: boolean | null
+          interested_at?: string | null
           pass_category?: string | null
           pass_notes?: string | null
           pass_reason?: string | null
