@@ -358,6 +358,104 @@ const extractTranscriptDealBreakersTool = {
   }
 };
 
+// Prompt 12: Business Context from Transcript (NEW)
+const extractTranscriptBusinessContextTool = {
+  type: "function",
+  function: {
+    name: "extract_transcript_business_context",
+    description: "Extract business context about the platform company mentioned in the call",
+    parameters: {
+      type: "object",
+      properties: {
+        business_summary: {
+          type: "string",
+          description: "Description of what the platform company does, their strategy, and business model as mentioned in the call"
+        },
+        industry_vertical: {
+          type: "string",
+          description: "Primary industry the platform operates in"
+        },
+        services_offered: {
+          type: "string",
+          description: "Services or products offered by the platform"
+        },
+        specialized_focus: {
+          type: "string",
+          description: "Any specialized focus or niche within the industry"
+        },
+        key_quotes_business: {
+          type: "array",
+          items: { type: "string" },
+          description: "Direct quotes describing the business"
+        }
+      },
+      required: [],
+      additionalProperties: false
+    }
+  }
+};
+
+// Prompt 13: Acquisition History from Transcript (NEW)
+const extractTranscriptAcquisitionHistoryTool = {
+  type: "function",
+  function: {
+    name: "extract_transcript_acquisition_history",
+    description: "Extract current acquisition pipeline and deal progress mentioned in the call",
+    parameters: {
+      type: "object",
+      properties: {
+        deals_under_loi: {
+          type: "number",
+          description: "Number of deals currently under LOI"
+        },
+        deals_in_diligence: {
+          type: "number",
+          description: "Number of deals in due diligence"
+        },
+        deals_closed: {
+          type: "number",
+          description: "Number of completed acquisitions"
+        },
+        total_acquisitions: {
+          type: "number",
+          description: "Total number of acquisitions completed to date"
+        },
+        recent_acquisitions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              status: { type: "string" },
+              details: { type: "string" }
+            }
+          },
+          description: "Specific deals or targets mentioned with their status"
+        },
+        acquisition_stage: {
+          type: "string",
+          description: "Current stage of platform build (e.g., 'early days', 'scaling', 'mature')"
+        },
+        equity_committed: {
+          type: "string",
+          description: "Total equity committed to the strategy if mentioned"
+        },
+        acquisition_frequency: {
+          type: "string",
+          description: "How often they are acquiring (e.g., '3-4 per year', 'monthly')"
+        },
+        key_quotes_acquisitions: {
+          type: "array",
+          items: { type: "string" },
+          description: "Direct quotes about acquisition progress and pipeline"
+        }
+      },
+      required: [],
+      additionalProperties: false
+    }
+  }
+};
+
 async function callAIWithTool(openaiApiKey: string, systemPrompt: string, userPrompt: string, tool: any): Promise<any> {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -777,6 +875,61 @@ EXAMPLE OUTPUT for a collision repair tracker:
     Object.assign(extractedData, dealBreakers);
     if (dealBreakers.key_quotes_deal_breakers) allKeyQuotes.push(...dealBreakers.key_quotes_deal_breakers);
 
+    // Prompt 12: Business Context (NEW)
+    console.log('Running Prompt 12: Business Context from Transcript for', industryName);
+    const businessContextPrompt = transcriptPromptBase + `
+WHAT TO DO: Extract information about what ${platformName} does as a business, as mentioned in the call.
+
+Look for descriptions of:
+- What the platform company does (e.g., "Minuteman Collision is a collision repair roll-up")
+- Their business model and strategy
+- Services they offer
+- Their niche or specialized focus within ${industryName}
+
+This is about WHAT THE BUYER'S PLATFORM DOES, not their acquisition criteria.
+
+EXAMPLE OUTPUT for a collision repair platform:
+- business_summary: "Collision repair roll-up focused on acquiring and integrating single-shop collision repair businesses in the Mid-Atlantic and Northeast, with a focus on operational excellence and insurance relationship optimization"
+- industry_vertical: "Collision Repair / Auto Body"
+- services_offered: "Collision repair, auto body repair, paintless dent repair, glass repair"
+- specialized_focus: "Insurance DRP relationships and OEM certifications"
+- key_quotes_business: ["Minuteman is a collision repair roll up", "We focus on shops with strong insurance relationships"]`;
+
+    const businessContext = await callAIWithTool(openaiApiKey, systemPrompt, businessContextPrompt, extractTranscriptBusinessContextTool);
+    Object.assign(extractedData, businessContext);
+    if (businessContext.key_quotes_business) allKeyQuotes.push(...businessContext.key_quotes_business);
+
+    // Prompt 13: Acquisition History (NEW)
+    console.log('Running Prompt 13: Acquisition History from Transcript for', industryName);
+    const acquisitionHistoryPrompt = transcriptPromptBase + `
+WHAT TO DO: Extract information about ${platformName}'s current acquisition pipeline and progress.
+
+Look for mentions of:
+- Deals currently under LOI
+- Deals in due diligence
+- Recently closed deals
+- Total acquisitions to date
+- Equity committed to the strategy
+- Whether they're early stage, scaling, or mature
+- How frequently they're acquiring
+
+This helps us understand their current momentum and capacity for new deals.
+
+EXAMPLE OUTPUT:
+- deals_under_loi: 10
+- deals_in_diligence: 3
+- deals_closed: 0
+- total_acquisitions: 0
+- recent_acquisitions: [{"name": "10-11 shops under LOI", "status": "LOI", "details": "Closing a couple over next month or two"}]
+- acquisition_stage: "Early days - building platform from scratch"
+- equity_committed: "$40 million"
+- acquisition_frequency: "Looking to close 3-4 in the next quarter"
+- key_quotes_acquisitions: ["We have 10-11 under LOI right now", "We're early days, just getting started", "We have $40 million committed"]`;
+
+    const acquisitionHistory = await callAIWithTool(openaiApiKey, systemPrompt, acquisitionHistoryPrompt, extractTranscriptAcquisitionHistoryTool);
+    Object.assign(extractedData, acquisitionHistory);
+    if (acquisitionHistory.key_quotes_acquisitions) allKeyQuotes.push(...acquisitionHistory.key_quotes_acquisitions);
+
     // Add all key quotes
     extractedData.key_quotes = allKeyQuotes;
 
@@ -898,7 +1051,7 @@ Return ONLY a JSON object like: {"thesis_summary": "...", "thesis_confidence": "
       .update({
         extracted_data: extractedData,
         extraction_evidence: {
-          prompts_run: ['thesis', 'geography', 'size', 'deal_structure', 'deal_breakers'],
+          prompts_run: ['thesis', 'geography', 'size', 'deal_structure', 'deal_breakers', 'business_context', 'acquisition_history'],
           extracted_at: new Date().toISOString(),
           key_quotes_count: allKeyQuotes.length
         },
@@ -944,8 +1097,19 @@ Return ONLY a JSON object like: {"thesis_summary": "...", "thesis_confidence": "
         'target_geographies', 'geographic_exclusions', 'acquisition_geography',
         'min_revenue', 'max_revenue', 'revenue_sweet_spot',
         'min_ebitda', 'max_ebitda', 'ebitda_sweet_spot', 'preferred_ebitda',
-        'owner_roll_requirement', 'owner_transition_goals', 'acquisition_timeline', 'acquisition_appetite'
+        'owner_roll_requirement', 'owner_transition_goals', 'acquisition_timeline', 'acquisition_appetite',
+        // NEW: Business context fields
+        'business_summary', 'industry_vertical', 'services_offered', 'specialized_focus',
+        // NEW: Acquisition history fields
+        'total_acquisitions', 'acquisition_frequency'
       ];
+      
+      // Handle recent_acquisitions as JSON merge
+      if (extractedData.recent_acquisitions && Array.isArray(extractedData.recent_acquisitions)) {
+        const existingAcquisitions = buyer.recent_acquisitions ? 
+          (Array.isArray(buyer.recent_acquisitions) ? buyer.recent_acquisitions : [buyer.recent_acquisitions]) : [];
+        buyerUpdateData.recent_acquisitions = [...existingAcquisitions, ...extractedData.recent_acquisitions];
+      }
 
       for (const field of overrideFields) {
         if (extractedData[field] !== undefined && extractedData[field] !== null) {
