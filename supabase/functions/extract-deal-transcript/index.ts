@@ -421,11 +421,12 @@ Deno.serve(async (req) => {
     const { user, error: authResponse } = await authenticateUser(req);
     if (authResponse) return authResponse;
 
-    const { dealId } = await req.json();
+    const { dealId, transcriptId } = await req.json();
 
-    if (!dealId) {
+    // Need either dealId (legacy) or transcriptId (new flow)
+    if (!dealId && !transcriptId) {
       return new Response(
-        JSON.stringify({ success: false, error: 'dealId is required' }),
+        JSON.stringify({ success: false, error: 'dealId or transcriptId is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -451,39 +452,123 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl!, supabaseKey!);
 
-    // Fetch deal
-    const { data: deal, error: dealError } = await supabase
-      .from('deals')
-      .select('*')
-      .eq('id', dealId)
-      .single();
-
-    if (dealError || !deal) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Deal not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!deal.transcript_link) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Deal has no transcript link' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log('Processing deal:', deal.deal_name, 'transcript:', deal.transcript_link);
-
-    // Scrape transcript content
+    let deal: any;
     let transcriptContent: string;
-    try {
-      transcriptContent = await scrapeTranscriptUrl(firecrawlApiKey, deal.transcript_link);
-    } catch (error) {
-      console.error('Scraping failed:', error);
-      return new Response(
-        JSON.stringify({ success: false, error: 'Failed to scrape transcript URL' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    let transcriptRecord: any = null;
+
+    // NEW FLOW: transcriptId provided - use deal_transcripts table
+    if (transcriptId) {
+      console.log('Processing transcript from deal_transcripts:', transcriptId);
+      
+      // Fetch transcript record
+      const { data: transcript, error: transcriptError } = await supabase
+        .from('deal_transcripts')
+        .select('*')
+        .eq('id', transcriptId)
+        .single();
+
+      if (transcriptError || !transcript) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Transcript not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      transcriptRecord = transcript;
+
+      // Fetch the associated deal
+      const { data: dealData, error: dealError } = await supabase
+        .from('deals')
+        .select('*')
+        .eq('id', transcript.deal_id)
+        .single();
+
+      if (dealError || !dealData) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Deal not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      deal = dealData;
+
+      // Get content based on transcript type
+      if (transcript.transcript_type === 'link' && transcript.url) {
+        console.log('Scraping link-based transcript:', transcript.url);
+        try {
+          transcriptContent = await scrapeTranscriptUrl(firecrawlApiKey, transcript.url);
+        } catch (error) {
+          console.error('Scraping failed:', error);
+          return new Response(
+            JSON.stringify({ success: false, error: 'Failed to scrape transcript URL' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      } else if (transcript.transcript_type === 'file' && transcript.url) {
+        console.log('Downloading file-based transcript:', transcript.url);
+        // Download file from storage
+        const { data: fileData, error: downloadError } = await supabase.storage
+          .from('deal-transcripts')
+          .download(transcript.url);
+
+        if (downloadError || !fileData) {
+          console.error('File download failed:', downloadError);
+          return new Response(
+            JSON.stringify({ success: false, error: 'Failed to download transcript file' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Convert to text
+        transcriptContent = await fileData.text();
+        console.log('File content length:', transcriptContent.length);
+      } else if (transcript.notes && transcript.notes.length > 50) {
+        // Use notes as content if no URL
+        transcriptContent = transcript.notes;
+      } else {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Transcript has no content (no URL, file, or sufficient notes)' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    } 
+    // LEGACY FLOW: dealId provided - use transcript_link from deals table
+    else {
+      console.log('Processing deal transcript_link (legacy):', dealId);
+      
+      const { data: dealData, error: dealError } = await supabase
+        .from('deals')
+        .select('*')
+        .eq('id', dealId)
+        .single();
+
+      if (dealError || !dealData) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Deal not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      deal = dealData;
+
+      if (!deal.transcript_link) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Deal has no transcript link' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('Processing deal:', deal.deal_name, 'transcript:', deal.transcript_link);
+
+      try {
+        transcriptContent = await scrapeTranscriptUrl(firecrawlApiKey, deal.transcript_link);
+      } catch (error) {
+        console.error('Scraping failed:', error);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Failed to scrape transcript URL' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     if (!transcriptContent || transcriptContent.length < 100) {
@@ -493,7 +578,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('Transcript scraped, length:', transcriptContent.length);
+    console.log('Transcript content ready, length:', transcriptContent.length);
 
     // Extract deal info using AI with M&A framework
     const extractedInfo = await extractDealInfo(openaiApiKey, transcriptContent);
@@ -548,7 +633,7 @@ Deno.serve(async (req) => {
     const { error: updateError } = await supabase
       .from('deals')
       .update(updateData)
-      .eq('id', dealId);
+      .eq('id', deal.id);
 
     if (updateError) {
       console.error('Error updating deal:', updateError);
@@ -556,6 +641,21 @@ Deno.serve(async (req) => {
         JSON.stringify({ success: false, error: 'Failed to update deal' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // If using new transcript flow, also update the transcript record
+    if (transcriptRecord) {
+      const { error: transcriptUpdateError } = await supabase
+        .from('deal_transcripts')
+        .update({
+          extracted_data: extractedInfo,
+          processed_at: new Date().toISOString(),
+        })
+        .eq('id', transcriptId);
+
+      if (transcriptUpdateError) {
+        console.error('Error updating transcript record:', transcriptUpdateError);
+      }
     }
 
     console.log('Deal updated successfully with enhanced financial metadata');

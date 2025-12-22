@@ -13,6 +13,7 @@ import { ConfidenceBadge } from "@/components/ConfidenceBadge";
 import { FollowupQuestionsPanel } from "@/components/FollowupQuestionsPanel";
 import { EditableSection } from "@/components/EditableSection";
 import { ContactCard } from "@/components/ContactCard";
+import { DealTranscriptsSection } from "@/components/DealTranscriptsSection";
 import {
   Collapsible,
   CollapsibleContent,
@@ -25,6 +26,7 @@ export default function DealDetail() {
   const { toast } = useToast();
   const [deal, setDeal] = useState<any>(null);
   const [tracker, setTracker] = useState<any>(null);
+  const [transcripts, setTranscripts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isExtracting, setIsExtracting] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
@@ -43,12 +45,18 @@ export default function DealDetail() {
   useEffect(() => { loadData(); }, [id]);
 
   const loadData = async () => {
-    const { data: dealData } = await supabase.from("deals").select("*").eq("id", id).maybeSingle();
+    const [dealRes, transcriptsRes] = await Promise.all([
+      supabase.from("deals").select("*").eq("id", id).maybeSingle(),
+      supabase.from("deal_transcripts").select("*").eq("deal_id", id).order("call_date", { ascending: false }),
+    ]);
+    
+    const dealData = dealRes.data;
     setDeal(dealData);
+    setTranscripts(transcriptsRes.data || []);
+    
     if (dealData) {
       const { data: trackerData } = await supabase.from("industry_trackers").select("*").eq("id", dealData.tracker_id).maybeSingle();
       setTracker(trackerData);
-      // Initialize edit states
       resetEditStates(dealData);
     }
     setIsLoading(false);
@@ -218,16 +226,23 @@ export default function DealDetail() {
           <FollowupQuestionsPanel questions={deal.financial_followup_questions} />
         )}
 
-        {/* Attachments & Actions */}
+        {/* Transcripts Section */}
+        <div className="bg-card border rounded-lg p-4">
+          <DealTranscriptsSection
+            dealId={id!}
+            transcripts={transcripts}
+            onDataChange={loadData}
+          />
+        </div>
+
+        {/* Website & Actions */}
         <EditableSection
-          title="Attachments & Actions"
-          icon={<FileText className="w-5 h-5" />}
+          title="Website & Actions"
+          icon={<Globe className="w-5 h-5" />}
           onSave={async () => {
             const oldWebsite = deal.company_website;
-            const oldTranscript = deal.transcript_link;
             await saveSection({
               company_website: editAttachments.company_website || null,
-              transcript_link: editAttachments.transcript_link || null,
             });
             // Auto-enrich if website was just added
             if (!oldWebsite && editAttachments.company_website) {
@@ -242,71 +257,38 @@ export default function DealDetail() {
                 setIsEnriching(false);
               }
             }
-            // Auto-extract if transcript was just added
-            if (!oldTranscript && editAttachments.transcript_link) {
-              setIsExtracting(true);
-              try {
-                const { data } = await supabase.functions.invoke('extract-deal-transcript', { body: { dealId: id } });
-                if (data?.success) {
-                  toast({ title: "Transcript extraction complete", description: `Updated ${data.extractedFields?.length || 0} fields.` });
-                  await loadData();
-                }
-              } finally {
-                setIsExtracting(false);
-              }
-            }
           }}
           editContent={
-            <div className="space-y-3">
-              <div>
-                <label className="text-muted-foreground text-xs uppercase tracking-wide mb-1 block">Company Website</label>
-                <Input 
-                  value={editAttachments.company_website} 
-                  onChange={(e) => setEditAttachments({ ...editAttachments, company_website: e.target.value })}
-                  placeholder="https://example.com"
-                />
-              </div>
-              <div>
-                <label className="text-muted-foreground text-xs uppercase tracking-wide mb-1 block">Transcript Link</label>
-                <Input 
-                  value={editAttachments.transcript_link} 
-                  onChange={(e) => setEditAttachments({ ...editAttachments, transcript_link: e.target.value })}
-                  placeholder="https://docs.google.com/..."
-                />
-              </div>
+            <div>
+              <label className="text-muted-foreground text-xs uppercase tracking-wide mb-1 block">Company Website</label>
+              <Input 
+                value={editAttachments.company_website} 
+                onChange={(e) => setEditAttachments({ ...editAttachments, company_website: e.target.value })}
+                placeholder="https://example.com"
+              />
             </div>
           }
         >
           <div className="flex flex-wrap gap-3">
-            {deal.transcript_link && (
+            {deal.company_website && (
               <>
                 <a 
-                  href={deal.transcript_link.startsWith('http') ? deal.transcript_link : `https://${deal.transcript_link}`}
+                  href={deal.company_website.startsWith('http') ? deal.company_website : `https://${deal.company_website}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 text-sm text-primary hover:underline border rounded-md px-3 py-2"
                 >
-                  <FileText className="w-4 h-4" /> View Call Transcript
+                  <ExternalLink className="w-4 h-4" /> View Website
                 </a>
                 <Button 
                   variant="outline" 
-                  onClick={handleExtractTranscript} 
-                  disabled={isExtracting}
+                  onClick={handleEnrichFromWebsite} 
+                  disabled={isEnriching}
                 >
-                  {isExtracting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                  {isExtracting ? "Extracting..." : "Extract from Transcript"}
+                  {isEnriching ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                  {isEnriching ? "Enriching..." : "Enrich from Website"}
                 </Button>
               </>
-            )}
-            {deal.company_website && (
-              <Button 
-                variant="outline" 
-                onClick={handleEnrichFromWebsite} 
-                disabled={isEnriching}
-              >
-                {isEnriching ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Globe className="w-4 h-4 mr-2" />}
-                {isEnriching ? "Enriching..." : "Enrich from Website"}
-              </Button>
             )}
             <Button onClick={() => navigate(`/deals/${id}/matching`)}>
               <Users className="w-4 h-4 mr-2" />View Buyer Matches
