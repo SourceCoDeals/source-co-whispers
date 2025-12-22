@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { deleteTrackerWithRelated } from "@/lib/cascadeDelete";
 import {
   Table,
   TableBody,
@@ -94,24 +95,10 @@ export default function Trackers() {
   const deleteTracker = async () => {
     if (!trackerToDelete) return;
     
-    // Delete all related data first (buyers, deals, etc.)
-    const { error: buyersError } = await supabase.from("buyers").delete().eq("tracker_id", trackerToDelete.id);
-    if (buyersError) {
-      toast({ title: "Error", description: "Failed to delete buyers", variant: "destructive" });
-      setDeleteDialogOpen(false);
-      return;
-    }
+    const { error } = await deleteTrackerWithRelated(trackerToDelete.id);
     
-    const { error: dealsError } = await supabase.from("deals").delete().eq("tracker_id", trackerToDelete.id);
-    if (dealsError) {
-      toast({ title: "Error", description: "Failed to delete deals", variant: "destructive" });
-      setDeleteDialogOpen(false);
-      return;
-    }
-    
-    const { error } = await supabase.from("industry_trackers").delete().eq("id", trackerToDelete.id);
     if (error) {
-      toast({ title: "Error", description: "Failed to delete universe", variant: "destructive" });
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "Universe deleted", description: `${trackerToDelete.industry_name} has been permanently deleted` });
       loadTrackers();

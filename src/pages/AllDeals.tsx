@@ -9,6 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Loader2, FileText, ChevronRight, MoreHorizontal, Archive, Trash2, Building2, Globe } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { normalizeDomain } from "@/lib/normalizeDomain";
+import { deleteDealWithRelated } from "@/lib/cascadeDelete";
 interface CompanyGroup {
   companyId: string | null;
   companyName: string;
@@ -24,6 +25,8 @@ export default function AllDeals() {
   const [isLoading, setIsLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [companyToDelete, setCompanyToDelete] = useState<CompanyGroup | null>(null);
+  const [dealDeleteDialogOpen, setDealDeleteDialogOpen] = useState(false);
+  const [dealToDelete, setDealToDelete] = useState<{ id: string; name: string } | null>(null);
   const { toast } = useToast();
   useEffect(() => {
     loadDeals();
@@ -55,19 +58,26 @@ export default function AllDeals() {
     loadDeals();
   };
 
-  const deleteDeal = async (e: React.MouseEvent, dealId: string, dealName: string) => {
+  const confirmDeleteDeal = (e: React.MouseEvent, dealId: string, dealName: string) => {
     e.preventDefault();
     e.stopPropagation();
+    setDealToDelete({ id: dealId, name: dealName });
+    setDealDeleteDialogOpen(true);
+  };
+
+  const deleteDeal = async () => {
+    if (!dealToDelete) return;
     
-    if (!confirm(`Are you sure you want to delete "${dealName}"? This cannot be undone.`)) return;
-    
-    const { error } = await supabase.from("deals").delete().eq("id", dealId);
+    const { error } = await deleteDealWithRelated(dealToDelete.id);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-      return;
+    } else {
+      toast({ title: "Deal deleted", description: `${dealToDelete.name} has been deleted` });
+      loadDeals();
     }
-    toast({ title: "Deal deleted", description: `${dealName} has been deleted` });
-    loadDeals();
+    
+    setDealDeleteDialogOpen(false);
+    setDealToDelete(null);
   };
 
   const archiveCompany = async (group: CompanyGroup) => {
@@ -94,30 +104,33 @@ export default function AllDeals() {
   const deleteCompany = async () => {
     if (!companyToDelete) return;
     
-    const dealIds = companyToDelete.deals.map(d => d.id);
+    let hasError = false;
     
-    // Delete all deals for this company
-    const { error: dealsError } = await supabase.from("deals").delete().in("id", dealIds);
-    if (dealsError) {
-      toast({ title: "Error", description: dealsError.message, variant: "destructive" });
-      setDeleteDialogOpen(false);
-      setCompanyToDelete(null);
-      return;
+    // Delete all deals for this company using cascade delete
+    for (const deal of companyToDelete.deals) {
+      const { error } = await deleteDealWithRelated(deal.id);
+      if (error) {
+        hasError = true;
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+        break;
+      }
     }
     
-    // Delete the company record if it exists
-    if (companyToDelete.companyId) {
-      await supabase.from("companies").delete().eq("id", companyToDelete.companyId);
+    if (!hasError) {
+      // Delete the company record if it exists
+      if (companyToDelete.companyId) {
+        await supabase.from("companies").delete().eq("id", companyToDelete.companyId);
+      }
+      
+      toast({ 
+        title: "Company deleted", 
+        description: `${companyToDelete.companyName} has been permanently deleted` 
+      });
+      loadDeals();
     }
-    
-    toast({ 
-      title: "Company deleted", 
-      description: `${companyToDelete.companyName} has been permanently deleted` 
-    });
     
     setDeleteDialogOpen(false);
     setCompanyToDelete(null);
-    loadDeals();
   };
 
   // Group deals by company (using company_id or domain as fallback)
@@ -258,7 +271,7 @@ export default function AllDeals() {
                                   <Archive className="w-4 h-4 mr-2" />
                                   Archive
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={(e) => deleteDeal(e, deal.id, deal.deal_name)} className="text-destructive">
+                                <DropdownMenuItem onClick={(e) => confirmDeleteDeal(e, deal.id, deal.deal_name)} className="text-destructive">
                                   <Trash2 className="w-4 h-4 mr-2" />
                                   Delete
                                 </DropdownMenuItem>
@@ -287,6 +300,23 @@ export default function AllDeals() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={deleteCompany} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={dealDeleteDialogOpen} onOpenChange={setDealDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {dealToDelete?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this deal and all associated data. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={deleteDeal} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Delete permanently
             </AlertDialogAction>
           </AlertDialogFooter>
