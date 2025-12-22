@@ -124,10 +124,18 @@ export default function TrackerDetail() {
         return;
       }
 
-      toast({ 
-        title: "Buyer enriched", 
-        description: `${buyerName}: ${data.message}` 
-      });
+      // Show warning if partial enrichment (some websites failed)
+      if (data.warning) {
+        toast({ 
+          title: "Partial enrichment", 
+          description: data.warning
+        });
+      } else {
+        toast({ 
+          title: "Buyer enriched", 
+          description: `${buyerName}: ${data.message}` 
+        });
+      }
       
       await loadData();
     } catch (err) {
@@ -160,9 +168,18 @@ export default function TrackerDetail() {
     setIsBulkEnriching(true);
     let successCount = 0;
     let errorCount = 0;
+    let partialCount = 0;
+    const failedBuyers: string[] = [];
 
-    for (const buyer of buyersWithWebsites) {
+    for (let i = 0; i < buyersWithWebsites.length; i++) {
+      const buyer = buyersWithWebsites[i];
       setEnrichingBuyers(prev => new Set(prev).add(buyer.id));
+      
+      // Show progress toast
+      toast({ 
+        title: `Enriching ${i + 1} of ${buyersWithWebsites.length}`, 
+        description: buyer.platform_company_name || buyer.pe_firm_name 
+      });
       
       try {
         const { data, error } = await supabase.functions.invoke('enrich-buyer', {
@@ -171,11 +188,16 @@ export default function TrackerDetail() {
 
         if (error || !data?.success) {
           errorCount++;
+          failedBuyers.push(buyer.platform_company_name || buyer.pe_firm_name);
         } else {
+          if (data.warning) {
+            partialCount++;
+          }
           successCount++;
         }
       } catch {
         errorCount++;
+        failedBuyers.push(buyer.platform_company_name || buyer.pe_firm_name);
       }
       
       setEnrichingBuyers(prev => {
@@ -185,15 +207,28 @@ export default function TrackerDetail() {
       });
 
       // Small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (i < buyersWithWebsites.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
 
+    // Wait a moment for the database to fully update
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
     setIsBulkEnriching(false);
     await loadData();
 
+    // Show detailed completion toast
+    let description = `${successCount} enriched`;
+    if (partialCount > 0) description += ` (${partialCount} partial)`;
+    if (errorCount > 0) description += `, ${errorCount} failed`;
+    if (failedBuyers.length > 0 && failedBuyers.length <= 3) {
+      description += `: ${failedBuyers.join(', ')}`;
+    }
+
     toast({ 
       title: "Bulk enrichment complete", 
-      description: `${successCount} enriched, ${errorCount} failed` 
+      description 
     });
   };
 

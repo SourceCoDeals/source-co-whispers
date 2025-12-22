@@ -328,14 +328,24 @@ const extractPETargetCriteriaTool = {
   }
 };
 
-async function scrapeUrl(url: string, firecrawlApiKey: string): Promise<string | null> {
+async function scrapeUrl(url: string, firecrawlApiKey: string, options?: { waitFor?: number }): Promise<string | null> {
   try {
     let formattedUrl = url.trim();
     if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
       formattedUrl = `https://${formattedUrl}`;
     }
 
-    console.log('Scraping:', formattedUrl);
+    console.log('Scraping:', formattedUrl, options?.waitFor ? `(waitFor: ${options.waitFor}ms)` : '');
+
+    const requestBody: any = {
+      url: formattedUrl,
+      formats: ['markdown'],
+      onlyMainContent: true,
+    };
+    
+    if (options?.waitFor) {
+      requestBody.waitFor = options.waitFor;
+    }
 
     const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
@@ -343,17 +353,13 @@ async function scrapeUrl(url: string, firecrawlApiKey: string): Promise<string |
         'Authorization': `Bearer ${firecrawlApiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        url: formattedUrl,
-        formats: ['markdown'],
-        onlyMainContent: true,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     const data = await response.json();
     
     if (!response.ok || !data.success) {
-      console.error('Scrape failed for', formattedUrl, data);
+      console.error(`Scrape FAILED for ${formattedUrl} - Status: ${response.status}`, data.error || data);
       return null;
     }
 
@@ -698,26 +704,52 @@ Deno.serve(async (req) => {
     // Scrape websites (with location page discovery for platform website)
     let platformContent: string | null = null;
     let platformLocationsContent: string | null = null;
+    let platformScrapeFailed = false;
+    let peFirmScrapeFailed = false;
     
     if (buyer.platform_website) {
       const { main, locations } = await scrapeWithLocationPages(buyer.platform_website, firecrawlApiKey);
       platformContent = main;
       platformLocationsContent = locations;
       
+      // If main page failed, retry with waitFor option (sometimes helps with bot protection)
+      if (!platformContent) {
+        console.warn(`Platform website scrape FAILED for ${buyer.platform_company_name}: ${buyer.platform_website} - Retrying with waitFor...`);
+        platformContent = await scrapeUrl(buyer.platform_website, firecrawlApiKey, { waitFor: 3000 });
+        
+        if (!platformContent) {
+          console.warn(`Platform website retry ALSO FAILED for ${buyer.platform_company_name}: ${buyer.platform_website}`);
+          platformScrapeFailed = true;
+        } else {
+          console.log(`Platform website retry SUCCEEDED for ${buyer.platform_company_name}`);
+        }
+      }
+      
       if (platformLocationsContent) {
         console.log(`Found location page content: ${platformLocationsContent.length} characters`);
-      } else {
+      } else if (platformContent) {
         console.log('No location page found, will use main page only for geography');
       }
     }
     
-    const peFirmContent = buyer.pe_firm_website
-      ? await scrapeUrl(buyer.pe_firm_website, firecrawlApiKey)
-      : null;
+    let peFirmContent: string | null = null;
+    if (buyer.pe_firm_website) {
+      peFirmContent = await scrapeUrl(buyer.pe_firm_website, firecrawlApiKey);
+      if (!peFirmContent) {
+        console.warn(`PE firm website scrape FAILED for ${buyer.pe_firm_name}: ${buyer.pe_firm_website}`);
+        peFirmScrapeFailed = true;
+      }
+    }
 
     if (!platformContent && !peFirmContent) {
+      const failedSites: string[] = [];
+      if (buyer.platform_website) failedSites.push(`platform: ${buyer.platform_website}`);
+      if (buyer.pe_firm_website) failedSites.push(`PE firm: ${buyer.pe_firm_website}`);
       return new Response(
-        JSON.stringify({ success: false, error: 'No websites to scrape or scraping failed' }),
+        JSON.stringify({ 
+          success: false, 
+          error: `All websites failed to scrape (may be blocked): ${failedSites.join(', ')}` 
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -1084,12 +1116,26 @@ EXAMPLE OUTPUT:
     const fieldsUpdated = Object.keys(updateData).filter(k => !['data_last_updated', 'extraction_sources', 'extraction_evidence'].includes(k)).length;
     console.log(`Successfully enriched buyer with ${fieldsUpdated} fields`);
 
+    // Build warning message if any scrapes failed
+    const warnings: string[] = [];
+    if (platformScrapeFailed && buyer.platform_website) {
+      warnings.push(`Platform website (${buyer.platform_website}) could not be scraped (may be blocked)`);
+    }
+    if (peFirmScrapeFailed && buyer.pe_firm_website) {
+      warnings.push(`PE firm website (${buyer.pe_firm_website}) could not be scraped`);
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 
         message: `Enriched ${fieldsUpdated} fields from ${evidenceRecords.length} source(s)`,
         fieldsUpdated,
-        extractedData: updateData
+        extractedData: updateData,
+        scraped: {
+          platform: !!platformContent,
+          peFirm: !!peFirmContent
+        },
+        warning: warnings.length > 0 ? warnings.join('; ') : null
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
