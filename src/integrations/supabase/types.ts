@@ -533,6 +533,56 @@ export type Database = {
           },
         ]
       }
+      deal_transcripts: {
+        Row: {
+          call_date: string | null
+          created_at: string
+          deal_id: string
+          extracted_data: Json | null
+          extraction_evidence: Json | null
+          id: string
+          notes: string | null
+          processed_at: string | null
+          title: string
+          transcript_type: string
+          url: string | null
+        }
+        Insert: {
+          call_date?: string | null
+          created_at?: string
+          deal_id: string
+          extracted_data?: Json | null
+          extraction_evidence?: Json | null
+          id?: string
+          notes?: string | null
+          processed_at?: string | null
+          title: string
+          transcript_type?: string
+          url?: string | null
+        }
+        Update: {
+          call_date?: string | null
+          created_at?: string
+          deal_id?: string
+          extracted_data?: Json | null
+          extraction_evidence?: Json | null
+          id?: string
+          notes?: string | null
+          processed_at?: string | null
+          title?: string
+          transcript_type?: string
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_transcripts_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deals: {
         Row: {
           additional_info: string | null
