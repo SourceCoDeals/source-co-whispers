@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { CSVImport } from "@/components/CSVImport";
 import { StructuredCriteriaPanel } from "@/components/StructuredCriteriaPanel";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, Target, FileSearch, Download } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -52,6 +52,7 @@ export default function TrackerDetail() {
   const [isSavingFitCriteria, setIsSavingFitCriteria] = useState(false);
   const [isParsingCriteria, setIsParsingCriteria] = useState(false);
   const [isAnalyzingDocuments, setIsAnalyzingDocuments] = useState(false);
+  const [isCriteriaCollapsed, setIsCriteriaCollapsed] = useState(false);
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -448,10 +449,19 @@ export default function TrackerDetail() {
         {/* Fit Criteria Section */}
         <div className="bg-card rounded-lg border p-4">
           <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-2">
+            <button 
+              onClick={() => !isEditingFitCriteria && setIsCriteriaCollapsed(!isCriteriaCollapsed)}
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              disabled={isEditingFitCriteria}
+            >
+              {isCriteriaCollapsed ? (
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              )}
               <Info className="w-4 h-4 text-primary" />
               <h3 className="font-semibold text-sm">Buyer Fit Criteria</h3>
-            </div>
+            </button>
             {!isEditingFitCriteria && (
               <Button variant="ghost" size="sm" onClick={startEditingFitCriteria}>
                 <Pencil className="w-3.5 h-3.5 mr-1" />
@@ -460,7 +470,7 @@ export default function TrackerDetail() {
             )}
           </div>
           
-          {isEditingFitCriteria ? (
+          {!isCriteriaCollapsed && (isEditingFitCriteria ? (
             <div className="mt-3 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-2">
@@ -640,10 +650,11 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                 </p>
               )}
             </>
-          )}
-
+          ))}
+          
+          
           {/* Documents Section */}
-          {tracker.documents && (tracker.documents as any[]).length > 0 && (
+          {!isCriteriaCollapsed && tracker.documents && (tracker.documents as any[]).length > 0 && (
             <div className="mt-4 pt-4 border-t">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
