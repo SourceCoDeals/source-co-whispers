@@ -318,10 +318,27 @@ export default function BuyerDetail() {
 
       if (error) throw error;
 
-      toast({
-        title: "Enrichment complete",
-        description: `Updated ${buyer.platform_company_name || buyer.pe_firm_name} with website data`
-      });
+      if (!data.success) {
+        toast({
+          title: "Enrichment failed",
+          description: data.error || "Unknown error",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Show warning if partial enrichment (some websites failed)
+      if (data.warning) {
+        toast({
+          title: "Partial enrichment",
+          description: data.warning
+        });
+      } else {
+        toast({
+          title: "Enrichment complete",
+          description: `Updated ${buyer.platform_company_name || buyer.pe_firm_name} with website data`
+        });
+      }
       loadData();
     } catch (err: any) {
       toast({
