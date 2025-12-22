@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
-import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle, XCircle } from "lucide-react";
+import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle, XCircle, ThumbsUp, ThumbsDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -225,6 +225,32 @@ export default function DealMatching() {
   const openPassDialog = (buyer: any) => {
     setBuyerToPass(buyer);
     setPassDialogOpen(true);
+  };
+
+  const handleInterestedToggle = async (buyer: any, interested: boolean) => {
+    const { error } = await supabase
+      .from("buyer_deal_scores")
+      .update({
+        interested,
+        interested_at: new Date().toISOString(),
+      })
+      .eq("deal_id", id)
+      .eq("buyer_id", buyer.id);
+
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+
+    setScores(scores.map(s => 
+      s.buyer_id === buyer.id 
+        ? { ...s, interested, interested_at: new Date().toISOString() }
+        : s
+    ));
+    toast({ 
+      title: interested ? "Marked as interested" : "Marked as not interested",
+      description: buyer.platform_company_name || buyer.pe_firm_name
+    });
   };
 
   const getHQ = (buyer: any) => {
@@ -525,6 +551,16 @@ export default function DealMatching() {
                       <CheckCircle2 className="w-3 h-3 mr-1" />Approved
                     </Badge>
                   )}
+                  {score?.interested === true && (
+                    <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/30">
+                      <ThumbsUp className="w-3 h-3 mr-1" />Interested
+                    </Badge>
+                  )}
+                  {score?.interested === false && (
+                    <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-600 border-amber-500/30">
+                      <ThumbsDown className="w-3 h-3 mr-1" />Not Interested
+                    </Badge>
+                  )}
                   {hasFeeAgreement(buyer) && (
                     <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/30">
                       <FileCheck className="w-3 h-3 mr-1" />Fee Agreement
@@ -608,6 +644,40 @@ export default function DealMatching() {
                   <ScoreBadge score={score?.composite_score || 0} showLabel />
                   <CollapsibleTrigger asChild><Button variant="ghost" size="sm">{isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</Button></CollapsibleTrigger>
                 </div>
+                
+                {/* Action buttons for approved buyers - visible without expanding */}
+                {showPassButton && !isPassed && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-1.5 border rounded-md px-2 py-1">
+                      <span className="text-xs text-muted-foreground">Interested:</span>
+                      <Button
+                        variant={score?.interested === true ? "default" : "ghost"}
+                        size="sm"
+                        className={`h-6 w-6 p-0 ${score?.interested === true ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                        onClick={(e) => { e.stopPropagation(); handleInterestedToggle(buyer, true); }}
+                      >
+                        <ThumbsUp className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        variant={score?.interested === false ? "default" : "ghost"}
+                        size="sm"
+                        className={`h-6 w-6 p-0 ${score?.interested === false ? 'bg-destructive hover:bg-destructive/90' : ''}`}
+                        onClick={(e) => { e.stopPropagation(); handleInterestedToggle(buyer, false); }}
+                      >
+                        <ThumbsDown className="w-3 h-3" />
+                      </Button>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-7 text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
+                      onClick={(e) => { e.stopPropagation(); openPassDialog(buyer); }}
+                    >
+                      <XCircle className="w-3 h-3 mr-1" />
+                      Pass
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
             
@@ -693,21 +763,6 @@ export default function DealMatching() {
               
               {buyer.thesis_summary && (
                 <p className="text-sm text-muted-foreground italic border-l-2 border-primary/30 pl-3">"{buyer.thesis_summary}"</p>
-              )}
-              
-              {/* Mark as Passed button in Approved tab */}
-              {showPassButton && !isPassed && (
-                <div className="flex justify-end">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="text-destructive border-destructive/30 hover:bg-destructive/10"
-                    onClick={(e) => { e.stopPropagation(); openPassDialog(buyer); }}
-                  >
-                    <XCircle className="w-4 h-4 mr-2" />
-                    Mark as Passed
-                  </Button>
-                </div>
               )}
             </CollapsibleContent>
           </Collapsible>
