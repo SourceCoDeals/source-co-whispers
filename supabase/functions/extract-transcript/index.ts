@@ -686,6 +686,55 @@ EXAMPLE OUTPUT for a collision repair tracker:
     // Add all key quotes
     extractedData.key_quotes = allKeyQuotes;
 
+    // FIX: Capitalize thesis_confidence to match database constraint
+    // Database expects 'High', 'Medium', 'Low' but AI returns 'high', 'medium', 'low'
+    if (extractedData.thesis_confidence && typeof extractedData.thesis_confidence === 'string') {
+      const original = extractedData.thesis_confidence;
+      extractedData.thesis_confidence = original.charAt(0).toUpperCase() + original.slice(1).toLowerCase();
+      console.log(`[thesis_confidence] Capitalized: "${original}" → "${extractedData.thesis_confidence}"`);
+    }
+
+    // FIX: Parse numeric values from key_quotes_size if direct extraction failed
+    // This handles cases where AI returns quotes but doesn't extract numbers
+    if (extractedData.key_quotes_size && Array.isArray(extractedData.key_quotes_size)) {
+      const quotes = extractedData.key_quotes_size.join(' ');
+      
+      // Parse revenue from quotes like "$10 million in revenue" or "$5-$25M revenue"
+      if (!extractedData.min_revenue || !extractedData.max_revenue) {
+        // Match patterns like "$10M", "$10 million", "$5-$25M", "$5 to $25 million"
+        const revenueRangeMatch = quotes.match(/\$(\d+(?:\.\d+)?)\s*(?:M|million|MM)?\s*(?:to|-)\s*\$?(\d+(?:\.\d+)?)\s*(?:M|million|MM)?\s*(?:in\s+)?revenue/i);
+        if (revenueRangeMatch) {
+          extractedData.min_revenue = parseFloat(revenueRangeMatch[1]);
+          extractedData.max_revenue = parseFloat(revenueRangeMatch[2]);
+          console.log(`[Size] Parsed revenue range from quotes: $${extractedData.min_revenue}M - $${extractedData.max_revenue}M`);
+        } else {
+          // Single revenue value like "$10 million revenue"
+          const singleRevenueMatch = quotes.match(/\$(\d+(?:\.\d+)?)\s*(?:M|million|MM)?\s*(?:plus|and above|\+)?\s*(?:in\s+)?revenue/i);
+          if (singleRevenueMatch) {
+            extractedData.min_revenue = parseFloat(singleRevenueMatch[1]);
+            console.log(`[Size] Parsed min revenue from quotes: $${extractedData.min_revenue}M`);
+          }
+        }
+      }
+
+      // Parse EBITDA from quotes like "$2M EBITDA" or "$1-$5 million EBITDA"
+      if (!extractedData.min_ebitda || !extractedData.max_ebitda) {
+        const ebitdaRangeMatch = quotes.match(/\$(\d+(?:\.\d+)?)\s*(?:M|million|MM)?\s*(?:to|-)\s*\$?(\d+(?:\.\d+)?)\s*(?:M|million|MM)?\s*(?:in\s+)?EBITDA/i);
+        if (ebitdaRangeMatch) {
+          extractedData.min_ebitda = parseFloat(ebitdaRangeMatch[1]);
+          extractedData.max_ebitda = parseFloat(ebitdaRangeMatch[2]);
+          console.log(`[Size] Parsed EBITDA range from quotes: $${extractedData.min_ebitda}M - $${extractedData.max_ebitda}M`);
+        } else {
+          // Single EBITDA value like "$2 million EBITDA"
+          const singleEbitdaMatch = quotes.match(/\$(\d+(?:\.\d+)?)\s*(?:M|million|MM)?\s*(?:plus|and above|\+)?\s*(?:in\s+)?EBITDA/i);
+          if (singleEbitdaMatch) {
+            extractedData.min_ebitda = parseFloat(singleEbitdaMatch[1]);
+            console.log(`[Size] Parsed min EBITDA from quotes: $${extractedData.min_ebitda}M`);
+          }
+        }
+      }
+    }
+
     // Normalize all geography fields to 2-letter state abbreviations
     // This converts regional terms like "Midwest", "Southeast" to actual states
     const geographyFields = ['target_geographies', 'geographic_exclusions', 'acquisition_geography'];
@@ -774,24 +823,36 @@ EXAMPLE OUTPUT for a collision repair tracker:
         is_primary_authority: true
       }];
 
-      const { error: updateBuyerError } = await supabase
+      console.log('Buyer update data:', JSON.stringify(buyerUpdateData, null, 2));
+      
+      const { error: updateBuyerError, data: updatedBuyer } = await supabase
         .from('buyers')
         .update(buyerUpdateData)
-        .eq('id', buyer.id);
+        .eq('id', buyer.id)
+        .select();
 
       if (updateBuyerError) {
-        console.error('Error updating buyer:', updateBuyerError);
+        // Log detailed error for debugging constraint violations
+        console.error('Error updating buyer:', JSON.stringify(updateBuyerError, null, 2));
+        console.error('Failed update payload:', JSON.stringify(buyerUpdateData, null, 2));
+        console.error('Error code:', updateBuyerError.code);
+        console.error('Error message:', updateBuyerError.message);
+        console.error('Error details:', updateBuyerError.details);
+        
         return new Response(
           JSON.stringify({ 
             success: true, 
             extracted: true,
             applied: false,
-            error: 'Extracted data saved but failed to apply to profile',
+            error: `Extracted data saved but failed to apply to profile: ${updateBuyerError.message}`,
+            errorDetails: updateBuyerError,
             extractedData 
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+      
+      console.log('Successfully updated buyer:', updatedBuyer?.[0]?.id);
 
       return new Response(
         JSON.stringify({ 
