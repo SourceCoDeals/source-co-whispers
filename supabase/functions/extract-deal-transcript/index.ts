@@ -1,19 +1,38 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import * as pdfParse from "https://esm.sh/pdf-parse@1.1.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Parse PDF file to text
+// Parse PDF file to text using pdfjs-dist (Deno compatible)
 async function parsePdfToText(fileData: Blob): Promise<string> {
-  console.log('Parsing PDF file...');
+  console.log('Parsing PDF file with pdfjs-dist...');
   try {
     const arrayBuffer = await fileData.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
-    const pdfData = await pdfParse.default(uint8Array);
-    const text = pdfData.text || '';
+    
+    // Dynamically import pdfjs-dist
+    const pdfjsLib = await import("https://esm.sh/pdfjs-dist@3.11.174/build/pdf.min.js");
+    
+    // Load PDF document
+    const loadingTask = (pdfjsLib as any).getDocument({ data: uint8Array });
+    const pdf = await loadingTask.promise;
+    
+    console.log('PDF loaded, pages:', pdf.numPages);
+    
+    // Extract text from all pages
+    const textParts: string[] = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .map((item: any) => item.str)
+        .join(' ');
+      textParts.push(pageText);
+    }
+    
+    const text = textParts.join('\n\n');
     console.log('PDF parsed successfully, text length:', text.length);
     console.log('PDF text preview (first 500 chars):', text.substring(0, 500));
     return text;
