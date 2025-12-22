@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -14,12 +13,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   FileText,
   Plus,
@@ -28,13 +21,12 @@ import {
   Trash2,
   Sparkles,
   Loader2,
-  ExternalLink,
   CheckCircle,
   Clock,
   ChevronDown,
   ChevronUp,
+  Check,
 } from "lucide-react";
-import { format } from "date-fns";
 
 interface DealTranscript {
   id: string;
@@ -72,6 +64,7 @@ export function DealTranscriptsSection({
   const [isUploading, setIsUploading] = useState(false);
   const [processingTranscripts, setProcessingTranscripts] = useState<Set<string>>(new Set());
   const [expandedTranscripts, setExpandedTranscripts] = useState<Set<string>>(new Set());
+  const [isReextractingAll, setIsReextractingAll] = useState(false);
 
   const addTranscriptLink = async () => {
     if (!newTranscript.title.trim()) {
@@ -82,8 +75,8 @@ export function DealTranscriptsSection({
     const { error } = await supabase.from("deal_transcripts").insert({
       deal_id: dealId,
       title: newTranscript.title,
-      url: newTranscript.url,
-      notes: newTranscript.notes,
+      url: newTranscript.url || null,
+      notes: newTranscript.notes || null,
       call_date: newTranscript.call_date || null,
       transcript_type: "link",
     });
@@ -125,7 +118,7 @@ export function DealTranscriptsSection({
     
     const { error: dbError } = await supabase.from("deal_transcripts").insert({
       deal_id: dealId,
-      title: file.name,
+      title: newTranscript.title || file.name,
       url: fileName,
       transcript_type: "file",
       call_date: newTranscript.call_date || null,
@@ -139,6 +132,7 @@ export function DealTranscriptsSection({
     
     setIsUploading(false);
     setDialogOpen(false);
+    setNewTranscript({ title: "", url: "", notes: "", call_date: "" });
     onDataChange();
   };
 
@@ -158,23 +152,32 @@ export function DealTranscriptsSection({
     return data.publicUrl;
   };
 
-  const processTranscriptWithAI = async (transcriptId: string) => {
+  const processTranscriptWithAI = async (transcriptId: string, applyToDeal: boolean = false) => {
     setProcessingTranscripts((prev) => new Set(prev).add(transcriptId));
     
     try {
       const { data, error } = await supabase.functions.invoke("extract-deal-transcript", {
-        body: { transcriptId },
+        body: { transcriptId, applyToDeal },
       });
       
       if (error) {
         toast({ title: "Processing failed", description: error.message, variant: "destructive" });
         return;
       }
+
+      if (data?.needsContent) {
+        toast({ 
+          title: "Insufficient content", 
+          description: "Please add detailed notes to the transcript before processing.",
+          variant: "destructive" 
+        });
+        return;
+      }
       
       if (data?.success) {
         toast({
-          title: "Extraction complete",
-          description: `Updated ${data.extractedFields?.length || 0} fields from transcript.`,
+          title: applyToDeal ? "Applied to deal" : "Extraction complete",
+          description: data.message || `Updated ${data.extractedFields?.length || 0} fields from transcript.`,
         });
         onDataChange();
         setExpandedTranscripts((prev) => new Set(prev).add(transcriptId));
@@ -190,6 +193,55 @@ export function DealTranscriptsSection({
         return next;
       });
     }
+  };
+
+  const reextractAllTranscripts = async () => {
+    const transcriptsWithContent = transcripts.filter(t => t.notes && t.notes.length > 50);
+    
+    if (transcriptsWithContent.length === 0) {
+      toast({ 
+        title: "No transcripts to process", 
+        description: "Add transcript content/notes before re-extracting.",
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    setIsReextractingAll(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const transcript of transcriptsWithContent) {
+      try {
+        setProcessingTranscripts(prev => new Set(prev).add(transcript.id));
+        
+        const { data, error } = await supabase.functions.invoke('extract-deal-transcript', {
+          body: { transcriptId: transcript.id, applyToDeal: true }
+        });
+
+        if (error || !data?.success) {
+          errorCount++;
+        } else {
+          successCount++;
+        }
+      } catch {
+        errorCount++;
+      } finally {
+        setProcessingTranscripts(prev => {
+          const next = new Set(prev);
+          next.delete(transcript.id);
+          return next;
+        });
+      }
+    }
+
+    setIsReextractingAll(false);
+    onDataChange();
+    
+    toast({
+      title: "Re-extraction complete",
+      description: `Processed ${successCount} transcript${successCount !== 1 ? 's' : ''} successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}`
+    });
   };
 
   const toggleExpanded = (id: string) => {
@@ -210,230 +262,327 @@ export function DealTranscriptsSection({
     return "pending";
   };
 
+  const transcriptsWithContent = transcripts.filter(t => t.notes && t.notes.length > 50);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <FileText className="w-5 h-5" />
+          <FileText className="w-5 h-5 text-muted-foreground" />
           <h3 className="font-semibold">Call Transcripts</h3>
           {transcripts.length > 0 && (
             <Badge variant="secondary">{transcripts.length}</Badge>
           )}
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" variant="outline">
-              <Plus className="w-4 h-4 mr-1" /> Add Transcript
+        <div className="flex items-center gap-2">
+          {transcriptsWithContent.length > 0 && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={reextractAllTranscripts}
+              disabled={isReextractingAll}
+            >
+              {isReextractingAll ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4 mr-2" />
+              )}
+              Re-extract All ({transcriptsWithContent.length})
             </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Transcript</DialogTitle>
-            </DialogHeader>
-            <Tabs defaultValue="link" className="mt-4">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="link">
-                  <Link2 className="w-4 h-4 mr-2" /> Link
-                </TabsTrigger>
-                <TabsTrigger value="upload">
-                  <Upload className="w-4 h-4 mr-2" /> Upload
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="link" className="space-y-4 mt-4">
+          )}
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" variant="outline">
+                <Plus className="w-4 h-4 mr-1" /> Add Transcript
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Call Transcript</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 mt-4">
                 <div>
                   <Label>Title</Label>
                   <Input
-                    placeholder="Discovery Call - Jan 15"
+                    placeholder="e.g., Discovery Call - Jan 15"
                     value={newTranscript.title}
                     onChange={(e) =>
                       setNewTranscript({ ...newTranscript, title: e.target.value })
                     }
+                    className="mt-1"
                   />
                 </div>
                 <div>
-                  <Label>URL</Label>
+                  <Label>Transcript Link URL</Label>
                   <Input
-                    placeholder="https://docs.google.com/..."
+                    placeholder="https://docs.google.com/... or https://..."
                     value={newTranscript.url}
                     onChange={(e) =>
                       setNewTranscript({ ...newTranscript, url: e.target.value })
                     }
+                    className="mt-1"
                   />
                 </div>
                 <div>
-                  <Label>Call Date</Label>
-                  <Input
-                    type="date"
-                    value={newTranscript.call_date}
-                    onChange={(e) =>
-                      setNewTranscript({ ...newTranscript, call_date: e.target.value })
-                    }
-                  />
-                </div>
-                <div>
-                  <Label>Notes (optional)</Label>
+                  <Label>Notes / Transcript Content</Label>
                   <Textarea
-                    placeholder="Key takeaways..."
+                    placeholder="Paste transcript content here for AI extraction, or add key takeaways and notes..."
                     value={newTranscript.notes}
                     onChange={(e) =>
                       setNewTranscript({ ...newTranscript, notes: e.target.value })
                     }
-                    rows={3}
+                    rows={6}
+                    className="mt-1"
                   />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Tip: Paste the full transcript here for best AI extraction results
+                  </p>
                 </div>
-                <Button onClick={addTranscriptLink} className="w-full">
-                  Add Link
-                </Button>
-              </TabsContent>
-              <TabsContent value="upload" className="space-y-4 mt-4">
                 <div>
-                  <Label>Call Date (optional)</Label>
+                  <Label className="text-muted-foreground">Call Date (optional)</Label>
                   <Input
                     type="date"
                     value={newTranscript.call_date}
                     onChange={(e) =>
                       setNewTranscript({ ...newTranscript, call_date: e.target.value })
                     }
+                    className="mt-1"
                   />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={addTranscriptLink}
+                    disabled={!newTranscript.title.trim()}
+                    className="flex-1"
+                  >
+                    <Link2 className="w-4 h-4 mr-2" />
+                    Add Transcript Link
+                  </Button>
+                </div>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">
+                      Or upload file instead
+                    </span>
+                  </div>
                 </div>
                 <div>
-                  <Label>Upload File (PDF, TXT, DOCX)</Label>
-                  <Input
+                  <Label htmlFor="transcript-upload" className="cursor-pointer">
+                    <div
+                      className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
+                        !newTranscript.title.trim()
+                          ? "opacity-50 cursor-not-allowed"
+                          : "hover:border-primary/50 cursor-pointer"
+                      }`}
+                    >
+                      {isUploading ? (
+                        <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+                      ) : (
+                        <>
+                          <Upload className="w-6 h-6 mx-auto text-muted-foreground mb-2" />
+                          <p className="text-sm text-muted-foreground">
+                            Click to upload transcript file
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            (Title required first)
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </Label>
+                  <input
+                    id="transcript-upload"
                     type="file"
-                    accept=".pdf,.txt,.docx,.doc"
+                    className="hidden"
                     onChange={handleFileUpload}
-                    disabled={isUploading}
-                    className="mt-2"
+                    accept=".pdf,.doc,.docx,.txt,.md"
+                    disabled={!newTranscript.title.trim()}
                   />
                 </div>
-                {isUploading && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Uploading...
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
-          </DialogContent>
-        </Dialog>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {transcripts.length === 0 ? (
-        <Card className="p-4 text-center text-muted-foreground">
-          <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">No transcripts added yet</p>
-          <p className="text-xs mt-1">Add a link or upload a file to get started</p>
-        </Card>
+        <p className="text-sm text-muted-foreground italic">
+          No transcripts linked yet.
+        </p>
       ) : (
-        <div className="space-y-2">
-          {transcripts.map((transcript) => {
-            const status = getStatus(transcript);
-            const isExpanded = expandedTranscripts.has(transcript.id);
-            const url = getTranscriptUrl(transcript);
+        <div className="space-y-3">
+          {transcripts.map((t) => {
+            const status = getStatus(t);
+            const isExpanded = expandedTranscripts.has(t.id);
+            const extractedData = t.extracted_data || {};
+            const hasExtractedData = Object.keys(extractedData).length > 0;
+            const url = getTranscriptUrl(t);
 
             return (
-              <Card key={transcript.id} className="p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-sm truncate">
-                        {transcript.title}
-                      </span>
-                      <Badge
-                        variant={
-                          transcript.transcript_type === "file"
-                            ? "secondary"
-                            : "outline"
-                        }
-                        className="text-xs"
-                      >
-                        {transcript.transcript_type === "file" ? "File" : "Link"}
-                      </Badge>
-                      {status === "extracted" && (
-                        <Badge variant="default" className="text-xs bg-green-600">
-                          <CheckCircle className="w-3 h-3 mr-1" /> Extracted
-                        </Badge>
-                      )}
-                      {status === "processing" && (
-                        <Badge variant="secondary" className="text-xs">
-                          <Loader2 className="w-3 h-3 mr-1 animate-spin" /> Processing
-                        </Badge>
-                      )}
-                      {status === "pending" && (
+              <div key={t.id} className="bg-muted/50 rounded-lg overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {url ? (
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium hover:text-primary hover:underline truncate"
+                          >
+                            {t.title}
+                          </a>
+                        ) : (
+                          <span className="font-medium truncate">{t.title}</span>
+                        )}
+                        {status === "extracted" && (
+                          <Badge
+                            variant="outline"
+                            className="bg-green-500/10 text-green-600 border-green-500/30 shrink-0"
+                          >
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Extracted
+                          </Badge>
+                        )}
+                        {status === "processing" && (
+                          <Badge
+                            variant="outline"
+                            className="bg-blue-500/10 text-blue-600 border-blue-500/30 shrink-0"
+                          >
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            Processing
+                          </Badge>
+                        )}
+                        {status === "pending" && (
+                          <Badge variant="outline" className="shrink-0">
+                            <Clock className="w-3 h-3 mr-1" />
+                            Pending
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {t.call_date && (
+                          <span>{new Date(t.call_date).toLocaleDateString()}</span>
+                        )}
                         <Badge variant="outline" className="text-xs">
-                          <Clock className="w-3 h-3 mr-1" /> Pending
+                          {t.transcript_type === "file" ? "Uploaded" : "Link"}
                         </Badge>
-                      )}
+                      </div>
                     </div>
-                    {transcript.call_date && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Call: {format(new Date(transcript.call_date), "MMM d, yyyy")}
-                      </p>
-                    )}
                   </div>
-                  <div className="flex items-center gap-1">
-                    {url && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    {status === "pending" && (
                       <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8"
-                        asChild
+                        variant="outline"
+                        size="sm"
+                        onClick={() => processTranscriptWithAI(t.id, false)}
+                        disabled={processingTranscripts.has(t.id)}
                       >
-                        <a href={url} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="w-4 h-4" />
-                        </a>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Process AI
                       </Button>
                     )}
+                    {status === "extracted" && (
+                      <>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={() => processTranscriptWithAI(t.id, true)}
+                          disabled={processingTranscripts.has(t.id)}
+                        >
+                          <Check className="w-4 h-4 mr-2" />
+                          Apply to Deal
+                        </Button>
+                        {hasExtractedData && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => toggleExpanded(t.id)}
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="w-4 h-4" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4" />
+                            )}
+                          </Button>
+                        )}
+                      </>
+                    )}
                     <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => processTranscriptWithAI(transcript.id)}
-                      disabled={status === "processing"}
-                    >
-                      {status === "processing" ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-4 h-4" />
-                      )}
-                    </Button>
-                    <Button
-                      size="icon"
                       variant="ghost"
-                      className="h-8 w-8 text-destructive"
-                      onClick={() => deleteTranscript(transcript)}
+                      size="icon"
+                      onClick={() => deleteTranscript(t)}
+                      className="text-muted-foreground hover:text-destructive"
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
-                    {transcript.extracted_data &&
-                      Object.keys(transcript.extracted_data).length > 0 && (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8"
-                          onClick={() => toggleExpanded(transcript.id)}
-                        >
-                          {isExpanded ? (
-                            <ChevronUp className="w-4 h-4" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4" />
-                          )}
-                        </Button>
-                      )}
                   </div>
                 </div>
 
-                {isExpanded && transcript.extracted_data && (
-                  <Collapsible open={isExpanded}>
-                    <CollapsibleContent className="mt-3 pt-3 border-t">
-                      <p className="text-xs text-muted-foreground mb-2">
-                        Extracted Data:
-                      </p>
-                      <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-48">
-                        {JSON.stringify(transcript.extracted_data, null, 2)}
-                      </pre>
-                    </CollapsibleContent>
-                  </Collapsible>
+                {/* Expanded extracted data preview */}
+                {isExpanded && hasExtractedData && (
+                  <div className="border-t px-4 py-3 bg-background/50">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground mb-3">
+                      Extracted Data Preview
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      {extractedData.company_overview && (
+                        <div className="md:col-span-2">
+                          <p className="text-xs text-muted-foreground">Company Overview</p>
+                          <p className="text-sm">{extractedData.company_overview}</p>
+                        </div>
+                      )}
+                      {extractedData.revenue && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">Revenue</p>
+                          <p className="text-sm">${extractedData.revenue}M</p>
+                        </div>
+                      )}
+                      {extractedData.ebitda_amount && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">EBITDA</p>
+                          <p className="text-sm">${extractedData.ebitda_amount}M</p>
+                        </div>
+                      )}
+                      {extractedData.geography?.length > 0 && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">Geography</p>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {extractedData.geography.map((g: string, i: number) => (
+                              <Badge key={i} variant="secondary" className="text-xs">
+                                {g}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {extractedData.service_mix && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">Service Mix</p>
+                          <p className="text-sm">{extractedData.service_mix}</p>
+                        </div>
+                      )}
+                      {extractedData.owner_goals && (
+                        <div className="md:col-span-2">
+                          <p className="text-xs text-muted-foreground">Owner Goals</p>
+                          <p className="text-sm">{extractedData.owner_goals}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )}
-              </Card>
+
+                {t.notes && !isExpanded && (
+                  <div className="px-4 pb-3">
+                    <p className="text-xs text-muted-foreground line-clamp-2">{t.notes}</p>
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
