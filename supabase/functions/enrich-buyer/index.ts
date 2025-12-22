@@ -411,42 +411,70 @@ async function scrapeWithLocationPages(baseUrl: string, firecrawlApiKey: string)
   return { main: mainContent, locations: locationsContent };
 }
 
-async function callAIWithTool(lovableApiKey: string, systemPrompt: string, userPrompt: string, tool: any): Promise<any> {
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${lovableApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      tools: [tool],
-      tool_choice: { type: 'function', function: { name: tool.function.name } },
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('AI call failed:', response.status, errorText);
-    throw new Error(`AI call failed: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+async function callAIWithTool(lovableApiKey: string, systemPrompt: string, userPrompt: string, tool: any, maxRetries = 3): Promise<any> {
+  let lastError: Error | null = null;
   
-  if (!toolCall) {
-    return {};
-  }
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = Math.pow(2, attempt - 1) * 1000;
+        console.log(`Retry attempt ${attempt + 1} after ${delay}ms delay`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+      
+      const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${lovableApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          tools: [tool],
+          tool_choice: { type: 'function', function: { name: tool.function.name } },
+        }),
+      });
 
-  try {
-    return JSON.parse(toolCall.function.arguments);
-  } catch {
-    return {};
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`AI call failed (attempt ${attempt + 1}):`, response.status, errorText);
+        
+        // Only retry on 5xx errors (server errors)
+        if (response.status >= 500 && attempt < maxRetries - 1) {
+          lastError = new Error(`AI call failed: ${response.status}`);
+          continue;
+        }
+        throw new Error(`AI call failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+      
+      if (!toolCall) {
+        return {};
+      }
+
+      try {
+        return JSON.parse(toolCall.function.arguments);
+      } catch {
+        return {};
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.error(`AI call error (attempt ${attempt + 1}):`, lastError.message);
+      
+      if (attempt >= maxRetries - 1) {
+        throw lastError;
+      }
+    }
   }
+  
+  throw lastError || new Error('AI call failed after retries');
 }
 
 // All valid US state abbreviations
