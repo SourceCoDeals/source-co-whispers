@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,9 @@ export default function BuyerDetail() {
   const [deal, setDeal] = useState<any>(null);
   const [dealScore, setDealScore] = useState<any>(null);
   const [isApproving, setIsApproving] = useState(false);
+  
+  // Deal history state
+  const [dealHistory, setDealHistory] = useState<any[]>([]);
 
   useEffect(() => { loadData(); }, [id, dealId]);
 
@@ -62,6 +65,18 @@ export default function BuyerDetail() {
       setDeal(dealRes.data);
       setDealScore(scoreRes.data);
     }
+    
+    // Load deal history for this buyer
+    const { data: historyData } = await supabase
+      .from("buyer_deal_scores")
+      .select(`
+        *,
+        deals:deal_id (id, deal_name, industry_type, geography, revenue, status, created_at)
+      `)
+      .eq("buyer_id", id)
+      .order("scored_at", { ascending: false });
+    
+    setDealHistory(historyData || []);
     
     setIsLoading(false);
   };
@@ -435,6 +450,7 @@ export default function BuyerDetail() {
         <Tabs defaultValue="overview" className="space-y-4">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="deal-history">Deal History ({dealHistory.length})</TabsTrigger>
             <TabsTrigger value="intelligence">Edit Intelligence</TabsTrigger>
             <TabsTrigger value="contacts">Contacts ({contacts.length})</TabsTrigger>
           </TabsList>
@@ -850,6 +866,115 @@ export default function BuyerDetail() {
                 </div>
               </BuyerDataSection>
             </div>
+          </TabsContent>
+
+          {/* Deal History Tab */}
+          <TabsContent value="deal-history" className="space-y-4">
+            <BuyerDataSection 
+              title="Deal History" 
+              icon={<History className="w-4 h-4 text-muted-foreground" />}
+              isEmpty={dealHistory.length === 0}
+              emptyMessage="No deals have been scored for this buyer yet."
+            >
+              <div className="space-y-3">
+                {dealHistory.map((record) => {
+                  const dealData = record.deals;
+                  if (!dealData) return null;
+                  
+                  const getOutcomeStatus = () => {
+                    if (record.passed_on_deal) return 'passed';
+                    if (record.selected_for_outreach) return 'approved';
+                    return 'scored';
+                  };
+                  const status = getOutcomeStatus();
+                  
+                  return (
+                    <div 
+                      key={record.id} 
+                      className={`p-4 rounded-lg border ${
+                        status === 'passed' 
+                          ? 'bg-destructive/5 border-destructive/20' 
+                          : status === 'approved' 
+                          ? 'bg-green-500/5 border-green-500/20' 
+                          : 'bg-muted/30 border-muted'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Link 
+                              to={`/deals/${dealData.id}`} 
+                              className="font-semibold hover:text-primary transition-colors"
+                            >
+                              {dealData.deal_name}
+                            </Link>
+                            {status === 'passed' && (
+                              <Badge variant="outline" className="text-xs bg-destructive/10 text-destructive border-destructive/30">
+                                Passed
+                              </Badge>
+                            )}
+                            {status === 'approved' && (
+                              <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/30">
+                                Approved
+                              </Badge>
+                            )}
+                            {status === 'scored' && (
+                              <Badge variant="outline" className="text-xs">
+                                Scored Only
+                              </Badge>
+                            )}
+                          </div>
+                          
+                          <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground flex-wrap">
+                            {dealData.industry_type && <span>{dealData.industry_type}</span>}
+                            {dealData.geography?.length > 0 && (
+                              <span className="flex items-center gap-1">
+                                <MapPin className="w-3 h-3" />
+                                {dealData.geography.slice(0, 2).join(", ")}
+                                {dealData.geography.length > 2 && ` +${dealData.geography.length - 2}`}
+                              </span>
+                            )}
+                            {dealData.revenue && <span>${dealData.revenue}M revenue</span>}
+                          </div>
+                          
+                          {/* Pass reason if applicable */}
+                          {status === 'passed' && record.pass_reason && (
+                            <div className="mt-2 p-2 bg-destructive/10 rounded text-sm">
+                              <span className="font-medium text-destructive">Pass Reason: </span>
+                              <span className="text-foreground">{record.pass_reason}</span>
+                              {record.pass_category && (
+                                <Badge variant="outline" className="ml-2 text-xs capitalize">
+                                  {record.pass_category.replace(/_/g, ' ')}
+                                </Badge>
+                              )}
+                              {record.pass_notes && (
+                                <p className="mt-1 text-xs text-muted-foreground">{record.pass_notes}</p>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Fit reasoning */}
+                          {record.fit_reasoning && status !== 'passed' && (
+                            <p className="mt-2 text-sm text-muted-foreground line-clamp-2">
+                              {record.fit_reasoning}
+                            </p>
+                          )}
+                        </div>
+                        
+                        <div className="text-right shrink-0">
+                          <div className="text-2xl font-bold text-primary">
+                            {Math.round(record.composite_score || 0)}%
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(record.scored_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </BuyerDataSection>
           </TabsContent>
 
           {/* Intelligence Tab (editable) */}
