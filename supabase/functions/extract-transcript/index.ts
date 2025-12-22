@@ -456,7 +456,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('Processing transcript:', transcript.title, 'for buyer:', buyer.pe_firm_name);
+    // Fetch tracker to get industry context
+    const { data: tracker } = await supabase
+      .from('industry_trackers')
+      .select('industry_name')
+      .eq('id', buyer.tracker_id)
+      .single();
+
+    const industryName = tracker?.industry_name || 'general acquisitions';
+    console.log('Processing transcript:', transcript.title, 'for buyer:', buyer.pe_firm_name, 'in industry:', industryName);
 
     // Get transcript content
     let transcriptContent = '';
@@ -486,13 +494,29 @@ Deno.serve(async (req) => {
       );
     }
 
-    const systemPrompt = `You are extracting buyer intelligence from a call transcript between SourceCo (an M&A advisory firm) and a private equity buyer. 
+    // Industry-aware system prompt
+    const systemPrompt = `You are extracting buyer intelligence from a call transcript between SourceCo (an M&A advisory firm) and a private equity buyer.
 
-The transcript is a record of a conversation where the buyer discusses their acquisition interests, criteria, and preferences.
+This buyer is in the **${industryName}** buyer universe/tracker.
 
-IMPORTANT: Information from transcripts is PRIMARY AUTHORITY and should always be treated as the most accurate and current information about the buyer's preferences. Extract direct quotes where possible.`;
+CRITICAL FILTERING RULES:
+1. ONLY extract information that is RELEVANT to ${industryName} acquisitions
+2. The PE firm may discuss multiple portfolio companies across different industries - IGNORE discussions about other industries
+3. Focus on their ${industryName} platform company's acquisition criteria, NOT the PE firm's general strategy
+4. If they mention "we" or "our strategy" - determine if it's referring to the ${industryName} platform or the PE firm generally
+5. Key quotes should ONLY be statements specifically about ${industryName} acquisition criteria
+
+DO NOT EXTRACT information about:
+- Other portfolio companies (healthcare, oil & gas, pest control, waste, etc. - unless that IS the ${industryName})
+- General PE firm strategy not specific to ${industryName}
+- Personal anecdotes unrelated to ${industryName}
+- Other industries the PE firm invests in
+
+IMPORTANT: Information from transcripts is PRIMARY AUTHORITY for ${industryName} acquisitions. Extract direct quotes where possible, but ONLY if they relate to ${industryName}.`;
 
     const transcriptPromptBase = `Analyze the following call transcript with ${buyer.pe_firm_name} / ${buyer.platform_company_name || 'their platform'}.
+
+REMINDER: This buyer is in the **${industryName}** tracker. ONLY extract information relevant to ${industryName} acquisitions. Ignore discussions about other industries or portfolio companies.
 
 Transcript Content:
 ${transcriptContent}
@@ -503,55 +527,60 @@ ${transcriptContent}
     const allKeyQuotes: string[] = [];
 
     // Prompt 7: Investment Thesis (OVERRIDE)
-    console.log('Running Prompt 7: Investment Thesis from Transcript');
+    console.log('Running Prompt 7: Investment Thesis from Transcript for', industryName);
     const thesisPrompt = transcriptPromptBase + `
-WHAT TO DO: Extract the buyer's stated investment thesis and strategic priorities from this call.
+WHAT TO DO: Extract the buyer's stated investment thesis and strategic priorities for ${industryName} acquisitions ONLY.
 Look for:
-- What they say they are looking for in acquisitions
-- Their stated investment strategy
-- Strategic goals or priorities mentioned
+- What they say they are looking for in ${industryName} acquisitions specifically
+- Their stated investment strategy for the ${industryName} platform
+- Strategic goals or priorities for ${industryName}
+
+IGNORE: Any discussion of other industries, other portfolio companies, or general PE firm strategy.
 
 EXAMPLE OUTPUT:
-- thesis_summary: "Looking to build a national HVAC platform through add-on acquisitions of companies with strong commercial customer bases"
-- strategic_priorities: "Geographic expansion into the Southeast and Texas, adding commercial capabilities"
+- thesis_summary: "Looking to build a national ${industryName} platform through add-on acquisitions"
+- strategic_priorities: "Geographic expansion into the Southeast and Texas, adding new capabilities"
 - thesis_confidence: "high"
-- key_quotes_thesis: ["We're really focused on commercial HVAC right now", "Our goal is to be in 10 states by end of next year"]`;
+- key_quotes_thesis: ["We're really focused on ${industryName} right now", "Our goal is to be in 10 states by end of next year"]`;
 
     const thesis = await callAIWithTool(lovableApiKey, systemPrompt, thesisPrompt, extractTranscriptThesisTool);
     Object.assign(extractedData, thesis);
     if (thesis.key_quotes_thesis) allKeyQuotes.push(...thesis.key_quotes_thesis);
 
     // Prompt 8: Target Geographies (OVERRIDE) - WHERE THEY WANT TO ACQUIRE
-    console.log('Running Prompt 8: Acquisition Target Geographies from Transcript');
+    console.log('Running Prompt 8: Acquisition Target Geographies from Transcript for', industryName);
     const geographyPrompt = transcriptPromptBase + `
-WHAT TO DO: Extract where the buyer WANTS TO ACQUIRE or EXPAND TO - their geographic growth targets.
+WHAT TO DO: Extract where the buyer WANTS TO ACQUIRE or EXPAND TO for their ${industryName} platform specifically.
 This is different from where they currently have locations. Look for:
-- States or regions they mention wanting to enter or grow in
-- Markets they say they're actively looking at for deals
-- Areas they explicitly say they DON'T want to acquire in
-- Any reasoning about why certain geographies are attractive or unattractive
+- States or regions they mention wanting to enter or grow their ${industryName} operations
+- Markets they say they're actively looking at for ${industryName} deals
+- Areas they explicitly say they DON'T want to acquire ${industryName} businesses in
+
+IGNORE: Geographic preferences for other industries or portfolio companies they may discuss.
 
 EXAMPLE OUTPUT:
-- target_geographies: ["Texas", "Florida", "Southeast"] - places they WANT to acquire
+- target_geographies: ["Texas", "Florida", "Southeast"] - places they WANT to acquire ${industryName} businesses
 - geographic_exclusions: ["California", "New York"] - places they WON'T acquire
-- acquisition_geography: ["Houston", "Dallas", "Atlanta"] - specific markets they're actively pursuing
-- key_quotes_geography: ["We're really trying to get into Texas", "California is off the table for us"]
+- acquisition_geography: ["Houston", "Dallas", "Atlanta"] - specific markets they're actively pursuing for ${industryName}
+- key_quotes_geography: ["We're really trying to get into Texas for ${industryName}", "California is off the table"]
 
-Focus on FUTURE acquisition targets, not where they already have shops.`;
+Focus on FUTURE ${industryName} acquisition targets, not where they already have locations.`;
 
     const geography = await callAIWithTool(lovableApiKey, systemPrompt, geographyPrompt, extractTranscriptGeographyTool);
     Object.assign(extractedData, geography);
     if (geography.key_quotes_geography) allKeyQuotes.push(...geography.key_quotes_geography);
 
     // Prompt 9: Size Criteria (OVERRIDE)
-    console.log('Running Prompt 9: Size Criteria from Transcript');
+    console.log('Running Prompt 9: Size Criteria from Transcript for', industryName);
     const sizePrompt = transcriptPromptBase + `
-WHAT TO DO: Extract size criteria (revenue, EBITDA) mentioned in the call.
+WHAT TO DO: Extract size criteria (revenue, EBITDA) for ${industryName} acquisitions mentioned in the call.
 Look for:
-- Minimum and maximum revenue or EBITDA thresholds
-- "Sweet spot" or ideal size ranges
+- Minimum and maximum revenue or EBITDA thresholds for ${industryName} deals
+- "Sweet spot" or ideal size ranges for ${industryName} targets
 - Flexibility on size criteria
 - EBITDA margin preferences
+
+IGNORE: Size criteria mentioned for other industries or portfolio companies.
 
 EXAMPLE OUTPUT:
 - min_revenue: 5
@@ -560,27 +589,29 @@ EXAMPLE OUTPUT:
 - min_ebitda: 1
 - max_ebitda: 5
 - ebitda_sweet_spot: 2.5
-- key_quotes_size: ["Our sweet spot is $10-20M in revenue", "We need at least $1M EBITDA"]`;
+- key_quotes_size: ["Our sweet spot for ${industryName} is $10-20M in revenue", "We need at least $1M EBITDA"]`;
 
     const size = await callAIWithTool(lovableApiKey, systemPrompt, sizePrompt, extractTranscriptSizeTool);
     Object.assign(extractedData, size);
     if (size.key_quotes_size) allKeyQuotes.push(...size.key_quotes_size);
 
     // Prompt 10: Deal Structure (OVERRIDE)
-    console.log('Running Prompt 10: Deal Structure from Transcript');
+    console.log('Running Prompt 10: Deal Structure from Transcript for', industryName);
     const dealStructurePrompt = transcriptPromptBase + `
-WHAT TO DO: Extract deal structure preferences mentioned in the call.
+WHAT TO DO: Extract deal structure preferences for ${industryName} acquisitions mentioned in the call.
 Look for:
-- Owner equity rollover requirements or preferences
-- Expected transition period for sellers
-- Timeline for closing deals
+- Owner equity rollover requirements or preferences for ${industryName} deals
+- Expected transition period for ${industryName} business sellers
+- Timeline for closing ${industryName} deals
 - Management retention expectations
+
+IGNORE: Deal structure preferences mentioned for other industries.
 
 EXAMPLE OUTPUT:
 - owner_roll_requirement: "Preferred but not required"
 - owner_transition_goals: "12-24 month transition with owner staying on as advisor"
 - acquisition_timeline: "Can close in 60-90 days"
-- acquisition_appetite: "Very active - looking to do 3-4 deals this year"
+- acquisition_appetite: "Very active - looking to do 3-4 ${industryName} deals this year"
 - key_quotes_deal_structure: ["We prefer some rollover but it's not a deal breaker", "We can move quickly once we have a signed LOI"]`;
 
     const dealStructure = await callAIWithTool(lovableApiKey, systemPrompt, dealStructurePrompt, extractTranscriptDealStructureTool);
@@ -588,19 +619,21 @@ EXAMPLE OUTPUT:
     if (dealStructure.key_quotes_deal_structure) allKeyQuotes.push(...dealStructure.key_quotes_deal_structure);
 
     // Prompt 11: Deal Breakers (OVERRIDE)
-    console.log('Running Prompt 11: Deal Breakers from Transcript');
+    console.log('Running Prompt 11: Deal Breakers from Transcript for', industryName);
     const dealBreakersPrompt = transcriptPromptBase + `
-WHAT TO DO: Extract deal breakers and strong preferences against certain things.
+WHAT TO DO: Extract deal breakers and strong preferences against certain things for ${industryName} acquisitions.
 Look for:
-- Hard deal breakers that would kill a deal
-- Business models they won't consider
-- Industries or services they avoid
-- Strong negative statements about certain characteristics
+- Hard deal breakers that would kill a ${industryName} deal
+- Business models within ${industryName} they won't consider
+- Sub-industries or service types within ${industryName} they avoid
+- Strong negative statements about certain ${industryName} characteristics
+
+IMPORTANT: Only extract deal breakers RELEVANT to ${industryName}. Do not include other industries the PE firm doesn't invest in - those are not deal breakers, they're just outside this tracker's scope.
 
 EXAMPLE OUTPUT:
 - deal_breakers: ["No residential-only businesses", "Won't consider companies with customer concentration over 30%"]
 - business_model_exclusions: ["Pure construction/new build", "Manufacturer reps"]
-- industry_exclusions: ["Residential-only HVAC", "Ductwork fabrication"]
+- industry_exclusions: ["Residential-only ${industryName}", "Specific sub-type they avoid"]
 - key_quotes_deal_breakers: ["We absolutely won't do residential-only", "Customer concentration over 30% is a non-starter for us"]`;
 
     const dealBreakers = await callAIWithTool(lovableApiKey, systemPrompt, dealBreakersPrompt, extractTranscriptDealBreakersTool);
