@@ -5,9 +5,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Parse PDF file to text using external API (Deno compatible)
-async function parsePdfToText(fileData: Blob): Promise<string> {
-  console.log('Parsing PDF file...');
+// Parse PDF file to text using pdfjs-serverless (Deno compatible)
+async function parsePdfToText(fileData: Blob, fileName?: string): Promise<string> {
+  console.log('Parsing PDF file...', fileName ? `(${fileName})` : '');
   try {
     const arrayBuffer = await fileData.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
@@ -19,76 +19,36 @@ async function parsePdfToText(fileData: Blob): Promise<string> {
       return new TextDecoder().decode(bytes);
     }
     
-    // Use pdf.js via CDN with proper configuration for Deno
-    // Since pure JS PDF parsing in Deno is tricky, we'll use a fallback approach:
-    // 1. Try to extract text between stream/endstream markers (basic extraction)
-    // 2. Return what we can find
+    // Use pdfjs-serverless which works in Deno/serverless environments
+    console.log('Loading pdfjs-serverless...');
+    const pdfjs = await import('https://esm.sh/pdfjs-serverless@0.5.0');
+    const pdfjsLib = await pdfjs.resolvePDFJS();
     
-    console.log('Attempting basic PDF text extraction...');
-    const pdfContent = new TextDecoder('latin1').decode(bytes);
+    console.log('Parsing PDF document...');
+    const pdfDoc = await pdfjsLib.getDocument({ 
+      data: bytes, 
+      useSystemFonts: true 
+    }).promise;
     
-    // Look for text content in PDF streams
+    console.log('PDF loaded successfully, pages:', pdfDoc.numPages);
+    
+    // Extract text from all pages
     const textParts: string[] = [];
-    
-    // Extract text from BT...ET blocks (PDF text objects)
-    const btEtRegex = /BT\s*([\s\S]*?)\s*ET/g;
-    let match;
-    while ((match = btEtRegex.exec(pdfContent)) !== null) {
-      const block = match[1];
-      // Extract text from Tj and TJ operators
-      const tjRegex = /\(([^)]*)\)\s*Tj/g;
-      let tjMatch;
-      while ((tjMatch = tjRegex.exec(block)) !== null) {
-        const text = tjMatch[1]
-          .replace(/\\n/g, '\n')
-          .replace(/\\r/g, '')
-          .replace(/\\t/g, '\t')
-          .replace(/\\\(/g, '(')
-          .replace(/\\\)/g, ')')
-          .replace(/\\\\/g, '\\');
-        if (text.trim()) textParts.push(text);
-      }
-      
-      // Also try TJ operator (array of text)
-      const tjArrayRegex = /\[(.*?)\]\s*TJ/g;
-      let tjArrMatch;
-      while ((tjArrMatch = tjArrayRegex.exec(block)) !== null) {
-        const arr = tjArrMatch[1];
-        const strRegex = /\(([^)]*)\)/g;
-        let strMatch;
-        while ((strMatch = strRegex.exec(arr)) !== null) {
-          const text = strMatch[1]
-            .replace(/\\n/g, '\n')
-            .replace(/\\r/g, '')
-            .replace(/\\t/g, '\t');
-          if (text.trim()) textParts.push(text);
-        }
-      }
+    for (let i = 1; i <= pdfDoc.numPages; i++) {
+      const page = await pdfDoc.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map((item: any) => item.str).join(' ');
+      textParts.push(pageText);
     }
     
-    let extractedText = textParts.join(' ').replace(/\s+/g, ' ').trim();
+    const extractedText = textParts.join('\n\n');
     
-    // If basic extraction didn't work well, try to find readable text patterns
+    console.log('PDF parsing complete:');
+    console.log('  - Pages:', pdfDoc.numPages);
+    console.log('  - Total characters:', extractedText.length);
+    console.log('  - Preview (first 500 chars):', extractedText.substring(0, 500));
+    
     if (extractedText.length < 100) {
-      console.log('Basic extraction yielded little text, trying pattern matching...');
-      // Look for readable ASCII text sequences
-      const readableRegex = /[\x20-\x7E]{20,}/g;
-      const readableMatches = pdfContent.match(readableRegex) || [];
-      const filteredMatches = readableMatches.filter(m => 
-        !m.includes('/Type') && 
-        !m.includes('/Font') && 
-        !m.includes('/Page') &&
-        !m.includes('stream') &&
-        !m.includes('endobj') &&
-        m.length > 30
-      );
-      extractedText = filteredMatches.join(' ');
-    }
-    
-    console.log('PDF text extraction complete, length:', extractedText.length);
-    console.log('Extracted text preview (first 500 chars):', extractedText.substring(0, 500));
-    
-    if (extractedText.length < 50) {
       throw new Error('Could not extract meaningful text from PDF. The PDF may be image-based or encrypted. Please paste the transcript content directly in the notes field instead.');
     }
     
