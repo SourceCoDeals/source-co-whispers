@@ -716,6 +716,7 @@ export type Database = {
           archived: boolean
           buyer_types_criteria: Json | null
           created_at: string
+          documents: Json | null
           fit_criteria: string | null
           fit_criteria_buyer_types: string | null
           fit_criteria_geography: string | null
@@ -737,6 +738,7 @@ export type Database = {
           archived?: boolean
           buyer_types_criteria?: Json | null
           created_at?: string
+          documents?: Json | null
           fit_criteria?: string | null
           fit_criteria_buyer_types?: string | null
           fit_criteria_geography?: string | null
@@ -758,6 +760,7 @@ export type Database = {
           archived?: boolean
           buyer_types_criteria?: Json | null
           created_at?: string
+          documents?: Json | null
           fit_criteria?: string | null
           fit_criteria_buyer_types?: string | null
           fit_criteria_geography?: string | null

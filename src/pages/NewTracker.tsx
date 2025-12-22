@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -7,22 +7,70 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Lightbulb } from "lucide-react";
+import { Loader2, ArrowLeft, Lightbulb, Upload, FileText, X } from "lucide-react";
 
+interface UploadedDoc {
+  name: string;
+  path: string;
+  size: number;
+}
 
 export default function NewTracker() {
   const [name, setName] = useState("");
   const [fitCriteria, setFitCriteria] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast({ title: "Error", description: "You must be logged in to upload files", variant: "destructive" });
+      setIsUploading(false);
+      return;
+    }
+
+    const newDocs: UploadedDoc[] = [];
+    for (const file of Array.from(files)) {
+      const filePath = `${user.id}/${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from("tracker-documents").upload(filePath, file);
+      
+      if (error) {
+        toast({ title: "Upload failed", description: `Failed to upload ${file.name}`, variant: "destructive" });
+        continue;
+      }
+      
+      newDocs.push({ name: file.name, path: filePath, size: file.size });
+    }
+
+    setUploadedDocs(prev => [...prev, ...newDocs]);
+    setIsUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeDoc = async (doc: UploadedDoc) => {
+    await supabase.storage.from("tracker-documents").remove([doc.path]);
+    setUploadedDocs(prev => prev.filter(d => d.path !== doc.path));
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     setIsLoading(true);
     
-    // Get the authenticated user
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       toast({ title: "Error", description: "You must be logged in to create a buyer universe", variant: "destructive" });
@@ -36,7 +84,8 @@ export default function NewTracker() {
         industry_name: name.trim(), 
         user_id: user.id,
         fit_criteria: fitCriteria.trim() || null,
-      })
+        documents: uploadedDocs.length > 0 ? uploadedDocs : null,
+      } as any)
       .select()
       .single();
       
@@ -46,7 +95,6 @@ export default function NewTracker() {
       return; 
     }
 
-    // Parse and save structured criteria if fit_criteria was provided
     if (fitCriteria.trim()) {
       try {
         const { data: parsedData } = await supabase.functions.invoke('parse-fit-criteria', {
@@ -132,6 +180,62 @@ export default function NewTracker() {
                 </div>
               </div>
             </div>
+          </div>
+
+          <div className="bg-card rounded-lg border p-6">
+            <div className="mb-4">
+              <Label>Supporting Documents (Optional)</Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                Upload any documents that provide context about this buyer universe, such as investment memos, thesis documents, or market research.
+              </p>
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={handleFileUpload}
+              className="hidden"
+              accept=".pdf,.doc,.docx,.txt,.xlsx,.xls,.pptx,.ppt"
+            />
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="w-full border-dashed"
+            >
+              {isUploading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Upload className="w-4 h-4 mr-2" />
+              )}
+              {isUploading ? "Uploading..." : "Upload Documents"}
+            </Button>
+
+            {uploadedDocs.length > 0 && (
+              <div className="mt-4 space-y-2">
+                {uploadedDocs.map((doc) => (
+                  <div key={doc.path} className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <span className="text-sm truncate">{doc.name}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">({formatFileSize(doc.size)})</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeDoc(doc)}
+                      className="shrink-0 h-6 w-6"
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <Button type="submit" disabled={isLoading || !name.trim()} className="w-full">
