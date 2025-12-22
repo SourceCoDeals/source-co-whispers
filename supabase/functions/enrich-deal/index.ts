@@ -204,7 +204,7 @@ async function scrapeWebsite(firecrawlApiKey: string, url: string): Promise<stri
   return markdown;
 }
 
-async function extractWebsiteInfo(lovableApiKey: string, websiteContent: string, companyName: string): Promise<any> {
+async function extractWebsiteInfo(openaiApiKey: string, websiteContent: string, companyName: string): Promise<any> {
   const systemPrompt = `You are an AI assistant that extracts business information from company websites for M&A deal research.
 
 Your job is to find:
@@ -232,14 +232,14 @@ ${websiteContent.slice(0, 15000)}`;
 
   console.log('[enrich-deal] Calling AI to extract website info...');
 
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${lovableApiKey}`,
+      'Authorization': `Bearer ${openaiApiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -292,14 +292,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     const firecrawlApiKey = Deno.env.get('FIRECRAWL_API_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    if (!lovableApiKey) {
+    if (!openaiApiKey) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Lovable AI not configured' }),
+        JSON.stringify({ success: false, error: 'OpenAI API key not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -348,7 +348,7 @@ Deno.serve(async (req) => {
     }
 
     // Extract info using AI
-    const extracted = await extractWebsiteInfo(lovableApiKey, websiteContent, deal.deal_name);
+    const extracted = await extractWebsiteInfo(openaiApiKey, websiteContent, deal.deal_name);
 
     // Build update object - only update empty/null fields if onlyFillEmpty is true
     const updateData: Record<string, any> = {};
