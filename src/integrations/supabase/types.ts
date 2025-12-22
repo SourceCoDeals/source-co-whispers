@@ -467,6 +467,72 @@ export type Database = {
           },
         ]
       }
+      call_intelligence: {
+        Row: {
+          buyer_id: string | null
+          call_date: string | null
+          call_summary: string | null
+          call_type: string
+          created_at: string | null
+          deal_id: string | null
+          extracted_data: Json | null
+          extraction_version: string | null
+          follow_up_questions: string[] | null
+          id: string
+          key_takeaways: string[] | null
+          processed_at: string | null
+          transcript_url: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          buyer_id?: string | null
+          call_date?: string | null
+          call_summary?: string | null
+          call_type?: string
+          created_at?: string | null
+          deal_id?: string | null
+          extracted_data?: Json | null
+          extraction_version?: string | null
+          follow_up_questions?: string[] | null
+          id?: string
+          key_takeaways?: string[] | null
+          processed_at?: string | null
+          transcript_url?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          buyer_id?: string | null
+          call_date?: string | null
+          call_summary?: string | null
+          call_type?: string
+          created_at?: string | null
+          deal_id?: string | null
+          extracted_data?: Json | null
+          extraction_version?: string | null
+          follow_up_questions?: string[] | null
+          id?: string
+          key_takeaways?: string[] | null
+          processed_at?: string | null
+          transcript_url?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_intelligence_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "buyers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_intelligence_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deals: {
         Row: {
           additional_info: string | null
@@ -592,6 +658,59 @@ export type Database = {
           },
         ]
       }
+      industry_intelligence_templates: {
+        Row: {
+          applies_to: string | null
+          category: string
+          created_at: string | null
+          display_order: number | null
+          example_values: string[] | null
+          extraction_hint: string | null
+          field_label: string
+          field_name: string
+          field_type: string | null
+          id: string
+          is_required: boolean | null
+          tracker_id: string
+        }
+        Insert: {
+          applies_to?: string | null
+          category: string
+          created_at?: string | null
+          display_order?: number | null
+          example_values?: string[] | null
+          extraction_hint?: string | null
+          field_label: string
+          field_name: string
+          field_type?: string | null
+          id?: string
+          is_required?: boolean | null
+          tracker_id: string
+        }
+        Update: {
+          applies_to?: string | null
+          category?: string
+          created_at?: string | null
+          display_order?: number | null
+          example_values?: string[] | null
+          extraction_hint?: string | null
+          field_label?: string
+          field_name?: string
+          field_type?: string | null
+          id?: string
+          is_required?: boolean | null
+          tracker_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "industry_intelligence_templates_tracker_id_fkey"
+            columns: ["tracker_id"]
+            isOneToOne: false
+            referencedRelation: "industry_trackers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       industry_trackers: {
         Row: {
           archived: boolean
@@ -657,6 +776,69 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      intelligence_values: {
+        Row: {
+          array_value: string[] | null
+          boolean_value: boolean | null
+          call_intelligence_id: string
+          category: string
+          confidence: string | null
+          created_at: string | null
+          field_name: string
+          id: string
+          is_inferred: boolean | null
+          numeric_value: number | null
+          source_quote: string | null
+          template_field_id: string | null
+          text_value: string | null
+        }
+        Insert: {
+          array_value?: string[] | null
+          boolean_value?: boolean | null
+          call_intelligence_id: string
+          category: string
+          confidence?: string | null
+          created_at?: string | null
+          field_name: string
+          id?: string
+          is_inferred?: boolean | null
+          numeric_value?: number | null
+          source_quote?: string | null
+          template_field_id?: string | null
+          text_value?: string | null
+        }
+        Update: {
+          array_value?: string[] | null
+          boolean_value?: boolean | null
+          call_intelligence_id?: string
+          category?: string
+          confidence?: string | null
+          created_at?: string | null
+          field_name?: string
+          id?: string
+          is_inferred?: boolean | null
+          numeric_value?: number | null
+          source_quote?: string | null
+          template_field_id?: string | null
+          text_value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_values_call_intelligence_id_fkey"
+            columns: ["call_intelligence_id"]
+            isOneToOne: false
+            referencedRelation: "call_intelligence"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_values_template_field_id_fkey"
+            columns: ["template_field_id"]
+            isOneToOne: false
+            referencedRelation: "industry_intelligence_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       outreach_records: {
         Row: {
