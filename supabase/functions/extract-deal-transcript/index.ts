@@ -1,9 +1,28 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import * as pdfParse from "https://esm.sh/pdf-parse@1.1.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Parse PDF file to text
+async function parsePdfToText(fileData: Blob): Promise<string> {
+  console.log('Parsing PDF file...');
+  try {
+    const arrayBuffer = await fileData.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+    const pdfData = await pdfParse.default(uint8Array);
+    const text = pdfData.text || '';
+    console.log('PDF parsed successfully, text length:', text.length);
+    console.log('PDF text preview (first 500 chars):', text.substring(0, 500));
+    return text;
+  } catch (error) {
+    console.error('PDF parsing failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Failed to parse PDF: ${errorMessage}`);
+  }
+}
 
 async function authenticateUser(req: Request): Promise<{ user: any; error: Response | null }> {
   const authHeader = req.headers.get('Authorization');
@@ -519,9 +538,27 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Convert to text
-        transcriptContent = await fileData.text();
+        // Detect if file is PDF and parse accordingly
+        const filePath = transcript.url.toLowerCase();
+        const isPdf = filePath.endsWith('.pdf') || fileData.type === 'application/pdf';
+        
+        if (isPdf) {
+          console.log('Detected PDF file, using PDF parser...');
+          try {
+            transcriptContent = await parsePdfToText(fileData);
+          } catch (pdfError) {
+            console.error('PDF parsing failed:', pdfError);
+            return new Response(
+              JSON.stringify({ success: false, error: 'Failed to parse PDF transcript. Please try uploading a text file or pasting the transcript content.' }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        } else {
+          // Plain text file
+          transcriptContent = await fileData.text();
+        }
         console.log('File content length:', transcriptContent.length);
+        console.log('File content preview (first 300 chars):', transcriptContent.substring(0, 300));
       } else if (transcript.notes && transcript.notes.length > 50) {
         // Use notes as content if no URL
         transcriptContent = transcript.notes;
