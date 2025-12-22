@@ -4,13 +4,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Building2, Loader2, Sparkles, Users, FileText, ArrowUpDown, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Building2, Loader2, Sparkles, Users, FileText, ArrowUpDown, Archive, ArchiveRestore, MoreHorizontal, Trash2 } from "lucide-react";
 import { IntelligenceCoverageBar } from "@/components/IntelligenceBadge";
 import { getIntelligenceCoverage } from "@/lib/types";
 import { seedSampleData } from "@/lib/seedData";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
   Table,
   TableBody,
@@ -25,6 +27,8 @@ export default function Trackers() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSeeding, setIsSeeding] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [trackerToDelete, setTrackerToDelete] = useState<any | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -66,19 +70,55 @@ export default function Trackers() {
     }
   };
 
-  const handleArchiveToggle = async (e: React.MouseEvent, trackerId: string, currentArchived: boolean) => {
+  const handleArchiveToggle = async (e: React.MouseEvent, tracker: any) => {
     e.stopPropagation();
     const { error } = await supabase
       .from("industry_trackers")
-      .update({ archived: !currentArchived })
-      .eq("id", trackerId);
+      .update({ archived: !tracker.archived })
+      .eq("id", tracker.id);
     
     if (error) {
       toast({ title: "Error", description: "Failed to update archive status", variant: "destructive" });
     } else {
-      toast({ title: currentArchived ? "Universe restored" : "Universe archived" });
+      toast({ title: tracker.archived ? "Universe restored" : "Universe archived" });
       loadTrackers();
     }
+  };
+
+  const confirmDeleteTracker = (e: React.MouseEvent, tracker: any) => {
+    e.stopPropagation();
+    setTrackerToDelete(tracker);
+    setDeleteDialogOpen(true);
+  };
+
+  const deleteTracker = async () => {
+    if (!trackerToDelete) return;
+    
+    // Delete all related data first (buyers, deals, etc.)
+    const { error: buyersError } = await supabase.from("buyers").delete().eq("tracker_id", trackerToDelete.id);
+    if (buyersError) {
+      toast({ title: "Error", description: "Failed to delete buyers", variant: "destructive" });
+      setDeleteDialogOpen(false);
+      return;
+    }
+    
+    const { error: dealsError } = await supabase.from("deals").delete().eq("tracker_id", trackerToDelete.id);
+    if (dealsError) {
+      toast({ title: "Error", description: "Failed to delete deals", variant: "destructive" });
+      setDeleteDialogOpen(false);
+      return;
+    }
+    
+    const { error } = await supabase.from("industry_trackers").delete().eq("id", trackerToDelete.id);
+    if (error) {
+      toast({ title: "Error", description: "Failed to delete universe", variant: "destructive" });
+    } else {
+      toast({ title: "Universe deleted", description: `${trackerToDelete.industry_name} has been permanently deleted` });
+      loadTrackers();
+    }
+    
+    setDeleteDialogOpen(false);
+    setTrackerToDelete(null);
   };
 
   const filteredTrackers = trackers.filter(t => showArchived ? t.archived : !t.archived);
@@ -189,15 +229,24 @@ export default function Trackers() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={(e) => handleArchiveToggle(e, t.id, t.archived)}
-                          title={t.archived ? "Restore" : "Archive"}
-                        >
-                          {t.archived ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreHorizontal className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => handleArchiveToggle(e, t)}>
+                              {t.archived ? <ArchiveRestore className="w-4 h-4 mr-2" /> : <Archive className="w-4 h-4 mr-2" />}
+                              {t.archived ? "Restore" : "Archive"}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={(e) => confirmDeleteTracker(e, t)} className="text-destructive">
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete permanently
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   );
@@ -207,6 +256,23 @@ export default function Trackers() {
           </div>
         )}
       </div>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {trackerToDelete?.industry_name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this buyer universe including {trackerToDelete?.buyer_count || 0} buyers and {trackerToDelete?.deal_count || 0} deals. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={deleteTracker} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }
