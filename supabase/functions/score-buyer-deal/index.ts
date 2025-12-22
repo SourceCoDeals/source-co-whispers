@@ -60,6 +60,31 @@ const stateAdjacency: Record<string, string[]> = {
   WY: ["CO", "ID", "MT", "NE", "SD", "UT"],
 };
 
+// Regional definitions for broader geographic matching
+const stateRegions: Record<string, string[]> = {
+  SOUTHWEST: ["AZ", "NM", "TX", "OK", "CO", "NV", "UT"],
+  SOUTHEAST: ["FL", "GA", "AL", "SC", "NC", "TN", "MS", "LA", "AR", "KY", "VA", "WV"],
+  NORTHEAST: ["NY", "NJ", "PA", "CT", "MA", "RI", "VT", "NH", "ME", "MD", "DE"],
+  MIDWEST: ["IL", "IN", "OH", "MI", "WI", "MN", "IA", "MO", "KS", "NE", "SD", "ND"],
+  PACIFIC: ["CA", "OR", "WA", "AK", "HI"],
+  MOUNTAIN: ["MT", "ID", "WY", "CO", "UT", "NV"],
+};
+
+// Get region for a state
+function getStateRegion(state: string): string | null {
+  for (const [region, states] of Object.entries(stateRegions)) {
+    if (states.includes(state)) return region;
+  }
+  return null;
+}
+
+// Check if two states are in the same region
+function areStatesInSameRegion(state1: string, state2: string): boolean {
+  const region1 = getStateRegion(state1);
+  const region2 = getStateRegion(state2);
+  return region1 !== null && region1 === region2;
+}
+
 const stateNameToAbbrev: Record<string, string> = {
   "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR", "california": "CA",
   "colorado": "CO", "connecticut": "CT", "delaware": "DE", "florida": "FL", "georgia": "GA",
@@ -190,6 +215,17 @@ interface CategoryScore {
   confidence: 'high' | 'medium' | 'low';
 }
 
+interface EngagementSignals {
+  hasCalls: boolean;
+  siteVisitRequested: boolean;
+  financialsRequested: boolean;
+  ceoInvolved: boolean;
+  personalConnection: boolean;
+  expressedInterest: boolean;
+  engagementScore: number;
+  signals: string[];
+}
+
 interface BuyerScore {
   buyerId: string;
   buyerName: string;
@@ -199,11 +235,13 @@ interface BuyerScore {
   servicesScore: CategoryScore;
   ownerGoalsScore: CategoryScore;
   thesisBonus: number;
+  engagementBonus: number;
   overallReasoning: string;
   isDisqualified: boolean;
   disqualificationReasons: string[];
   dataCompleteness: 'high' | 'medium' | 'low';
   dealAttractiveness: number;
+  engagementSignals: EngagementSignals;
 }
 
 // Calculate deal attractiveness score (0-100) based on revenue, locations, margins
@@ -241,6 +279,110 @@ function calculateDealAttractiveness(deal: Deal): number {
   }
   
   return Math.min(100, score);
+}
+
+// Analyze engagement signals from call intelligence data
+function analyzeEngagementSignals(callIntelligence: any[] | null): EngagementSignals {
+  const signals: EngagementSignals = {
+    hasCalls: false,
+    siteVisitRequested: false,
+    financialsRequested: false,
+    ceoInvolved: false,
+    personalConnection: false,
+    expressedInterest: false,
+    engagementScore: 0,
+    signals: [],
+  };
+
+  if (!callIntelligence || callIntelligence.length === 0) {
+    return signals;
+  }
+
+  signals.hasCalls = true;
+  signals.signals.push(`${callIntelligence.length} call(s) on record`);
+  signals.engagementScore += 10;
+
+  // Analyze each call record
+  for (const call of callIntelligence) {
+    const summary = (call.call_summary || "").toLowerCase();
+    const takeaways = (call.key_takeaways || []).join(" ").toLowerCase();
+    const extractedData = call.extracted_data || {};
+    const allText = `${summary} ${takeaways} ${JSON.stringify(extractedData)}`.toLowerCase();
+
+    // Site visit signals
+    const siteVisitPatterns = [
+      'site visit', 'come see', 'visit the', 'tour', 'see the facilities',
+      'walk through', 'come out', 'fly out', "love to come", "want to come",
+      "see your shop", "see the shop", "visit your"
+    ];
+    if (siteVisitPatterns.some(p => allText.includes(p))) {
+      signals.siteVisitRequested = true;
+      if (!signals.signals.includes("Site visit requested")) {
+        signals.signals.push("Site visit requested");
+        signals.engagementScore += 25;
+      }
+    }
+
+    // Financials requested signals
+    const financialPatterns = [
+      'financial', 'financials', 'updated numbers', 'p&l', 'profit and loss',
+      'ebitda', 'revenue', 'send me the', 'get me the', 'updated information',
+      'cim', 'confidential information', 'teaser', 'deck', 'materials'
+    ];
+    if (financialPatterns.some(p => allText.includes(p))) {
+      signals.financialsRequested = true;
+      if (!signals.signals.includes("Financials/materials requested")) {
+        signals.signals.push("Financials/materials requested");
+        signals.engagementScore += 20;
+      }
+    }
+
+    // CEO/Partner involvement signals
+    const ceoPatterns = [
+      'ceo', 'partner', 'managing director', 'founder', 'owner', 'principal',
+      'decision maker', 'managing partner', 'senior partner', 'investment committee',
+      'ic', 'deal team lead'
+    ];
+    if (ceoPatterns.some(p => allText.includes(p))) {
+      signals.ceoInvolved = true;
+      if (!signals.signals.includes("Senior leadership involved")) {
+        signals.signals.push("Senior leadership involved");
+        signals.engagementScore += 15;
+      }
+    }
+
+    // Personal connection signals
+    const personalPatterns = [
+      'wife', 'husband', 'family', 'grew up', 'from there', 'know the area',
+      'personal connection', 'familiar with', 'spent time', 'used to live',
+      'my dad', 'my mom', 'my brother', 'my sister', 'in-laws', 'hometown'
+    ];
+    if (personalPatterns.some(p => allText.includes(p))) {
+      signals.personalConnection = true;
+      if (!signals.signals.includes("Personal connection to area")) {
+        signals.signals.push("Personal connection to area");
+        signals.engagementScore += 15;
+      }
+    }
+
+    // Express interest signals
+    const interestPatterns = [
+      'very interested', 'love this', 'perfect fit', 'exactly what',
+      'been looking for', 'great opportunity', 'move quickly', 'priority',
+      'top of our list', 'excited about', 'definitely interested',
+      'want to pursue', 'strong interest'
+    ];
+    if (interestPatterns.some(p => allText.includes(p))) {
+      signals.expressedInterest = true;
+      if (!signals.signals.includes("Strong interest expressed")) {
+        signals.signals.push("Strong interest expressed");
+        signals.engagementScore += 20;
+      }
+    }
+  }
+
+  signals.engagementScore = Math.min(100, signals.engagementScore);
+  return signals;
 }
 
 // Score SIZE category
@@ -334,8 +476,13 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore {
   };
 }
 
-// Score GEOGRAPHY category with deal attractiveness adjustment
-function scoreGeographyCategory(deal: Deal, buyer: Buyer, dealAttractiveness: number): CategoryScore {
+// Score GEOGRAPHY category with deal attractiveness adjustment and regional matching
+function scoreGeographyCategory(
+  deal: Deal, 
+  buyer: Buyer, 
+  dealAttractiveness: number,
+  engagementSignals: EngagementSignals
+): CategoryScore {
   const dealStates = extractStatesFromGeography(deal.geography);
   
   // Also extract from headquarters
@@ -381,25 +528,70 @@ function scoreGeographyCategory(deal: Deal, buyer: Buyer, dealAttractiveness: nu
       }
     });
   });
+
+  // Check for regional matches (same region but not adjacent)
+  const regionalMatches: string[] = [];
+  dealStates.forEach(ds => {
+    buyerStateArray.forEach(bs => {
+      if (!exactMatches.includes(bs) && !adjacentMatches.includes(bs)) {
+        if (areStatesInSameRegion(ds, bs) && !regionalMatches.includes(bs)) {
+          regionalMatches.push(bs);
+        }
+      }
+    });
+  });
   
   // Attractiveness adjustment factor (1.0 to 1.3)
   const attractivenessBonus = 1 + ((dealAttractiveness - 50) / 200); // 50 attractiveness = 1.0, 100 = 1.25
   
-  // Single-location deal logic (strict)
-  if (dealLocations < 3) {
+  // Engagement override - if buyer has shown active interest, boost geography score
+  const engagementOverride = engagementSignals.expressedInterest || 
+    engagementSignals.siteVisitRequested || 
+    engagementSignals.personalConnection;
+  const engagementMultiplier = engagementOverride ? 1.2 : 1.0;
+  
+  // Multi-location deal adjustment (more lenient)
+  const isMultiLocation = dealLocations >= 3;
+  const multiLocationBonus = isMultiLocation ? 10 : 0;
+  
+  // Single-location deal logic
+  if (!isMultiLocation) {
     if (exactMatches.length > 0) {
+      const baseScore = 95 * attractivenessBonus * engagementMultiplier;
       return {
-        score: Math.round(Math.min(100, 95 * attractivenessBonus)),
-        reasoning: `Strong fit: Buyer has presence in ${exactMatches.join(", ")} - same state as deal`,
+        score: Math.round(Math.min(100, baseScore)),
+        reasoning: `Strong fit: Buyer has presence in ${exactMatches.join(", ")} - same state as deal${engagementOverride ? '. Active buyer interest shown.' : ''}`,
         isDisqualified: false,
         disqualificationReason: null,
         confidence: 'high'
       };
     } else if (adjacentMatches.length > 0) {
       const baseScore = 70 + (dealAttractiveness > 70 ? 15 : dealAttractiveness > 50 ? 10 : 0);
+      const finalScore = baseScore * attractivenessBonus * engagementMultiplier;
       return {
-        score: Math.round(Math.min(100, baseScore * attractivenessBonus)),
-        reasoning: `Acceptable: Buyer operates in ${adjacentMatches.join(", ")} (adjacent). ${dealAttractiveness > 70 ? 'High-value deal increases buyer flexibility.' : ''}`,
+        score: Math.round(Math.min(100, finalScore)),
+        reasoning: `Acceptable: Buyer operates in ${adjacentMatches.join(", ")} (adjacent). ${dealAttractiveness > 70 ? 'High-value deal increases buyer flexibility.' : ''}${engagementOverride ? ' Active interest shown.' : ''}`,
+        isDisqualified: false,
+        disqualificationReason: null,
+        confidence: 'high'
+      };
+    } else if (regionalMatches.length > 0) {
+      // NEW: Regional matching for attractive deals
+      const baseScore = 50 + (dealAttractiveness > 80 ? 20 : dealAttractiveness > 60 ? 10 : 0);
+      const finalScore = baseScore * attractivenessBonus * engagementMultiplier;
+      const region = getStateRegion(dealStates[0]) || "same region";
+      return {
+        score: Math.round(Math.min(100, finalScore)),
+        reasoning: `Regional fit: Buyer operates in ${region} (${regionalMatches.slice(0, 2).join(", ")}). ${dealAttractiveness > 70 ? 'Attractive deal may draw regional interest.' : ''}${engagementOverride ? ' Active interest confirmed.' : ''}`,
+        isDisqualified: false,
+        disqualificationReason: null,
+        confidence: 'medium'
+      };
+    } else if (engagementOverride && dealAttractiveness >= 70) {
+      // Buyer has shown interest despite distance - don't disqualify
+      return {
+        score: 60,
+        reasoning: `Geographic distance, but buyer has shown active interest (${engagementSignals.signals.slice(0, 2).join(", ")}). High-value deal at $${deal.revenue}M revenue.`,
         isDisqualified: false,
         disqualificationReason: null,
         confidence: 'high'
@@ -424,26 +616,49 @@ function scoreGeographyCategory(deal: Deal, buyer: Buyer, dealAttractiveness: nu
     }
   }
   
-  // Multi-location deal (3+) - more lenient
+  // Multi-location deal (3+) - more lenient, regional matching allowed
   if (exactMatches.length > 0) {
+    const baseScore = (90 + multiLocationBonus) * attractivenessBonus * engagementMultiplier;
     return {
-      score: Math.round(Math.min(100, 90 * attractivenessBonus)),
-      reasoning: `Strong fit: Buyer targets ${exactMatches.join(", ")} - direct overlap with deal geography`,
+      score: Math.round(Math.min(100, baseScore)),
+      reasoning: `Strong fit: Buyer targets ${exactMatches.join(", ")} - direct overlap with deal geography${engagementOverride ? '. Active interest confirmed.' : ''}`,
       isDisqualified: false,
       disqualificationReason: null,
       confidence: 'high'
     };
   } else if (adjacentMatches.length > 0) {
-    const baseScore = 65 + (dealAttractiveness > 70 ? 15 : 10);
+    const baseScore = 70 + multiLocationBonus + (dealAttractiveness > 70 ? 15 : 10);
+    const finalScore = baseScore * attractivenessBonus * engagementMultiplier;
     return {
-      score: Math.round(Math.min(100, baseScore * attractivenessBonus)),
-      reasoning: `Good fit: Buyer operates in ${adjacentMatches.join(", ")} (adjacent). Multi-location deal enables expansion.`,
+      score: Math.round(Math.min(100, finalScore)),
+      reasoning: `Good fit: Buyer operates in ${adjacentMatches.join(", ")} (adjacent). Multi-location deal enables expansion.${engagementOverride ? ' Active interest confirmed.' : ''}`,
+      isDisqualified: false,
+      disqualificationReason: null,
+      confidence: 'high'
+    };
+  } else if (regionalMatches.length > 0) {
+    // NEW: Regional matching for multi-location deals
+    const baseScore = 60 + multiLocationBonus + (dealAttractiveness > 70 ? 15 : 5);
+    const finalScore = baseScore * attractivenessBonus * engagementMultiplier;
+    const region = getStateRegion(dealStates[0]) || "same region";
+    return {
+      score: Math.round(Math.min(100, finalScore)),
+      reasoning: `Regional fit: Buyer operates in ${region}. Multi-location deal provides market entry opportunity.${engagementOverride ? ' Active interest confirmed.' : ''}`,
+      isDisqualified: false,
+      disqualificationReason: null,
+      confidence: 'medium'
+    };
+  } else if (engagementOverride) {
+    // Buyer has shown interest - give benefit of doubt for multi-location
+    return {
+      score: 55 + multiLocationBonus,
+      reasoning: `Geographic distance, but buyer has expressed interest. Multi-location (${dealLocations}) enables market expansion.`,
       isDisqualified: false,
       disqualificationReason: null,
       confidence: 'high'
     };
   } else if (buyerStateArray.length > 0) {
-    const baseScore = 35 + (dealAttractiveness > 70 ? 20 : dealAttractiveness > 50 ? 10 : 0);
+    const baseScore = 35 + multiLocationBonus + (dealAttractiveness > 70 ? 20 : dealAttractiveness > 50 ? 10 : 0);
     return {
       score: baseScore,
       reasoning: `Weak fit: Buyer operates in ${buyerStateArray.slice(0, 3).join(", ")}. No overlap with ${dealStates.join(", ")}, but multi-location deal may enable market entry.`,
@@ -561,7 +776,7 @@ function extractServiceKeywords(text: string): string[] {
     'accounting', 'bookkeeping', 'tax', 'audit', 'financial',
     'marketing', 'advertising', 'digital', 'seo', 'web design',
     'healthcare', 'medical', 'dental', 'veterinary', 'pharmacy',
-    'auto', 'automotive', 'collision', 'body shop', 'mechanic',
+    'auto', 'automotive', 'collision', 'body shop', 'mechanic', 'auto body',
     'insurance', 'claims', 'adjusting', 'underwriting',
     'logistics', 'trucking', 'freight', 'shipping', 'warehousing',
     'manufacturing', 'fabrication', 'machining', 'assembly',
@@ -572,7 +787,10 @@ function extractServiceKeywords(text: string): string[] {
     'engineering', 'architecture', 'surveying', 'environmental',
     'residential', 'commercial', 'industrial', 'government', 'municipal',
     'installation', 'maintenance', 'repair', 'service',
-    'b2b', 'b2c', 'enterprise', 'smb', 'consumer'
+    'b2b', 'b2c', 'enterprise', 'smb', 'consumer',
+    // Collision-specific terms
+    'ppg', 'paint', 'frame', 'adas', 'calibration', 'i-car', 'oem', 'certified',
+    'dent', 'bodywork', 'refinish', 'estimating', 'appraisal'
   ];
   
   const found: string[] = [];
@@ -587,12 +805,15 @@ function extractServiceKeywords(text: string): string[] {
   return found;
 }
 
-// Score OWNER GOALS category
+// Enhanced owner goals scoring with semantic pattern matching
 function scoreOwnerGoalsCategory(deal: Deal, buyer: Buyer): CategoryScore {
   const dealGoals = (deal.owner_goals || "").toLowerCase();
   const buyerTransition = (buyer.owner_transition_goals || "").toLowerCase();
   const buyerRoll = (buyer.owner_roll_requirement || "").toLowerCase();
   const thesis = (buyer.thesis_summary || "").toLowerCase();
+  const keyQuotes = (buyer.key_quotes || []).join(" ").toLowerCase();
+  
+  const allBuyerText = `${buyerTransition} ${buyerRoll} ${thesis} ${keyQuotes}`;
   
   if (!dealGoals) {
     return {
@@ -604,7 +825,7 @@ function scoreOwnerGoalsCategory(deal: Deal, buyer: Buyer): CategoryScore {
     };
   }
   
-  if (!buyerTransition && !buyerRoll && !thesis) {
+  if (!allBuyerText.trim()) {
     return {
       score: 50,
       reasoning: "Buyer transition preferences not specified. Manual review recommended.",
@@ -618,20 +839,91 @@ function scoreOwnerGoalsCategory(deal: Deal, buyer: Buyer): CategoryScore {
   let alignments: string[] = [];
   let conflicts: string[] = [];
   
+  // ENHANCED: Succession planning indicators
+  const successionIndicators = [
+    'succession', 'trusted employee', 'right hand', 'hand off', 'groom',
+    'if i sell', 'when i sell', 'gets 10%', 'gets a piece', 'been with me',
+    'my guy', 'key person', 'general manager', 'gm', 'operations manager',
+    'second in command', 'number two', 'years of experience'
+  ];
+  
+  const buyerValuesSuccession = [
+    'management', 'retain', 'keep management', 'existing team', 'continuity',
+    'operational expertise', 'lean on', 'local leadership', 'gm stays',
+    'management stays', 'keep the team'
+  ];
+  
+  const dealHasSuccessionPlan = successionIndicators.some(i => dealGoals.includes(i));
+  const buyerWantsManagement = buyerValuesSuccession.some(i => allBuyerText.includes(i));
+  
+  if (dealHasSuccessionPlan && buyerWantsManagement) {
+    score += 20;
+    alignments.push("Succession planning aligns with buyer's management retention focus");
+  } else if (dealHasSuccessionPlan) {
+    score += 10;
+    alignments.push("Owner has succession plan in place");
+  }
+  
+  // ENHANCED: Employee focus indicators
+  const employeeFocusIndicators = [
+    'my people', 'without them', 'employees', 'team', 'staff', 'family',
+    'treat them well', 'take care of', 'happy employees', 'good culture',
+    'not corporate', 'employee retention', 'loyalty', 'tenure'
+  ];
+  
+  const buyerKeepsTeam = [
+    'retain', 'keep', 'employees', 'team', 'culture', 'people first',
+    'investment in people', 'employee focused', 'training', 'development'
+  ];
+  
+  const dealCaresAboutTeam = employeeFocusIndicators.some(i => dealGoals.includes(i));
+  const buyerFocusedOnTeam = buyerKeepsTeam.some(i => allBuyerText.includes(i));
+  
+  if (dealCaresAboutTeam && buyerFocusedOnTeam) {
+    score += 15;
+    alignments.push("Both prioritize employee retention and culture");
+  } else if (dealCaresAboutTeam) {
+    score += 5;
+    alignments.push("Owner cares about employees");
+  }
+  
+  // ENHANCED: Culture preservation indicators
+  const culturePresentationIndicators = [
+    'culture', 'autonomy', 'independent', 'not like caliber', 'not like gerber',
+    'not corporate', 'keep the name', 'brand', 'reputation', 'quality',
+    'way we do things', 'our approach', 'local feel', 'community'
+  ];
+  
+  const buyerGivesAutonomy = [
+    'autonomy', 'independent', 'decentralized', 'local brand', 'entrepreneur',
+    'owner operator', 'not a consolidator', 'platform approach', 'support not control'
+  ];
+  
+  const dealWantsAutonomy = culturePresentationIndicators.some(i => dealGoals.includes(i));
+  const buyerAllowsAutonomy = buyerGivesAutonomy.some(i => allBuyerText.includes(i));
+  
+  if (dealWantsAutonomy && buyerAllowsAutonomy) {
+    score += 15;
+    alignments.push("Culture/autonomy preferences aligned");
+  } else if (dealWantsAutonomy && !buyerAllowsAutonomy && allBuyerText.includes('integration')) {
+    score -= 10;
+    conflicts.push("Owner wants autonomy but buyer focuses on integration");
+  }
+  
   // Timeline alignment
-  const dealUrgent = dealGoals.includes('quick') || dealGoals.includes('soon') || dealGoals.includes('immediate') || dealGoals.includes('asap');
-  const dealFlexible = dealGoals.includes('flexible') || dealGoals.includes('no rush') || dealGoals.includes('patient');
+  const dealUrgent = ['quick', 'soon', 'immediate', 'asap', 'ready to sell', 'motivated'].some(i => dealGoals.includes(i));
+  const dealFlexible = ['flexible', 'no rush', 'patient', 'right fit', 'taking time'].some(i => dealGoals.includes(i));
   
   // Transition period
-  const dealStayShort = dealGoals.includes('short transition') || dealGoals.includes('quick exit') || dealGoals.includes('move on');
-  const dealStayLong = dealGoals.includes('stay on') || dealGoals.includes('remain') || dealGoals.includes('continue') || dealGoals.includes('long transition');
+  const dealStayShort = ['short transition', 'quick exit', 'move on', 'retire', 'step away', 'done'].some(i => dealGoals.includes(i));
+  const dealStayLong = ['stay on', 'remain', 'continue', 'long transition', 'help grow', 'advise'].some(i => dealGoals.includes(i));
   
-  const buyerNeedsStay = buyerTransition.includes('stay') || buyerTransition.includes('remain') || buyerRoll.includes('required') || thesis.includes('management stays');
-  const buyerFlexibleStay = buyerTransition.includes('flexible') || buyerTransition.includes('optional');
+  const buyerNeedsStay = ['stay', 'remain', 'required', 'management stays', 'need owner'].some(i => allBuyerText.includes(i));
+  const buyerFlexibleStay = ['flexible', 'optional', 'negotiate', 'discuss'].some(i => allBuyerText.includes(i));
   
   // Score transition alignment
   if (dealStayLong && buyerNeedsStay) {
-    score += 20;
+    score += 15;
     alignments.push("Owner willing to stay aligns with buyer preference");
   } else if (dealStayShort && buyerFlexibleStay) {
     score += 10;
@@ -642,12 +934,12 @@ function scoreOwnerGoalsCategory(deal: Deal, buyer: Buyer): CategoryScore {
   }
   
   // Deal structure preferences
-  const dealWantsAllCash = dealGoals.includes('all cash') || dealGoals.includes('cash out') || dealGoals.includes('full exit');
-  const dealOpenToRollover = dealGoals.includes('rollover') || dealGoals.includes('equity') || dealGoals.includes('partnership');
-  const dealOpenToEarnout = dealGoals.includes('earnout') || dealGoals.includes('earn-out') || dealGoals.includes('performance');
+  const dealWantsAllCash = ['all cash', 'cash out', 'full exit', 'clean break'].some(i => dealGoals.includes(i));
+  const dealOpenToRollover = ['rollover', 'equity', 'partnership', 'upside', 'second bite'].some(i => dealGoals.includes(i));
+  const dealOpenToEarnout = ['earnout', 'earn-out', 'performance', 'milestone'].some(i => dealGoals.includes(i));
   
-  const buyerPrefersRoll = thesis.includes('rollover') || thesis.includes('equity') || buyerRoll.includes('preferred');
-  const buyerPrefersEarnout = thesis.includes('earnout') || thesis.includes('earn-out');
+  const buyerPrefersRoll = ['rollover', 'equity', 'partnership', 'alignment', 'skin in the game'].some(i => allBuyerText.includes(i));
+  const buyerPrefersEarnout = ['earnout', 'earn-out', 'performance based'].some(i => allBuyerText.includes(i));
   
   if (dealOpenToRollover && buyerPrefersRoll) {
     score += 15;
@@ -660,24 +952,6 @@ function scoreOwnerGoalsCategory(deal: Deal, buyer: Buyer): CategoryScore {
   if (dealOpenToEarnout && buyerPrefersEarnout) {
     score += 10;
     alignments.push("Open to earnout structure");
-  }
-  
-  // Employee focus
-  const dealCaresAboutTeam = dealGoals.includes('employees') || dealGoals.includes('team') || dealGoals.includes('staff') || dealGoals.includes('people');
-  const buyerKeepsTeam = thesis.includes('retain') || thesis.includes('keep') || thesis.includes('employees') || buyerTransition.includes('team');
-  
-  if (dealCaresAboutTeam && buyerKeepsTeam) {
-    score += 10;
-    alignments.push("Both prioritize employee retention");
-  }
-  
-  // Culture/autonomy
-  const dealWantsAutonomy = dealGoals.includes('autonomy') || dealGoals.includes('independent') || dealGoals.includes('culture');
-  const buyerGivesAutonomy = thesis.includes('autonomy') || thesis.includes('independent') || thesis.includes('decentralized');
-  
-  if (dealWantsAutonomy && buyerGivesAutonomy) {
-    score += 10;
-    alignments.push("Autonomy preferences aligned");
   }
   
   score = Math.max(20, Math.min(100, score));
@@ -820,6 +1094,29 @@ serve(async (req) => {
 
     console.log(`Scoring ${buyers?.length || 0} buyers...`);
 
+    // Fetch call intelligence for all buyers in this deal
+    const buyerIdList = buyers?.map(b => b.id) || [];
+    const { data: callIntelligence, error: callError } = await supabase
+      .from("call_intelligence")
+      .select("*")
+      .eq("deal_id", dealId)
+      .in("buyer_id", buyerIdList);
+    
+    if (callError) {
+      console.error("Call intelligence fetch error:", callError);
+    }
+
+    // Group call intelligence by buyer
+    const callsByBuyer: Record<string, any[]> = {};
+    (callIntelligence || []).forEach(call => {
+      if (call.buyer_id) {
+        if (!callsByBuyer[call.buyer_id]) {
+          callsByBuyer[call.buyer_id] = [];
+        }
+        callsByBuyer[call.buyer_id].push(call);
+      }
+    });
+
     // Calculate deal attractiveness once
     const dealAttractiveness = calculateDealAttractiveness(deal as Deal);
     console.log(`Deal attractiveness score: ${dealAttractiveness}`);
@@ -834,11 +1131,18 @@ serve(async (req) => {
 
     // Score each buyer
     const scores: BuyerScore[] = (buyers || []).map(buyer => {
+      // Analyze engagement signals from call intelligence
+      const buyerCalls = callsByBuyer[buyer.id] || [];
+      const engagementSignals = analyzeEngagementSignals(buyerCalls);
+      
       const sizeScore = scoreSizeCategory(deal as Deal, buyer as Buyer);
-      const geographyScore = scoreGeographyCategory(deal as Deal, buyer as Buyer, dealAttractiveness);
+      const geographyScore = scoreGeographyCategory(deal as Deal, buyer as Buyer, dealAttractiveness, engagementSignals);
       const servicesScore = scoreServicesCategory(deal as Deal, buyer as Buyer, tracker.industry_name);
       const ownerGoalsScore = scoreOwnerGoalsCategory(deal as Deal, buyer as Buyer);
       const thesisBonus = calculateThesisBonus(buyer as Buyer);
+      
+      // NEW: Calculate engagement bonus (up to 15 points)
+      const engagementBonus = Math.min(15, engagementSignals.engagementScore * 0.15);
       
       // Check for any disqualifications
       const disqualificationReasons: string[] = [];
@@ -860,7 +1164,8 @@ serve(async (req) => {
         (geographyScore.score * weights.geography) +
         (servicesScore.score * weights.services) +
         (ownerGoalsScore.score * weights.ownerGoals) +
-        (thesisBonus * 0.3) // Thesis bonus adds up to 9 points
+        (thesisBonus * 0.3) + // Thesis bonus adds up to 9 points
+        engagementBonus // Engagement bonus adds up to 15 points
       );
       
       // Generate overall reasoning
@@ -869,8 +1174,14 @@ serve(async (req) => {
         overallReasoning = `❌ DISQUALIFIED: ${disqualificationReasons[0]}`;
       } else if (compositeScore >= 75) {
         overallReasoning = `✅ Strong fit: ${geographyScore.reasoning.split('.')[0]}. ${servicesScore.reasoning.split('.')[0]}.`;
+        if (engagementSignals.signals.length > 0) {
+          overallReasoning += ` 🎯 ${engagementSignals.signals[0]}.`;
+        }
       } else if (compositeScore >= 50) {
         overallReasoning = `✓ Moderate fit: ${geographyScore.reasoning.split('.')[0]}. Consider for outreach.`;
+        if (engagementSignals.signals.length > 0) {
+          overallReasoning += ` 🎯 ${engagementSignals.signals[0]}.`;
+        }
       } else {
         overallReasoning = `⚠️ Long shot: ${geographyScore.reasoning.split('.')[0]}. ${sizeScore.reasoning.split('.')[0]}.`;
       }
@@ -884,11 +1195,13 @@ serve(async (req) => {
         servicesScore,
         ownerGoalsScore,
         thesisBonus,
+        engagementBonus: Math.round(engagementBonus),
         overallReasoning,
         isDisqualified,
         disqualificationReasons,
         dataCompleteness: calculateDataCompleteness(buyer as Buyer, deal as Deal),
         dealAttractiveness,
+        engagementSignals,
       };
     });
 
@@ -927,20 +1240,25 @@ serve(async (req) => {
     }
 
     return new Response(JSON.stringify({ 
-      success: true,
-      dealName: deal.deal_name,
-      industryName: tracker.industry_name,
+      success: true, 
+      scores,
       dealAttractiveness,
-      weights,
-      scores 
+      summary: {
+        total: scores.length,
+        strongFit: scores.filter(s => s.compositeScore >= 75).length,
+        moderateFit: scores.filter(s => s.compositeScore >= 50 && s.compositeScore < 75).length,
+        longShot: scores.filter(s => s.compositeScore > 0 && s.compositeScore < 50).length,
+        disqualified: scores.filter(s => s.isDisqualified).length,
+        withEngagement: scores.filter(s => s.engagementSignals.hasCalls).length,
+      }
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (error: unknown) {
-    console.error("Score buyer deal error:", error);
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ error: message }), {
+    console.error("Error in score-buyer-deal:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
