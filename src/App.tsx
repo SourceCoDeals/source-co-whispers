@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Trackers from "./pages/Trackers";
@@ -26,18 +27,18 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
-          <Route path="/trackers" element={<Trackers />} />
-          <Route path="/trackers/new" element={<NewTracker />} />
-          <Route path="/trackers/:id" element={<TrackerDetail />} />
-          <Route path="/buyers" element={<AllBuyers />} />
-          <Route path="/buyers/:id" element={<BuyerDetail />} />
-          <Route path="/deals" element={<AllDeals />} />
-          <Route path="/trackers/:trackerId/deals/new" element={<NewDeal />} />
-          <Route path="/deals/:id" element={<DealDetail />} />
-          <Route path="/deals/:id/matching" element={<DealMatching />} />
-          <Route path="/deals/:id/introductions" element={<IntroductionTracker />} />
+          <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+          <Route path="/trackers" element={<ProtectedRoute><Trackers /></ProtectedRoute>} />
+          <Route path="/trackers/new" element={<ProtectedRoute><NewTracker /></ProtectedRoute>} />
+          <Route path="/trackers/:id" element={<ProtectedRoute><TrackerDetail /></ProtectedRoute>} />
+          <Route path="/buyers" element={<ProtectedRoute><AllBuyers /></ProtectedRoute>} />
+          <Route path="/buyers/:id" element={<ProtectedRoute><BuyerDetail /></ProtectedRoute>} />
+          <Route path="/deals" element={<ProtectedRoute><AllDeals /></ProtectedRoute>} />
+          <Route path="/trackers/:trackerId/deals/new" element={<ProtectedRoute><NewDeal /></ProtectedRoute>} />
+          <Route path="/deals/:id" element={<ProtectedRoute><DealDetail /></ProtectedRoute>} />
+          <Route path="/deals/:id/matching" element={<ProtectedRoute><DealMatching /></ProtectedRoute>} />
+          <Route path="/deals/:id/introductions" element={<ProtectedRoute><IntroductionTracker /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
