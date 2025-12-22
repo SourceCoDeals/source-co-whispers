@@ -684,7 +684,7 @@ export default function BuyerDetail() {
                             <Input value={newTranscript.title} onChange={(e) => setNewTranscript({ ...newTranscript, title: e.target.value })} placeholder="e.g., Q1 2024 Buyer Call" className="mt-1" />
                           </div>
                           <div>
-                            <Label>Transcript Link</Label>
+                            <Label>Transcript Link *</Label>
                             <Input value={newTranscript.url} onChange={(e) => setNewTranscript({ ...newTranscript, url: e.target.value })} placeholder="https://..." className="mt-1" />
                           </div>
                           <div>
@@ -697,23 +697,23 @@ export default function BuyerDetail() {
                             <Input type="date" value={newTranscript.call_date} onChange={(e) => setNewTranscript({ ...newTranscript, call_date: e.target.value })} className="mt-1" />
                           </div>
                           <div className="flex gap-2">
-                            <Button onClick={addTranscriptLink} disabled={!newTranscript.title.trim()} className="flex-1">
-                              <Link2 className="w-4 h-4 mr-2" />Add Transcript
+                            <Button onClick={addTranscriptLink} disabled={!newTranscript.title.trim() || !newTranscript.url.trim()} className="flex-1">
+                              <Link2 className="w-4 h-4 mr-2" />Add Transcript Link
                             </Button>
                           </div>
                           <div className="relative">
                             <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
-                            <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or upload file</span></div>
+                            <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or upload file instead</span></div>
                           </div>
                           <div>
                             <Label htmlFor="transcript-upload" className="cursor-pointer">
-                              <div className="border-2 border-dashed rounded-lg p-4 text-center hover:border-primary/50 transition-colors">
+                              <div className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${!newTranscript.title.trim() ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary/50 cursor-pointer'}`}>
                                 {isUploading ? (<Loader2 className="w-6 h-6 animate-spin mx-auto" />) : (
-                                  <><Upload className="w-6 h-6 mx-auto text-muted-foreground mb-2" /><p className="text-sm text-muted-foreground">Click to upload transcript file</p></>
+                                  <><Upload className="w-6 h-6 mx-auto text-muted-foreground mb-2" /><p className="text-sm text-muted-foreground">Click to upload transcript file</p><p className="text-xs text-muted-foreground mt-1">(Title required first)</p></>
                                 )}
                               </div>
                             </Label>
-                            <input id="transcript-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".pdf,.doc,.docx,.txt,.md" />
+                            <input id="transcript-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".pdf,.doc,.docx,.txt,.md" disabled={!newTranscript.title.trim()} />
                           </div>
                         </div>
                       </DialogContent>
