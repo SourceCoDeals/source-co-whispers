@@ -34,6 +34,7 @@ export default function BuyerDetail() {
   const [processingTranscripts, setProcessingTranscripts] = useState<Set<string>>(new Set());
   const [expandedTranscripts, setExpandedTranscripts] = useState<Set<string>>(new Set());
   const [isEnriching, setIsEnriching] = useState(false);
+  const [isReextractingAll, setIsReextractingAll] = useState(false);
   
   // Deal context state
   const [deal, setDeal] = useState<any>(null);
@@ -257,6 +258,55 @@ export default function BuyerDetail() {
     if (processingTranscripts.has(transcript.id)) return 'processing';
     if (transcript.processed_at) return 'extracted';
     return 'pending';
+  };
+
+  const reextractAllTranscripts = async () => {
+    const transcriptsWithContent = transcripts.filter(t => t.notes && t.notes.length > 50);
+    
+    if (transcriptsWithContent.length === 0) {
+      toast({ 
+        title: "No transcripts to process", 
+        description: "Add transcript content/notes before re-extracting.",
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    setIsReextractingAll(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const transcript of transcriptsWithContent) {
+      try {
+        setProcessingTranscripts(prev => new Set(prev).add(transcript.id));
+        
+        const { data, error } = await supabase.functions.invoke('extract-transcript', {
+          body: { transcriptId: transcript.id, applyToProfile: true }
+        });
+
+        if (error || !data?.success) {
+          errorCount++;
+        } else {
+          successCount++;
+        }
+      } catch {
+        errorCount++;
+      } finally {
+        setProcessingTranscripts(prev => {
+          const next = new Set(prev);
+          next.delete(transcript.id);
+          return next;
+        });
+      }
+    }
+
+    setIsReextractingAll(false);
+    loadData();
+    
+    toast({
+      title: "Re-extraction complete",
+      description: `Processed ${successCount} transcript${successCount !== 1 ? 's' : ''} successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}`
+    });
   };
 
   const enrichFromWebsite = async () => {
@@ -693,7 +743,22 @@ export default function BuyerDetail() {
               {/* Call Transcripts - Enhanced with AI Processing */}
               <BuyerDataSection title="Transcripts & Call Intelligence" icon={<FileText className="w-4 h-4 text-muted-foreground" />} className="lg:col-span-2">
                 <div className="space-y-4">
-                  <div className="flex justify-end">
+                  <div className="flex justify-end gap-2">
+                    {transcripts.length > 0 && (
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={reextractAllTranscripts}
+                        disabled={isReextractingAll || processingTranscripts.size > 0}
+                      >
+                        {isReextractingAll ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-4 h-4 mr-2" />
+                        )}
+                        Re-extract All ({transcripts.filter(t => t.notes && t.notes.length > 50).length})
+                      </Button>
+                    )}
                     <Dialog open={transcriptDialogOpen} onOpenChange={setTranscriptDialogOpen}>
                       <DialogTrigger asChild>
                         <Button size="sm"><Plus className="w-4 h-4 mr-2" />Add Transcript</Button>
