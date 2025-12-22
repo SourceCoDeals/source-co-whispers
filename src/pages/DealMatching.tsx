@@ -14,12 +14,28 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PassReasonDialog } from "@/components/PassReasonDialog";
 
-interface GeographicScore {
-  buyerId: string;
-  geographyScore: number;
+interface CategoryScore {
+  score: number;
+  reasoning: string;
   isDisqualified: boolean;
   disqualificationReason: string | null;
-  fitReasoning: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+interface BuyerScore {
+  buyerId: string;
+  buyerName: string;
+  compositeScore: number;
+  sizeScore: CategoryScore;
+  geographyScore: CategoryScore;
+  servicesScore: CategoryScore;
+  ownerGoalsScore: CategoryScore;
+  thesisBonus: number;
+  overallReasoning: string;
+  isDisqualified: boolean;
+  disqualificationReasons: string[];
+  dataCompleteness: 'high' | 'medium' | 'low';
+  dealAttractiveness: number;
 }
 
 export default function DealMatching() {
@@ -29,15 +45,17 @@ export default function DealMatching() {
   const [deal, setDeal] = useState<any>(null);
   const [buyers, setBuyers] = useState<any[]>([]);
   const [scores, setScores] = useState<any[]>([]);
-  const [geoScores, setGeoScores] = useState<Map<string, GeographicScore>>(new Map());
+  const [buyerScores, setBuyerScores] = useState<Map<string, BuyerScore>>(new Map());
   const [contacts, setContacts] = useState<Record<string, any[]>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
+  const [isScoringLoading, setIsScoringLoading] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [contactedStatus, setContactedStatus] = useState<Record<string, boolean>>({});
   const [hideDisqualified, setHideDisqualified] = useState(false);
   const [passDialogOpen, setPassDialogOpen] = useState(false);
   const [buyerToPass, setBuyerToPass] = useState<any>(null);
+  const [dealAttractiveness, setDealAttractiveness] = useState<number>(50);
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -60,86 +78,68 @@ export default function DealMatching() {
         setContacts(contactsByBuyer);
       }
       
-      // Get real geographic scores from edge function
+      // Get AI-powered scores from new edge function
+      setIsScoringLoading(true);
       try {
-        const { data: geoData, error: geoError } = await supabase.functions.invoke('score-buyer-geography', {
+        const { data: scoreData, error: scoreError } = await supabase.functions.invoke('score-buyer-deal', {
           body: { dealId: id }
         });
         
-        if (geoData?.scores) {
-          const geoMap = new Map<string, GeographicScore>();
-          geoData.scores.forEach((s: GeographicScore) => {
-            geoMap.set(s.buyerId, s);
+        if (scoreError) {
+          console.error("Scoring error:", scoreError);
+          toast({ title: "Scoring error", description: scoreError.message, variant: "destructive" });
+        } else if (scoreData?.scores) {
+          const scoreMap = new Map<string, BuyerScore>();
+          scoreData.scores.forEach((s: BuyerScore) => {
+            scoreMap.set(s.buyerId, s);
           });
-          setGeoScores(geoMap);
+          setBuyerScores(scoreMap);
+          setDealAttractiveness(scoreData.dealAttractiveness || 50);
+          console.log(`Loaded ${scoreData.scores.length} AI scores for deal ${scoreData.dealName}`);
         }
       } catch (err) {
-        console.error("Failed to get geographic scores:", err);
+        console.error("Failed to get AI scores:", err);
       }
+      setIsScoringLoading(false);
       
+      // Also load existing scores from DB (for selected_for_outreach, passed, etc.)
       const { data: scoresData } = await supabase.from("buyer_deal_scores").select("*").eq("deal_id", id);
       if (scoresData?.length) {
         setScores(scoresData);
         const approved = new Set(scoresData.filter(s => s.selected_for_outreach).map(s => s.buyer_id));
         setSelected(approved);
-      } else {
-        // Create initial scores - geography will be overwritten by real scores
-        const newScores = (buyersData || []).map((b) => ({
-          buyer_id: b.id, deal_id: id,
-          geography_score: 50, // Will be overwritten by real geo scores
-          service_score: Math.floor(Math.random() * 40) + 60,
-          acquisition_score: Math.floor(Math.random() * 40) + 60,
-          portfolio_score: Math.floor(Math.random() * 40) + 60,
-          business_model_score: Math.floor(Math.random() * 40) + 60,
-          thesis_bonus: b.thesis_summary ? Math.floor(Math.random() * 30) + 20 : 0,
-          composite_score: 0, 
-          fit_reasoning: "Calculating...", 
-          data_completeness: b.thesis_summary ? "High" : "Low",
-          selected_for_outreach: false,
-        }));
-        newScores.forEach((s) => { s.composite_score = ((s.geography_score + s.service_score + s.acquisition_score + s.portfolio_score + s.business_model_score) / 5 + s.thesis_bonus) / 1.5; });
-        if (newScores.length) await supabase.from("buyer_deal_scores").insert(newScores);
-        setScores(newScores);
       }
     }
     setIsLoading(false);
   };
 
-  // Merge geographic scores with buyer scores and sort
+  // Merge AI scores with buyer data and sort
   const sortedBuyers = buyers.map((b) => {
-    const score = scores.find((s) => s.buyer_id === b.id);
-    const geoScore = geoScores.get(b.id);
+    const dbScore = scores.find((s) => s.buyer_id === b.id);
+    const aiScore = buyerScores.get(b.id);
     
-    // Use real geography score if available
-    const realGeoScore = geoScore?.geographyScore ?? score?.geography_score ?? 50;
-    const isDisqualified = geoScore?.isDisqualified ?? false;
-    const fitReasoning = geoScore?.fitReasoning ?? score?.fit_reasoning ?? "";
-    
-    // Recalculate composite with real geography score (geography weighted 40%)
-    const geoWeight = 0.4;
-    const otherWeight = 0.6 / 4; // Distribute remaining 60% among 4 other scores
-    const compositeScore = isDisqualified ? 0 : (
-      (realGeoScore * geoWeight) +
-      ((score?.service_score || 50) * otherWeight) +
-      ((score?.acquisition_score || 50) * otherWeight) +
-      ((score?.portfolio_score || 50) * otherWeight) +
-      ((score?.business_model_score || 50) * otherWeight) +
-      (score?.thesis_bonus || 0) * 0.3
-    );
+    // Use AI scores if available, fallback to DB scores
+    const compositeScore = aiScore?.compositeScore ?? dbScore?.composite_score ?? 50;
+    const isDisqualified = aiScore?.isDisqualified ?? false;
+    const fitReasoning = aiScore?.overallReasoning ?? dbScore?.fit_reasoning ?? "";
     
     return {
       ...b,
       score: {
-        ...score,
-        geography_score: realGeoScore,
+        ...dbScore,
+        geography_score: aiScore?.geographyScore?.score ?? dbScore?.geography_score ?? 50,
+        service_score: aiScore?.servicesScore?.score ?? dbScore?.service_score ?? 50,
+        acquisition_score: aiScore?.sizeScore?.score ?? dbScore?.acquisition_score ?? 50, // Size score
+        portfolio_score: aiScore?.ownerGoalsScore?.score ?? dbScore?.portfolio_score ?? 50, // Owner goals
+        thesis_bonus: aiScore?.thesisBonus ?? dbScore?.thesis_bonus ?? 0,
         composite_score: compositeScore,
         fit_reasoning: fitReasoning,
       },
+      aiScore,
       isDisqualified,
-      disqualificationReason: geoScore?.disqualificationReason,
+      disqualificationReason: aiScore?.disqualificationReasons?.[0] ?? null,
     };
   }).sort((a, b) => {
-    // Disqualified buyers always go to bottom
     if (a.isDisqualified && !b.isDisqualified) return 1;
     if (!a.isDisqualified && b.isDisqualified) return -1;
     return (b.score?.composite_score || 0) - (a.score?.composite_score || 0);
@@ -689,8 +689,14 @@ export default function DealMatching() {
                     {score?.fit_reasoning || "Evaluating fit..."}
                   </p>
                   
-                  {/* Detailed breakdown */}
+                  {/* Detailed breakdown - 4 AI-scored categories */}
                   <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div className="flex items-center justify-between bg-background/50 rounded px-2 py-1">
+                      <span className="text-muted-foreground">Size</span>
+                      <span className={`font-semibold ${(score?.acquisition_score || 0) >= 70 ? 'text-green-600' : (score?.acquisition_score || 0) >= 40 ? 'text-amber-600' : 'text-destructive'}`}>
+                        {score?.acquisition_score || 0}%
+                      </span>
+                    </div>
                     <div className="flex items-center justify-between bg-background/50 rounded px-2 py-1">
                       <span className="text-muted-foreground">Geography</span>
                       <span className={`font-semibold ${(score?.geography_score || 0) >= 70 ? 'text-green-600' : (score?.geography_score || 0) >= 40 ? 'text-amber-600' : 'text-destructive'}`}>
@@ -699,19 +705,13 @@ export default function DealMatching() {
                     </div>
                     <div className="flex items-center justify-between bg-background/50 rounded px-2 py-1">
                       <span className="text-muted-foreground">Services</span>
-                      <span className={`font-semibold ${(score?.service_score || 0) >= 70 ? 'text-green-600' : 'text-amber-600'}`}>
+                      <span className={`font-semibold ${(score?.service_score || 0) >= 70 ? 'text-green-600' : (score?.service_score || 0) >= 40 ? 'text-amber-600' : 'text-destructive'}`}>
                         {score?.service_score || 0}%
                       </span>
                     </div>
                     <div className="flex items-center justify-between bg-background/50 rounded px-2 py-1">
-                      <span className="text-muted-foreground">Acquisition</span>
-                      <span className={`font-semibold ${(score?.acquisition_score || 0) >= 70 ? 'text-green-600' : 'text-amber-600'}`}>
-                        {score?.acquisition_score || 0}%
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between bg-background/50 rounded px-2 py-1">
-                      <span className="text-muted-foreground">Portfolio</span>
-                      <span className={`font-semibold ${(score?.portfolio_score || 0) >= 70 ? 'text-green-600' : 'text-amber-600'}`}>
+                      <span className="text-muted-foreground">Owner Goals</span>
+                      <span className={`font-semibold ${(score?.portfolio_score || 0) >= 70 ? 'text-green-600' : (score?.portfolio_score || 0) >= 40 ? 'text-amber-600' : 'text-destructive'}`}>
                         {score?.portfolio_score || 0}%
                       </span>
                     </div>
