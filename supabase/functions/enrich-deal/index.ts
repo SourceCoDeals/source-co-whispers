@@ -359,6 +359,8 @@ Deno.serve(async (req) => {
       if (currentValue === null || currentValue === undefined) return true;
       if (Array.isArray(currentValue) && currentValue.length === 0) return true;
       if (typeof currentValue === 'string' && currentValue.trim() === '') return true;
+      // Treat default location_count of 1 as empty (allows enrichment to update it)
+      if (field === 'location_count' && currentValue === 1) return true;
       return false;
     };
 
