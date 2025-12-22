@@ -534,28 +534,40 @@ export function DealTranscriptsSection({
                       {extractedData.company_overview && (
                         <div className="md:col-span-2">
                           <p className="text-xs text-muted-foreground">Company Overview</p>
-                          <p className="text-sm">{extractedData.company_overview}</p>
+                          <p className="text-sm">
+                            {typeof extractedData.company_overview === 'object' 
+                              ? extractedData.company_overview.value 
+                              : extractedData.company_overview}
+                          </p>
                         </div>
                       )}
                       {extractedData.revenue && (
                         <div>
                           <p className="text-xs text-muted-foreground">Revenue</p>
-                          <p className="text-sm">${extractedData.revenue}M</p>
+                          <p className="text-sm">
+                            ${typeof extractedData.revenue === 'object' 
+                              ? extractedData.revenue.value 
+                              : extractedData.revenue}M
+                          </p>
                         </div>
                       )}
                       {extractedData.ebitda_amount && (
                         <div>
                           <p className="text-xs text-muted-foreground">EBITDA</p>
-                          <p className="text-sm">${extractedData.ebitda_amount}M</p>
+                          <p className="text-sm">
+                            ${typeof extractedData.ebitda_amount === 'object' 
+                              ? extractedData.ebitda_amount.value 
+                              : extractedData.ebitda_amount}M
+                          </p>
                         </div>
                       )}
                       {extractedData.geography?.length > 0 && (
                         <div>
                           <p className="text-xs text-muted-foreground">Geography</p>
                           <div className="flex flex-wrap gap-1 mt-1">
-                            {extractedData.geography.map((g: string, i: number) => (
+                            {extractedData.geography.map((g: any, i: number) => (
                               <Badge key={i} variant="secondary" className="text-xs">
-                                {g}
+                                {typeof g === 'object' ? g.value || JSON.stringify(g) : g}
                               </Badge>
                             ))}
                           </div>
@@ -564,13 +576,21 @@ export function DealTranscriptsSection({
                       {extractedData.service_mix && (
                         <div>
                           <p className="text-xs text-muted-foreground">Service Mix</p>
-                          <p className="text-sm">{extractedData.service_mix}</p>
+                          <p className="text-sm">
+                            {typeof extractedData.service_mix === 'object' 
+                              ? extractedData.service_mix.value 
+                              : extractedData.service_mix}
+                          </p>
                         </div>
                       )}
                       {extractedData.owner_goals && (
                         <div className="md:col-span-2">
                           <p className="text-xs text-muted-foreground">Owner Goals</p>
-                          <p className="text-sm">{extractedData.owner_goals}</p>
+                          <p className="text-sm">
+                            {typeof extractedData.owner_goals === 'object' 
+                              ? extractedData.owner_goals.value 
+                              : extractedData.owner_goals}
+                          </p>
                         </div>
                       )}
                     </div>
