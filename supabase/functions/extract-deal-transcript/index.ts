@@ -269,6 +269,10 @@ const extractDealInfoTool = {
           type: "string",
           description: "City and state of headquarters"
         },
+        location_count: {
+          type: "number",
+          description: "Number of physical locations, stores, shops, branches, or offices the company operates"
+        },
         ownership_structure: {
           type: "string",
           description: "Current ownership structure - sole owner, partnership, family-owned, etc."
@@ -673,6 +677,7 @@ Deno.serve(async (req) => {
     if (extractedInfo.employee_count) updateData.employee_count = extractedInfo.employee_count;
     if (extractedInfo.founded_year) updateData.founded_year = extractedInfo.founded_year;
     if (extractedInfo.headquarters) updateData.headquarters = extractedInfo.headquarters;
+    if (extractedInfo.location_count) updateData.location_count = extractedInfo.location_count;
     if (extractedInfo.ownership_structure) updateData.ownership_structure = extractedInfo.ownership_structure;
     if (extractedInfo.special_requirements) updateData.special_requirements = extractedInfo.special_requirements;
     if (extractedInfo.contact_name) updateData.contact_name = extractedInfo.contact_name;
