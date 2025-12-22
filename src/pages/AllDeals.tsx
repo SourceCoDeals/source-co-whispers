@@ -4,11 +4,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Loader2, FileText, ChevronRight, MoreHorizontal, Archive, Trash2, Building2, Globe } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { normalizeDomain } from "@/lib/normalizeDomain";
-
 interface CompanyGroup {
   companyId: string | null;
   companyName: string;
@@ -22,8 +22,9 @@ export default function AllDeals() {
   const [deals, setDeals] = useState<any[]>([]);
   const [trackers, setTrackers] = useState<Record<string, any>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [companyToDelete, setCompanyToDelete] = useState<CompanyGroup | null>(null);
   const { toast } = useToast();
-
   useEffect(() => {
     loadDeals();
   }, []);
@@ -66,6 +67,56 @@ export default function AllDeals() {
       return;
     }
     toast({ title: "Deal deleted", description: `${dealName} has been deleted` });
+    loadDeals();
+  };
+
+  const archiveCompany = async (group: CompanyGroup) => {
+    const dealIds = group.deals.map(d => d.id);
+    const { error } = await supabase.from("deals").update({ status: "Archived" }).in("id", dealIds);
+    
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+    
+    toast({ 
+      title: "Company archived", 
+      description: `${group.companyName} has been archived from ${group.deals.length} universe${group.deals.length > 1 ? 's' : ''}` 
+    });
+    loadDeals();
+  };
+
+  const confirmDeleteCompany = (group: CompanyGroup) => {
+    setCompanyToDelete(group);
+    setDeleteDialogOpen(true);
+  };
+
+  const deleteCompany = async () => {
+    if (!companyToDelete) return;
+    
+    const dealIds = companyToDelete.deals.map(d => d.id);
+    
+    // Delete all deals for this company
+    const { error: dealsError } = await supabase.from("deals").delete().in("id", dealIds);
+    if (dealsError) {
+      toast({ title: "Error", description: dealsError.message, variant: "destructive" });
+      setDeleteDialogOpen(false);
+      setCompanyToDelete(null);
+      return;
+    }
+    
+    // Delete the company record if it exists
+    if (companyToDelete.companyId) {
+      await supabase.from("companies").delete().eq("id", companyToDelete.companyId);
+    }
+    
+    toast({ 
+      title: "Company deleted", 
+      description: `${companyToDelete.companyName} has been permanently deleted` 
+    });
+    
+    setDeleteDialogOpen(false);
+    setCompanyToDelete(null);
     loadDeals();
   };
 
@@ -154,6 +205,24 @@ export default function AllDeals() {
                           {group.geography?.length > 0 && <span>{group.geography.join(", ")}</span>}
                         </div>
                       </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="shrink-0">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => archiveCompany(group)}>
+                            <Archive className="w-4 h-4 mr-2" />
+                            Archive from all universes
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => confirmDeleteCompany(group)} className="text-destructive">
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete permanently
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
 
@@ -206,6 +275,23 @@ export default function AllDeals() {
           </div>
         )}
       </div>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {companyToDelete?.companyName}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this company and remove it from {companyToDelete?.deals.length} buyer universe{companyToDelete?.deals.length !== 1 ? 's' : ''}. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={deleteCompany} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }
