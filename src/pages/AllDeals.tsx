@@ -3,12 +3,16 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, FileText, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Loader2, FileText, ChevronRight, MoreHorizontal, Archive, Trash2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AllDeals() {
   const [deals, setDeals] = useState<any[]>([]);
   const [trackers, setTrackers] = useState<Record<string, any>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     loadDeals();
@@ -25,6 +29,34 @@ export default function AllDeals() {
     (trackersRes.data || []).forEach((t) => { trackerMap[t.id] = t; });
     setTrackers(trackerMap);
     setIsLoading(false);
+  };
+
+  const archiveDeal = async (e: React.MouseEvent, dealId: string, dealName: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const { error } = await supabase.from("deals").update({ status: "Archived" }).eq("id", dealId);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Deal archived", description: `${dealName} has been archived` });
+    loadDeals();
+  };
+
+  const deleteDeal = async (e: React.MouseEvent, dealId: string, dealName: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!confirm(`Are you sure you want to delete "${dealName}"? This cannot be undone.`)) return;
+    
+    const { error } = await supabase.from("deals").delete().eq("id", dealId);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Deal deleted", description: `${dealName} has been deleted` });
+    loadDeals();
   };
 
   // Group deals by industry
@@ -71,15 +103,34 @@ export default function AllDeals() {
                   </Link>
                   <div className="divide-y">
                     {industryDeals.map((deal) => (
-                      <Link key={deal.id} to={`/deals/${deal.id}`} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
-                        <div>
+                      <div key={deal.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors group">
+                        <Link to={`/deals/${deal.id}`} className="flex-1 min-w-0">
                           <p className="font-medium">{deal.deal_name}</p>
                           <p className="text-sm text-muted-foreground">
                             {deal.geography?.join(", ") || "—"} · {deal.revenue ? `$${deal.revenue}M` : "—"} {deal.ebitda_percentage ? `· ${deal.ebitda_percentage}% EBITDA` : ""}
                           </p>
+                        </Link>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={(e) => archiveDeal(e, deal.id, deal.deal_name)}>
+                                <Archive className="w-4 h-4 mr-2" />
+                                Archive
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={(e) => deleteDeal(e, deal.id, deal.deal_name)} className="text-destructive">
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
-                        <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
-                      </Link>
+                      </div>
                     ))}
                   </div>
                 </div>
