@@ -470,16 +470,88 @@ Deno.serve(async (req) => {
     let transcriptContent = '';
     
     if (transcript.transcript_type === 'link' && transcript.url) {
-      // For now, use notes as content if available, or indicate URL-based transcript
-      transcriptContent = transcript.notes || `Transcript available at: ${transcript.url}`;
+      // For link-based transcripts, try to fetch and scrape the content
+      console.log('Fetching transcript from URL:', transcript.url);
+      try {
+        const response = await fetch(transcript.url);
+        if (response.ok) {
+          const html = await response.text();
+          // Basic HTML to text extraction - strip tags
+          transcriptContent = html
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          console.log('Extracted', transcriptContent.length, 'characters from URL');
+        }
+      } catch (fetchError) {
+        console.error('Failed to fetch URL content:', fetchError);
+      }
+      // Fall back to notes if URL fetch fails
+      if (!transcriptContent || transcriptContent.length < 50) {
+        transcriptContent = transcript.notes || '';
+      }
     } else if (transcript.transcript_type === 'file' && transcript.url) {
-      // For file-based transcripts, we'd need to download and parse
-      // For now, use notes
-      transcriptContent = transcript.notes || 'File-based transcript (content extraction pending)';
+      // Download file from Supabase Storage and parse
+      console.log('Downloading file from storage:', transcript.url);
+      try {
+        const { data: fileData, error: downloadError } = await supabase
+          .storage
+          .from('call-transcripts')
+          .download(transcript.url);
+
+        if (downloadError) {
+          console.error('Storage download error:', downloadError);
+        } else if (fileData) {
+          const fileName = transcript.url.toLowerCase();
+          
+          if (fileName.endsWith('.pdf')) {
+            // Parse PDF using pdfjs-serverless (works in Deno/serverless)
+            console.log('Parsing PDF file...');
+            try {
+              const pdfjs = await import('https://esm.sh/pdfjs-serverless@0.5.0');
+              const pdfjsLib = await pdfjs.resolvePDFJS();
+              const arrayBuffer = await fileData.arrayBuffer();
+              const pdfDoc = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer), useSystemFonts: true }).promise;
+              
+              const textParts: string[] = [];
+              for (let i = 1; i <= pdfDoc.numPages; i++) {
+                const page = await pdfDoc.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map((item: any) => item.str).join(' ');
+                textParts.push(pageText);
+              }
+              transcriptContent = textParts.join('\n\n');
+              console.log('Extracted', transcriptContent.length, 'characters from PDF (' + pdfDoc.numPages + ' pages)');
+            } catch (pdfError) {
+              console.error('PDF parsing error:', pdfError);
+              // Try as plain text if PDF parsing fails
+              transcriptContent = await fileData.text();
+            }
+          } else if (fileName.endsWith('.txt') || fileName.endsWith('.md')) {
+            // Plain text files
+            transcriptContent = await fileData.text();
+            console.log('Read', transcriptContent.length, 'characters from text file');
+          } else {
+            // Try reading as text for unknown formats
+            console.log('Unknown file format, attempting text read');
+            transcriptContent = await fileData.text();
+          }
+        }
+      } catch (storageError) {
+        console.error('Failed to download from storage:', storageError);
+      }
+      
+      // Fall back to notes if file parsing fails
+      if (!transcriptContent || transcriptContent.length < 50) {
+        transcriptContent = transcript.notes || '';
+      }
     }
 
-    // If we have notes, use them as the primary content
-    if (transcript.notes && transcript.notes.length > 50) {
+    // If we have notes and they're longer than extracted content, prefer notes
+    if (transcript.notes && transcript.notes.length > 50 && transcript.notes.length > transcriptContent.length) {
+      console.log('Using notes field as primary content (longer than extracted content)');
       transcriptContent = transcript.notes;
     }
 
@@ -487,12 +559,14 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Transcript has insufficient content. Please add detailed notes or upload a text file.',
+          error: 'Transcript has insufficient content. The PDF/file could not be parsed or is empty. Please add transcript text to the notes field.',
           needsContent: true
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    console.log('Total transcript content length:', transcriptContent.length, 'characters');
 
     // Industry-aware system prompt - very explicit about platform vs PE firm distinction
     const platformName = buyer.platform_company_name || `their ${industryName} platform`;
