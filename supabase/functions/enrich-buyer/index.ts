@@ -1041,6 +1041,42 @@ EXAMPLE OUTPUT:
       data_last_updated: new Date().toISOString(),
     };
 
+    const PLACEHOLDER_STRINGS = new Set([
+      'not specified',
+      'n/a',
+      'na',
+      'unknown',
+      'none',
+      'tbd',
+    ]);
+
+    const normalizeString = (value: unknown): string | null => {
+      if (typeof value !== 'string') return null;
+      const v = value.trim();
+      if (!v) return null;
+      if (PLACEHOLDER_STRINGS.has(v.toLowerCase())) return null;
+      return v;
+    };
+
+    const normalizeArray = (value: unknown): string[] | null => {
+      if (!Array.isArray(value)) return null;
+      const normalized = value
+        .map((v) => normalizeString(v))
+        .filter((v): v is string => !!v);
+      if (normalized.length === 0) return null;
+      // de-dupe while preserving order
+      const seen = new Set<string>();
+      const unique: string[] = [];
+      for (const v of normalized) {
+        const key = v.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          unique.push(v);
+        }
+      }
+      return unique;
+    };
+
     const fieldsToUpdate = [
       'services_offered', 'business_summary', 'industry_vertical', 'specialized_focus',
       'business_type', 'revenue_model', 'go_to_market_strategy',
@@ -1054,42 +1090,58 @@ EXAMPLE OUTPUT:
     ];
 
     for (const field of fieldsToUpdate) {
-      if (extractedData[field] !== undefined && extractedData[field] !== null) {
-        const existingValue = buyer[field];
-        const newValue = extractedData[field];
-        
-        // CRITICAL: Never overwrite transcript-protected fields if transcript data exists
-        if (hasTranscriptSource && transcriptProtectedFields.includes(field)) {
-          // Only update if existing value is empty/null
-          const isEmpty = existingValue === null || existingValue === undefined || 
-            (typeof existingValue === 'string' && existingValue.trim() === '') ||
-            (Array.isArray(existingValue) && existingValue.length === 0);
-          
-          if (!isEmpty) {
-            console.log(`Skipping ${field}: protected by transcript data`);
-            continue;
-          }
-        }
-        
-        // For strings, only update if we don't have data or new data is longer
-        if (typeof newValue === 'string') {
-          if (!existingValue || newValue.length > (existingValue?.length || 0)) {
-            updateData[field] = newValue;
-          }
-        }
-        // For arrays, only update if we don't have data or new array has more items
-        else if (Array.isArray(newValue)) {
-          if (!existingValue || !Array.isArray(existingValue) || newValue.length > existingValue.length) {
-            updateData[field] = newValue;
-          }
-        }
-        // For numbers, only update if we don't have data
-        else if (typeof newValue === 'number') {
-          if (existingValue === null || existingValue === undefined) {
-            updateData[field] = newValue;
-          }
+      if (extractedData[field] === undefined || extractedData[field] === null) continue;
+
+      const existingValue = buyer[field];
+      const newValue = extractedData[field];
+
+      // CRITICAL: Never overwrite transcript-protected fields if transcript data exists
+      if (hasTranscriptSource && transcriptProtectedFields.includes(field)) {
+        const isEmpty =
+          existingValue === null ||
+          existingValue === undefined ||
+          (typeof existingValue === 'string' && (normalizeString(existingValue) === null)) ||
+          (Array.isArray(existingValue) && existingValue.length === 0);
+
+        if (!isEmpty) {
+          console.log(`Skipping ${field}: protected by transcript data`);
+          continue;
         }
       }
+
+      // Strings: skip placeholders and only update if empty or new is longer
+      if (typeof newValue === 'string') {
+        const normalizedNew = normalizeString(newValue);
+        if (!normalizedNew) continue;
+
+        const normalizedExisting = normalizeString(existingValue);
+        if (!normalizedExisting || normalizedNew.length > normalizedExisting.length) {
+          updateData[field] = normalizedNew;
+        }
+        continue;
+      }
+
+      // Arrays: skip empty/placeholder entries and only update if empty or new has more items
+      if (Array.isArray(newValue)) {
+        const normalizedNewArr = normalizeArray(newValue);
+        if (!normalizedNewArr) continue;
+
+        const existingArr = Array.isArray(existingValue) ? existingValue : null;
+        if (!existingArr || !Array.isArray(existingArr) || normalizedNewArr.length > existingArr.length) {
+          updateData[field] = normalizedNewArr;
+        }
+        continue;
+      }
+
+      // Numbers: only update if we don't have data
+      if (typeof newValue === 'number') {
+        if (existingValue === null || existingValue === undefined) {
+          updateData[field] = newValue;
+        }
+        continue;
+      }
+
+      // Everything else: leave as-is
     }
 
     // Merge extraction sources (reuse existingSources from above)
