@@ -158,6 +158,39 @@ export default function TrackerDetail() {
     }
   };
 
+  // Constants for retry logic
+  const MAX_ENRICHMENT_RETRIES = 3;
+  const RETRY_DELAY_MS = 2000;
+  const BETWEEN_BUYER_DELAY_MS = 500;
+
+  const isActuallyEnriched = (buyer: any) => {
+    return buyer.business_summary || 
+           buyer.services_offered || 
+           (buyer.geographic_footprint && buyer.geographic_footprint.length > 0) ||
+           buyer.hq_city ||
+           buyer.hq_state;
+  };
+
+  const enrichSingleBuyerWithRetry = async (
+    buyer: any, 
+    attempt: number, 
+    maxAttempts: number
+  ): Promise<{ success: boolean; partial?: boolean }> => {
+    try {
+      const { data, error } = await supabase.functions.invoke('enrich-buyer', {
+        body: { buyerId: buyer.id }
+      });
+
+      if (error || !data?.success) {
+        return { success: false };
+      }
+
+      return { success: true, partial: !!data.warning };
+    } catch {
+      return { success: false };
+    }
+  };
+
   const enrichAllBuyers = async () => {
     const buyersWithWebsites = buyers.filter(b => b.platform_website || b.pe_firm_website);
     
@@ -172,37 +205,30 @@ export default function TrackerDetail() {
 
     setIsBulkEnriching(true);
     let successCount = 0;
-    let errorCount = 0;
     let partialCount = 0;
-    const failedBuyers: string[] = [];
+    let failedBuyerIds = new Set<string>();
+    const failedBuyerNames: string[] = [];
+
+    // Phase 1: Initial enrichment pass
+    toast({ title: "Starting enrichment", description: `Processing ${buyersWithWebsites.length} buyers...` });
 
     for (let i = 0; i < buyersWithWebsites.length; i++) {
       const buyer = buyersWithWebsites[i];
+      const buyerName = buyer.platform_company_name || buyer.pe_firm_name;
       setEnrichingBuyers(prev => new Set(prev).add(buyer.id));
       
-      // Show progress toast
       toast({ 
         title: `Enriching ${i + 1} of ${buyersWithWebsites.length}`, 
-        description: buyer.platform_company_name || buyer.pe_firm_name 
+        description: buyerName 
       });
       
-      try {
-        const { data, error } = await supabase.functions.invoke('enrich-buyer', {
-          body: { buyerId: buyer.id }
-        });
+      const result = await enrichSingleBuyerWithRetry(buyer, 1, MAX_ENRICHMENT_RETRIES);
 
-        if (error || !data?.success) {
-          errorCount++;
-          failedBuyers.push(buyer.platform_company_name || buyer.pe_firm_name);
-        } else {
-          if (data.warning) {
-            partialCount++;
-          }
-          successCount++;
-        }
-      } catch {
-        errorCount++;
-        failedBuyers.push(buyer.platform_company_name || buyer.pe_firm_name);
+      if (!result.success) {
+        failedBuyerIds.add(buyer.id);
+      } else {
+        if (result.partial) partialCount++;
+        successCount++;
       }
       
       setEnrichingBuyers(prev => {
@@ -211,14 +237,109 @@ export default function TrackerDetail() {
         return next;
       });
 
-      // Small delay to avoid rate limiting
       if (i < buyersWithWebsites.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, BETWEEN_BUYER_DELAY_MS));
       }
     }
 
-    // Wait a moment for the database to fully update
+    // Phase 2: Retry failed buyers with exponential backoff
+    let retryAttempt = 1;
+    while (failedBuyerIds.size > 0 && retryAttempt <= MAX_ENRICHMENT_RETRIES) {
+      const delay = RETRY_DELAY_MS * Math.pow(2, retryAttempt - 1);
+      toast({ 
+        title: `Retry attempt ${retryAttempt} of ${MAX_ENRICHMENT_RETRIES}`, 
+        description: `Retrying ${failedBuyerIds.size} failed buyer(s) in ${delay / 1000}s...` 
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+
+      const buyersToRetry = buyersWithWebsites.filter(b => failedBuyerIds.has(b.id));
+      
+      for (const buyer of buyersToRetry) {
+        const buyerName = buyer.platform_company_name || buyer.pe_firm_name;
+        setEnrichingBuyers(prev => new Set(prev).add(buyer.id));
+        
+        toast({ 
+          title: `Retrying (${retryAttempt}/${MAX_ENRICHMENT_RETRIES})`, 
+          description: buyerName 
+        });
+
+        const result = await enrichSingleBuyerWithRetry(buyer, retryAttempt, MAX_ENRICHMENT_RETRIES);
+
+        if (result.success) {
+          failedBuyerIds.delete(buyer.id);
+          if (result.partial) partialCount++;
+          successCount++;
+        }
+
+        setEnrichingBuyers(prev => {
+          const next = new Set(prev);
+          next.delete(buyer.id);
+          return next;
+        });
+
+        await new Promise(resolve => setTimeout(resolve, BETWEEN_BUYER_DELAY_MS));
+      }
+
+      retryAttempt++;
+    }
+
+    // Phase 3: Reload data and check for buyers still missing enrichment
     await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const { data: refreshedBuyers } = await supabase
+      .from("buyers")
+      .select("*")
+      .eq("tracker_id", id)
+      .order("pe_firm_name");
+
+    if (refreshedBuyers) {
+      const stillUnenriched = refreshedBuyers.filter(
+        b => (b.platform_website || b.pe_firm_website) && !isActuallyEnriched(b)
+      );
+
+      if (stillUnenriched.length > 0) {
+        toast({ 
+          title: "Final verification pass", 
+          description: `${stillUnenriched.length} buyer(s) still need enrichment...` 
+        });
+
+        for (const buyer of stillUnenriched) {
+          const buyerName = buyer.platform_company_name || buyer.pe_firm_name;
+          setEnrichingBuyers(prev => new Set(prev).add(buyer.id));
+          
+          toast({ title: "Final retry", description: buyerName });
+
+          const result = await enrichSingleBuyerWithRetry(buyer, 1, 1);
+          
+          if (result.success) {
+            if (result.partial) partialCount++;
+            successCount++;
+          } else {
+            failedBuyerNames.push(buyerName);
+          }
+
+          setEnrichingBuyers(prev => {
+            const next = new Set(prev);
+            next.delete(buyer.id);
+            return next;
+          });
+
+          await new Promise(resolve => setTimeout(resolve, BETWEEN_BUYER_DELAY_MS));
+        }
+      }
+    }
+
+    // Collect final failed buyer names
+    if (failedBuyerIds.size > 0) {
+      const finalFailed = buyersWithWebsites.filter(b => failedBuyerIds.has(b.id));
+      for (const b of finalFailed) {
+        const name = b.platform_company_name || b.pe_firm_name;
+        if (!failedBuyerNames.includes(name)) {
+          failedBuyerNames.push(name);
+        }
+      }
+    }
     
     setIsBulkEnriching(false);
     await loadData();
@@ -226,9 +347,11 @@ export default function TrackerDetail() {
     // Show detailed completion toast
     let description = `${successCount} enriched`;
     if (partialCount > 0) description += ` (${partialCount} partial)`;
-    if (errorCount > 0) description += `, ${errorCount} failed`;
-    if (failedBuyers.length > 0 && failedBuyers.length <= 3) {
-      description += `: ${failedBuyers.join(', ')}`;
+    if (failedBuyerNames.length > 0) {
+      description += `, ${failedBuyerNames.length} failed`;
+      if (failedBuyerNames.length <= 3) {
+        description += `: ${failedBuyerNames.join(', ')}`;
+      }
     }
 
     toast({ 
