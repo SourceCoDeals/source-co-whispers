@@ -74,29 +74,113 @@ const extractTranscriptThesisTool = {
   }
 };
 
+// Regional to states mapping - for expanding regional terms to specific states
+const REGIONAL_STATES: Record<string, string[]> = {
+  'midwest': ['IL', 'IN', 'IA', 'KS', 'MI', 'MN', 'MO', 'NE', 'ND', 'OH', 'SD', 'WI'],
+  'the midwest': ['IL', 'IN', 'IA', 'KS', 'MI', 'MN', 'MO', 'NE', 'ND', 'OH', 'SD', 'WI'],
+  'southeast': ['AL', 'AR', 'FL', 'GA', 'KY', 'LA', 'MS', 'NC', 'SC', 'TN', 'VA', 'WV'],
+  'the southeast': ['AL', 'AR', 'FL', 'GA', 'KY', 'LA', 'MS', 'NC', 'SC', 'TN', 'VA', 'WV'],
+  'south': ['AL', 'AR', 'FL', 'GA', 'KY', 'LA', 'MS', 'NC', 'OK', 'SC', 'TN', 'TX', 'VA', 'WV'],
+  'the south': ['AL', 'AR', 'FL', 'GA', 'KY', 'LA', 'MS', 'NC', 'OK', 'SC', 'TN', 'TX', 'VA', 'WV'],
+  'southwest': ['AZ', 'CO', 'NM', 'NV', 'TX', 'UT'],
+  'the southwest': ['AZ', 'CO', 'NM', 'NV', 'TX', 'UT'],
+  'northeast': ['CT', 'DE', 'MA', 'MD', 'ME', 'NH', 'NJ', 'NY', 'PA', 'RI', 'VT'],
+  'the northeast': ['CT', 'DE', 'MA', 'MD', 'ME', 'NH', 'NJ', 'NY', 'PA', 'RI', 'VT'],
+  'new england': ['CT', 'MA', 'ME', 'NH', 'RI', 'VT'],
+  'pacific northwest': ['OR', 'WA', 'ID'],
+  'northwest': ['OR', 'WA', 'ID', 'MT', 'WY'],
+  'the northwest': ['OR', 'WA', 'ID', 'MT', 'WY'],
+  'west coast': ['CA', 'OR', 'WA'],
+  'east coast': ['CT', 'DE', 'FL', 'GA', 'MA', 'MD', 'ME', 'NC', 'NH', 'NJ', 'NY', 'PA', 'RI', 'SC', 'VA', 'VT'],
+  'great plains': ['KS', 'MT', 'ND', 'NE', 'OK', 'SD', 'WY'],
+  'carolinas': ['NC', 'SC'],
+  'the carolinas': ['NC', 'SC'],
+  'dakotas': ['ND', 'SD'],
+  'the dakotas': ['ND', 'SD'],
+  'tri-state': ['NJ', 'NY', 'CT'],
+  'mid-atlantic': ['DE', 'MD', 'NJ', 'NY', 'PA', 'VA', 'WV', 'DC'],
+  'mountain west': ['AZ', 'CO', 'ID', 'MT', 'NM', 'NV', 'UT', 'WY'],
+  'gulf coast': ['AL', 'FL', 'LA', 'MS', 'TX'],
+  'sun belt': ['AL', 'AZ', 'CA', 'FL', 'GA', 'LA', 'MS', 'NM', 'NV', 'SC', 'TX'],
+};
+
+// State name to abbreviation mapping
+const STATE_NAME_TO_ABBREV: Record<string, string> = {
+  'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
+  'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'district of columbia': 'DC', 'florida': 'FL',
+  'georgia': 'GA', 'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN',
+  'iowa': 'IA', 'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME',
+  'maryland': 'MD', 'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS',
+  'missouri': 'MO', 'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH',
+  'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND',
+  'ohio': 'OH', 'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI',
+  'south carolina': 'SC', 'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT',
+  'vermont': 'VT', 'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY'
+};
+
+// Function to normalize geography values to state abbreviations
+function normalizeGeographyToStates(values: string[]): string[] {
+  if (!values || !Array.isArray(values)) return [];
+  
+  const normalized: string[] = [];
+  
+  for (const value of values) {
+    if (!value || typeof value !== 'string') continue;
+    
+    const lower = value.toLowerCase().trim();
+    const upper = value.toUpperCase().trim();
+    
+    // Check if it's already a 2-letter state abbreviation
+    if (upper.length === 2 && STATE_NAME_TO_ABBREV[Object.keys(STATE_NAME_TO_ABBREV).find(k => STATE_NAME_TO_ABBREV[k] === upper) || ''] || 
+        ['AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'].includes(upper)) {
+      normalized.push(upper);
+      continue;
+    }
+    
+    // Check if it's a regional term
+    if (REGIONAL_STATES[lower]) {
+      console.log(`Expanding regional term "${value}" to states: ${REGIONAL_STATES[lower].join(', ')}`);
+      normalized.push(...REGIONAL_STATES[lower]);
+      continue;
+    }
+    
+    // Check if it's a full state name
+    if (STATE_NAME_TO_ABBREV[lower]) {
+      normalized.push(STATE_NAME_TO_ABBREV[lower]);
+      continue;
+    }
+    
+    // If none of the above, keep the original (might be a city or other identifier)
+    console.log(`Could not normalize geography value: "${value}"`);
+  }
+  
+  // Remove duplicates and sort
+  return [...new Set(normalized)].sort();
+}
+
 // Prompt 8: Target Geographies from Transcript (OVERRIDE) - WHERE THEY WANT TO ACQUIRE
 const extractTranscriptGeographyTool = {
   type: "function",
   function: {
     name: "extract_transcript_geography",
-    description: "Extract where the buyer WANTS TO ACQUIRE new companies - their expansion targets, not their current locations",
+    description: "Extract where the buyer WANTS TO ACQUIRE new companies - their expansion targets, not their current locations. IMPORTANT: Always convert regional terms to specific US state abbreviations.",
     parameters: {
       type: "object",
       properties: {
         target_geographies: {
           type: "array",
           items: { type: "string" },
-          description: "States, regions, or cities where they WANT TO ACQUIRE or EXPAND TO. These are future targets, not current locations."
+          description: "MUST be 2-letter US state abbreviations (e.g., TX, FL, GA). Convert regional terms: 'Midwest' → IL, IN, IA, KS, MI, MN, MO, NE, ND, OH, SD, WI. 'Southeast' → AL, AR, FL, GA, KY, LA, MS, NC, SC, TN, VA, WV. 'Carolinas' → NC, SC."
         },
         geographic_exclusions: {
           type: "array",
           items: { type: "string" },
-          description: "Locations they explicitly do NOT want to acquire in or have ruled out"
+          description: "MUST be 2-letter US state abbreviations for locations they do NOT want to acquire in"
         },
         acquisition_geography: {
           type: "array",
           items: { type: "string" },
-          description: "Specific markets they are actively looking at for acquisitions right now"
+          description: "MUST be 2-letter US state abbreviations for specific markets they are actively pursuing"
         },
         key_quotes_geography: {
           type: "array",
@@ -405,15 +489,40 @@ This is different from where they currently have locations. Look for:
 - Areas they explicitly say they DON'T want to acquire in
 - Any reasoning about why certain geographies are attractive or unattractive
 
+CRITICAL: Convert ALL regional terms to specific 2-letter US state abbreviations:
+- "Midwest" → IL, IN, IA, KS, MI, MN, MO, NE, ND, OH, SD, WI
+- "Southeast" → AL, AR, FL, GA, KY, LA, MS, NC, SC, TN, VA, WV
+- "Southwest" → AZ, CO, NM, NV, TX, UT
+- "Northeast" → CT, DE, MA, MD, ME, NH, NJ, NY, PA, RI, VT
+- "Carolinas" → NC, SC
+- "New England" → CT, MA, ME, NH, RI, VT
+- "Gulf Coast" → AL, FL, LA, MS, TX
+- "Sun Belt" → AL, AZ, CA, FL, GA, LA, MS, NM, NV, SC, TX
+- State names like "Texas" → TX, "Florida" → FL, etc.
+
+If the transcript mentions "the Midwest" along with specific states like "Texas, Florida, Tennessee", include BOTH the Midwest states AND those specific states.
+
 EXAMPLE OUTPUT:
-- target_geographies: ["Texas", "Florida", "Southeast"] - places they WANT to acquire
-- geographic_exclusions: ["California", "New York"] - places they WON'T acquire
-- acquisition_geography: ["Houston", "Dallas", "Atlanta"] - specific markets they're actively pursuing
+- target_geographies: ["TX", "FL", "TN", "GA", "NC", "SC", "IL", "IN", "IA", "KS", "MI", "MN", "MO", "NE", "ND", "OH", "SD", "WI"] - expanded from "Midwest plus Texas, Florida, Tennessee, Georgia, Carolinas"
+- geographic_exclusions: ["CA", "NY"] - places they WON'T acquire
+- acquisition_geography: ["TX", "GA"] - specific markets they're actively pursuing
 - key_quotes_geography: ["We're really trying to get into Texas", "California is off the table for us"]
 
 Focus on FUTURE acquisition targets, not where they already have shops.`;
 
     const geography = await callAIWithTool(lovableApiKey, systemPrompt, geographyPrompt, extractTranscriptGeographyTool);
+    
+    // Post-process geography arrays to normalize any remaining regional terms
+    if (geography.target_geographies) {
+      geography.target_geographies = normalizeGeographyToStates(geography.target_geographies);
+    }
+    if (geography.geographic_exclusions) {
+      geography.geographic_exclusions = normalizeGeographyToStates(geography.geographic_exclusions);
+    }
+    if (geography.acquisition_geography) {
+      geography.acquisition_geography = normalizeGeographyToStates(geography.acquisition_geography);
+    }
+    
     Object.assign(extractedData, geography);
     if (geography.key_quotes_geography) allKeyQuotes.push(...geography.key_quotes_geography);
 
