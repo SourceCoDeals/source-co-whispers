@@ -14,6 +14,7 @@ import { FollowupQuestionsPanel } from "@/components/FollowupQuestionsPanel";
 import { EditableSection } from "@/components/EditableSection";
 import { ContactCard } from "@/components/ContactCard";
 import { DealTranscriptsSection } from "@/components/DealTranscriptsSection";
+import { DealHistorySection } from "@/components/DealHistorySection";
 import {
   Collapsible,
   CollapsibleContent,
@@ -755,6 +756,11 @@ export default function DealDetail() {
         >
           <p className={deal.additional_info ? "text-sm" : "text-sm text-muted-foreground italic"}>{deal.additional_info || "No additional information"}</p>
         </EditableSection>
+
+        {/* Deal History Section - Other Buyer Universes */}
+        {deal.company_id && (
+          <DealHistorySection companyId={deal.company_id} currentDealId={id!} />
+        )}
 
         {/* Footer: Timestamps */}
         <div className="flex items-center justify-end gap-6 text-xs text-muted-foreground border-t pt-4">

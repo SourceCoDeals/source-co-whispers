@@ -5,8 +5,18 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Loader2, FileText, ChevronRight, MoreHorizontal, Archive, Trash2 } from "lucide-react";
+import { Loader2, FileText, ChevronRight, MoreHorizontal, Archive, Trash2, Building2, Globe } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeDomain } from "@/lib/normalizeDomain";
+
+interface CompanyGroup {
+  companyId: string | null;
+  companyName: string;
+  domain: string | null;
+  deals: any[];
+  revenue: number | null;
+  geography: string[] | null;
+}
 
 export default function AllDeals() {
   const [deals, setDeals] = useState<any[]>([]);
@@ -59,24 +69,52 @@ export default function AllDeals() {
     loadDeals();
   };
 
-  // Group deals by industry
-  const dealsByIndustry = deals.reduce((acc, deal) => {
-    const trackerId = deal.tracker_id;
-    if (!acc[trackerId]) acc[trackerId] = [];
-    acc[trackerId].push(deal);
-    return acc;
-  }, {} as Record<string, any[]>);
+  // Group deals by company (using company_id or domain as fallback)
+  const groupByCompany = (): CompanyGroup[] => {
+    const groups: Record<string, CompanyGroup> = {};
+    
+    deals.forEach((deal) => {
+      // Use company_id if available, otherwise use normalized domain
+      const groupKey = deal.company_id || normalizeDomain(deal.company_website) || `deal-${deal.id}`;
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          companyId: deal.company_id,
+          companyName: deal.deal_name,
+          domain: normalizeDomain(deal.company_website),
+          deals: [],
+          revenue: deal.revenue,
+          geography: deal.geography,
+        };
+      }
+      groups[groupKey].deals.push(deal);
+    });
+
+    return Object.values(groups).sort((a, b) => {
+      // Sort by most recent deal
+      const aLatest = Math.max(...a.deals.map(d => new Date(d.created_at).getTime()));
+      const bLatest = Math.max(...b.deals.map(d => new Date(d.created_at).getTime()));
+      return bLatest - aLatest;
+    });
+  };
+
+  const companyGroups = groupByCompany();
 
   if (isLoading) {
     return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
   }
+
+  const uniqueCompanies = companyGroups.length;
+  const totalTrackers = new Set(deals.map(d => d.tracker_id)).size;
 
   return (
     <AppLayout>
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-display font-bold">All Deals</h1>
-          <p className="text-muted-foreground">{deals.length} deals across {Object.keys(dealsByIndustry).length} industries</p>
+          <p className="text-muted-foreground">
+            {uniqueCompanies} {uniqueCompanies === 1 ? 'company' : 'companies'} across {totalTrackers} buyer universe{totalTrackers !== 1 ? 's' : ''}
+          </p>
         </div>
 
         {deals.length === 0 ? (
@@ -86,52 +124,81 @@ export default function AllDeals() {
             <p className="text-muted-foreground">List a deal in a buyer universe to get started.</p>
           </div>
         ) : (
-          <div className="space-y-6">
-            {Object.entries(dealsByIndustry).map(([trackerId, industryDeals]: [string, any[]]) => {
-              const tracker = trackers[trackerId];
+          <div className="space-y-4">
+            {companyGroups.map((group) => {
+              const isMultiTracker = group.deals.length > 1;
+              
               return (
-                <div key={trackerId} className="bg-card rounded-lg border overflow-hidden">
-                  <Link 
-                    to={`/trackers/${trackerId}`} 
-                    className="flex items-center justify-between p-4 bg-muted/30 border-b hover:bg-muted/50 transition-colors"
-                  >
-                    <div>
-                      <h2 className="font-semibold">{tracker?.industry_name || "Unknown Industry"}</h2>
-                      <p className="text-sm text-muted-foreground">{industryDeals.length} deal{industryDeals.length !== 1 ? 's' : ''}</p>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                  </Link>
-                  <div className="divide-y">
-                    {industryDeals.map((deal) => (
-                      <div key={deal.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors group">
-                        <Link to={`/deals/${deal.id}`} className="flex-1 min-w-0">
-                          <p className="font-medium">{deal.deal_name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {deal.geography?.join(", ") || "—"} · {deal.revenue ? `$${deal.revenue}M` : "—"} {deal.ebitda_percentage ? `· ${deal.ebitda_percentage}% EBITDA` : ""}
-                          </p>
-                        </Link>
+                <div key={group.companyId || group.domain || group.deals[0].id} className="bg-card rounded-lg border overflow-hidden">
+                  {/* Company Header */}
+                  <div className="p-4 bg-muted/30 border-b">
+                    <div className="flex items-center gap-3">
+                      <Building2 className="w-5 h-5 text-muted-foreground" />
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                <MoreHorizontal className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={(e) => archiveDeal(e, deal.id, deal.deal_name)}>
-                                <Archive className="w-4 h-4 mr-2" />
-                                Archive
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={(e) => deleteDeal(e, deal.id, deal.deal_name)} className="text-destructive">
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <h2 className="font-semibold truncate">{group.companyName}</h2>
+                          {isMultiTracker && (
+                            <Badge variant="secondary" className="text-xs">
+                              {group.deals.length} universes
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                          {group.domain && (
+                            <span className="flex items-center gap-1">
+                              <Globe className="w-3 h-3" />
+                              {group.domain}
+                            </span>
+                          )}
+                          {group.revenue && <span>${group.revenue}M</span>}
+                          {group.geography?.length > 0 && <span>{group.geography.join(", ")}</span>}
                         </div>
                       </div>
-                    ))}
+                    </div>
+                  </div>
+
+                  {/* Deals in this company */}
+                  <div className="divide-y">
+                    {group.deals.map((deal) => {
+                      const tracker = trackers[deal.tracker_id];
+                      return (
+                        <div key={deal.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors group">
+                          <Link to={`/deals/${deal.id}`} className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-primary">
+                                {tracker?.industry_name || "Unknown"}
+                              </span>
+                              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                            </div>
+                            {isMultiTracker && (
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                Listed {new Date(deal.created_at).toLocaleDateString()}
+                              </p>
+                            )}
+                          </Link>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <MoreHorizontal className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={(e) => archiveDeal(e, deal.id, deal.deal_name)}>
+                                  <Archive className="w-4 h-4 mr-2" />
+                                  Archive
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={(e) => deleteDeal(e, deal.id, deal.deal_name)} className="text-destructive">
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );

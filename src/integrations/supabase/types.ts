@@ -533,6 +533,123 @@ export type Database = {
           },
         ]
       }
+      companies: {
+        Row: {
+          additional_info: string | null
+          business_model: string | null
+          company_name: string
+          company_overview: string | null
+          company_website: string | null
+          contact_email: string | null
+          contact_linkedin: string | null
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string
+          domain: string
+          ebitda_amount: number | null
+          ebitda_confidence: string | null
+          ebitda_is_inferred: boolean | null
+          ebitda_percentage: number | null
+          ebitda_source_quote: string | null
+          employee_count: number | null
+          financial_followup_questions: string[] | null
+          financial_notes: string | null
+          founded_year: number | null
+          geography: string[] | null
+          headquarters: string | null
+          id: string
+          industry_type: string | null
+          location_count: number | null
+          owner_goals: string | null
+          ownership_structure: string | null
+          revenue: number | null
+          revenue_confidence: string | null
+          revenue_is_inferred: boolean | null
+          revenue_source_quote: string | null
+          service_mix: string | null
+          special_requirements: string | null
+          transcript_link: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          additional_info?: string | null
+          business_model?: string | null
+          company_name: string
+          company_overview?: string | null
+          company_website?: string | null
+          contact_email?: string | null
+          contact_linkedin?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          domain: string
+          ebitda_amount?: number | null
+          ebitda_confidence?: string | null
+          ebitda_is_inferred?: boolean | null
+          ebitda_percentage?: number | null
+          ebitda_source_quote?: string | null
+          employee_count?: number | null
+          financial_followup_questions?: string[] | null
+          financial_notes?: string | null
+          founded_year?: number | null
+          geography?: string[] | null
+          headquarters?: string | null
+          id?: string
+          industry_type?: string | null
+          location_count?: number | null
+          owner_goals?: string | null
+          ownership_structure?: string | null
+          revenue?: number | null
+          revenue_confidence?: string | null
+          revenue_is_inferred?: boolean | null
+          revenue_source_quote?: string | null
+          service_mix?: string | null
+          special_requirements?: string | null
+          transcript_link?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          additional_info?: string | null
+          business_model?: string | null
+          company_name?: string
+          company_overview?: string | null
+          company_website?: string | null
+          contact_email?: string | null
+          contact_linkedin?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          domain?: string
+          ebitda_amount?: number | null
+          ebitda_confidence?: string | null
+          ebitda_is_inferred?: boolean | null
+          ebitda_percentage?: number | null
+          ebitda_source_quote?: string | null
+          employee_count?: number | null
+          financial_followup_questions?: string[] | null
+          financial_notes?: string | null
+          founded_year?: number | null
+          geography?: string[] | null
+          headquarters?: string | null
+          id?: string
+          industry_type?: string | null
+          location_count?: number | null
+          owner_goals?: string | null
+          ownership_structure?: string | null
+          revenue?: number | null
+          revenue_confidence?: string | null
+          revenue_is_inferred?: boolean | null
+          revenue_source_quote?: string | null
+          service_mix?: string | null
+          special_requirements?: string | null
+          transcript_link?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       deal_transcripts: {
         Row: {
           call_date: string | null
@@ -587,6 +704,7 @@ export type Database = {
         Row: {
           additional_info: string | null
           business_model: string | null
+          company_id: string | null
           company_overview: string | null
           company_website: string | null
           contact_email: string | null
@@ -625,6 +743,7 @@ export type Database = {
         Insert: {
           additional_info?: string | null
           business_model?: string | null
+          company_id?: string | null
           company_overview?: string | null
           company_website?: string | null
           contact_email?: string | null
@@ -663,6 +782,7 @@ export type Database = {
         Update: {
           additional_info?: string | null
           business_model?: string | null
+          company_id?: string | null
           company_overview?: string | null
           company_website?: string | null
           contact_email?: string | null
@@ -699,6 +819,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "deals_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "deals_tracker_id_fkey"
             columns: ["tracker_id"]
