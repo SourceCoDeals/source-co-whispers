@@ -5,6 +5,132 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// All valid US state abbreviations
+const ALL_US_STATES = [
+  'AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN',
+  'IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH',
+  'NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT',
+  'VT','VA','WA','WV','WI','WY'
+];
+
+// Map full state names to abbreviations
+const STATE_NAME_TO_ABBREV: Record<string, string> = {
+  'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
+  'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'district of columbia': 'DC', 'florida': 'FL',
+  'georgia': 'GA', 'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN',
+  'iowa': 'IA', 'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME',
+  'maryland': 'MD', 'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS',
+  'missouri': 'MO', 'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH',
+  'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND',
+  'ohio': 'OH', 'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI',
+  'south carolina': 'SC', 'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT',
+  'vermont': 'VT', 'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY'
+};
+
+// Regional mappings - translate region names to their constituent states
+const REGION_TO_STATES: Record<string, string[]> = {
+  'midwest': ['IL', 'IN', 'IA', 'KS', 'MI', 'MN', 'MO', 'NE', 'ND', 'OH', 'SD', 'WI'],
+  'the midwest': ['IL', 'IN', 'IA', 'KS', 'MI', 'MN', 'MO', 'NE', 'ND', 'OH', 'SD', 'WI'],
+  'midwestern': ['IL', 'IN', 'IA', 'KS', 'MI', 'MN', 'MO', 'NE', 'ND', 'OH', 'SD', 'WI'],
+  'northeast': ['CT', 'ME', 'MA', 'NH', 'NJ', 'NY', 'PA', 'RI', 'VT'],
+  'the northeast': ['CT', 'ME', 'MA', 'NH', 'NJ', 'NY', 'PA', 'RI', 'VT'],
+  'new england': ['CT', 'ME', 'MA', 'NH', 'RI', 'VT'],
+  'south': ['AL', 'AR', 'DE', 'FL', 'GA', 'KY', 'LA', 'MD', 'MS', 'NC', 'OK', 'SC', 'TN', 'TX', 'VA', 'WV'],
+  'the south': ['AL', 'AR', 'DE', 'FL', 'GA', 'KY', 'LA', 'MD', 'MS', 'NC', 'OK', 'SC', 'TN', 'TX', 'VA', 'WV'],
+  'southeast': ['AL', 'FL', 'GA', 'KY', 'MS', 'NC', 'SC', 'TN', 'VA', 'WV'],
+  'the southeast': ['AL', 'FL', 'GA', 'KY', 'MS', 'NC', 'SC', 'TN', 'VA', 'WV'],
+  'southeastern': ['AL', 'FL', 'GA', 'KY', 'MS', 'NC', 'SC', 'TN', 'VA', 'WV'],
+  'southwest': ['AZ', 'NM', 'OK', 'TX'],
+  'the southwest': ['AZ', 'NM', 'OK', 'TX'],
+  'west': ['AK', 'AZ', 'CA', 'CO', 'HI', 'ID', 'MT', 'NV', 'NM', 'OR', 'UT', 'WA', 'WY'],
+  'the west': ['AK', 'AZ', 'CA', 'CO', 'HI', 'ID', 'MT', 'NV', 'NM', 'OR', 'UT', 'WA', 'WY'],
+  'pacific northwest': ['OR', 'WA', 'ID'],
+  'pnw': ['OR', 'WA', 'ID'],
+  'northwest': ['OR', 'WA', 'ID', 'MT', 'WY'],
+  'mountain west': ['AZ', 'CO', 'ID', 'MT', 'NV', 'NM', 'UT', 'WY'],
+  'rocky mountain': ['CO', 'ID', 'MT', 'UT', 'WY'],
+  'great plains': ['KS', 'NE', 'ND', 'OK', 'SD', 'TX'],
+  'mid-atlantic': ['DE', 'MD', 'NJ', 'NY', 'PA'],
+  'mid atlantic': ['DE', 'MD', 'NJ', 'NY', 'PA'],
+  'east coast': ['CT', 'DE', 'FL', 'GA', 'MA', 'MD', 'ME', 'NC', 'NH', 'NJ', 'NY', 'PA', 'RI', 'SC', 'VA', 'VT'],
+  'west coast': ['CA', 'OR', 'WA'],
+  'gulf coast': ['AL', 'FL', 'LA', 'MS', 'TX'],
+  'gulf states': ['AL', 'FL', 'LA', 'MS', 'TX'],
+  'sun belt': ['AL', 'AZ', 'CA', 'FL', 'GA', 'LA', 'MS', 'NM', 'NV', 'SC', 'TX'],
+  'sunbelt': ['AL', 'AZ', 'CA', 'FL', 'GA', 'LA', 'MS', 'NM', 'NV', 'SC', 'TX'],
+  'rust belt': ['IL', 'IN', 'MI', 'OH', 'PA', 'WI'],
+  'carolinas': ['NC', 'SC'],
+  'the carolinas': ['NC', 'SC'],
+  'dakotas': ['ND', 'SD'],
+  'upper midwest': ['IA', 'MN', 'ND', 'SD', 'WI'],
+  'deep south': ['AL', 'GA', 'LA', 'MS', 'SC'],
+};
+
+// Normalize geography input to standardized 2-letter US state abbreviations
+function normalizeGeography(input: string[] | string | null | undefined): string[] {
+  if (!input) return [];
+  const items = typeof input === 'string' 
+    ? input.split(',').map(s => s.trim()).filter(Boolean)
+    : input;
+  if (!Array.isArray(items) || items.length === 0) return [];
+
+  const normalized: string[] = [];
+  
+  for (const item of items) {
+    if (!item || typeof item !== 'string') continue;
+    const trimmed = item.trim();
+    const upper = trimmed.toUpperCase();
+    const lower = trimmed.toLowerCase();
+    
+    // Check if already valid 2-letter abbreviation
+    if (ALL_US_STATES.includes(upper)) {
+      normalized.push(upper);
+      continue;
+    }
+    
+    // Convert full state name to abbreviation
+    const abbrev = STATE_NAME_TO_ABBREV[lower];
+    if (abbrev) {
+      normalized.push(abbrev);
+      continue;
+    }
+    
+    // Check if it's a regional term (Midwest, Southeast, etc.)
+    const regionStates = REGION_TO_STATES[lower];
+    if (regionStates) {
+      console.log(`[normalizeGeography] Expanding region "${item}" to states: ${regionStates.join(', ')}`);
+      normalized.push(...regionStates);
+      continue;
+    }
+    
+    // "national"/"nationwide"/"USA" → all 50 states
+    if (['national', 'nationwide', 'usa', 'us', 'united states', 'all states'].includes(lower)) {
+      normalized.push(...ALL_US_STATES);
+      continue;
+    }
+    
+    // Handle "City, State" format
+    const cityStateMatch = trimmed.match(/,\s*([A-Za-z\s]+)$/);
+    if (cityStateMatch) {
+      const statePart = cityStateMatch[1].trim().toLowerCase();
+      if (statePart.length === 2 && ALL_US_STATES.includes(statePart.toUpperCase())) {
+        normalized.push(statePart.toUpperCase());
+        continue;
+      }
+      const stateAbbrev = STATE_NAME_TO_ABBREV[statePart];
+      if (stateAbbrev) {
+        normalized.push(stateAbbrev);
+        continue;
+      }
+    }
+    
+    // Skip unrecognized items
+    console.log(`[normalizeGeography] Skipping unrecognized: "${item}"`);
+  }
+  
+  return [...new Set(normalized)].sort();
+}
+
 async function authenticateUser(req: Request): Promise<{ user: any; error: Response | null }> {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) {
@@ -483,6 +609,20 @@ EXAMPLE OUTPUT:
 
     // Add all key quotes
     extractedData.key_quotes = allKeyQuotes;
+
+    // Normalize all geography fields to 2-letter state abbreviations
+    // This converts regional terms like "Midwest", "Southeast" to actual states
+    const geographyFields = ['target_geographies', 'geographic_exclusions', 'acquisition_geography'];
+    for (const field of geographyFields) {
+      if (extractedData[field] && Array.isArray(extractedData[field])) {
+        const original = extractedData[field];
+        const normalized = normalizeGeography(original);
+        if (normalized.length > 0) {
+          console.log(`[Geography] Normalized ${field}: ${JSON.stringify(original)} → ${JSON.stringify(normalized)}`);
+          extractedData[field] = normalized;
+        }
+      }
+    }
 
     console.log('Extracted data from transcript:', extractedData);
 

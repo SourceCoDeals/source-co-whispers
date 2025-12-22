@@ -671,10 +671,6 @@ export default function BuyerDetail() {
                             <Input value={newTranscript.title} onChange={(e) => setNewTranscript({ ...newTranscript, title: e.target.value })} placeholder="e.g., Q1 2024 Buyer Call" className="mt-1" />
                           </div>
                           <div>
-                            <Label>Call Date</Label>
-                            <Input type="date" value={newTranscript.call_date} onChange={(e) => setNewTranscript({ ...newTranscript, call_date: e.target.value })} className="mt-1" />
-                          </div>
-                          <div>
                             <Label>Transcript Link</Label>
                             <Input value={newTranscript.url} onChange={(e) => setNewTranscript({ ...newTranscript, url: e.target.value })} placeholder="https://..." className="mt-1" />
                           </div>
@@ -682,6 +678,10 @@ export default function BuyerDetail() {
                             <Label>Notes / Transcript Content</Label>
                             <Textarea value={newTranscript.notes} onChange={(e) => setNewTranscript({ ...newTranscript, notes: e.target.value })} placeholder="Paste transcript content or key takeaways from this call... (required for AI processing)" className="mt-1" rows={6} />
                             <p className="text-xs text-muted-foreground mt-1">Tip: Paste the full transcript here for best AI extraction results.</p>
+                          </div>
+                          <div>
+                            <Label className="text-muted-foreground">Call Date (optional)</Label>
+                            <Input type="date" value={newTranscript.call_date} onChange={(e) => setNewTranscript({ ...newTranscript, call_date: e.target.value })} className="mt-1" />
                           </div>
                           <div className="flex gap-2">
                             <Button onClick={addTranscriptLink} disabled={!newTranscript.title.trim()} className="flex-1">
