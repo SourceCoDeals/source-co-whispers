@@ -35,6 +35,18 @@ export default function BuyerDetail() {
   const [expandedTranscripts, setExpandedTranscripts] = useState<Set<string>>(new Set());
   const [isEnriching, setIsEnriching] = useState(false);
   const [isReextractingAll, setIsReextractingAll] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [coreEditData, setCoreEditData] = useState({
+    platform_company_name: "",
+    platform_website: "",
+    buyer_linkedin: "",
+    pe_firm_name: "",
+    pe_firm_website: "",
+    pe_firm_linkedin: "",
+    hq_city: "",
+    hq_state: "",
+    hq_country: "",
+  });
   
   // Deal context state
   const [deal, setDeal] = useState<any>(null);
@@ -56,6 +68,19 @@ export default function BuyerDetail() {
     setContacts(contactsRes.data || []);
     setTranscripts(transcriptsRes.data || []);
     setEditData(buyerRes.data || {});
+    if (buyerRes.data) {
+      setCoreEditData({
+        platform_company_name: buyerRes.data.platform_company_name || "",
+        platform_website: buyerRes.data.platform_website || "",
+        buyer_linkedin: buyerRes.data.buyer_linkedin || "",
+        pe_firm_name: buyerRes.data.pe_firm_name || "",
+        pe_firm_website: buyerRes.data.pe_firm_website || "",
+        pe_firm_linkedin: buyerRes.data.pe_firm_linkedin || "",
+        hq_city: buyerRes.data.hq_city || "",
+        hq_state: buyerRes.data.hq_state || "",
+        hq_country: buyerRes.data.hq_country || "",
+      });
+    }
     
     // Load deal context if dealId is provided
     if (dealId) {
@@ -351,6 +376,29 @@ export default function BuyerDetail() {
     }
   };
 
+  const saveCoreInfo = async () => {
+    const { error } = await supabase.from("buyers").update({
+      platform_company_name: coreEditData.platform_company_name || null,
+      platform_website: coreEditData.platform_website || null,
+      buyer_linkedin: coreEditData.buyer_linkedin || null,
+      pe_firm_name: coreEditData.pe_firm_name,
+      pe_firm_website: coreEditData.pe_firm_website || null,
+      pe_firm_linkedin: coreEditData.pe_firm_linkedin || null,
+      hq_city: coreEditData.hq_city || null,
+      hq_state: coreEditData.hq_state || null,
+      hq_country: coreEditData.hq_country || null,
+    }).eq("id", id);
+    
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+    
+    toast({ title: "Buyer info updated" });
+    setEditDialogOpen(false);
+    loadData();
+  };
+
   const saveIntelligence = async () => {
     const { error } = await supabase.from("buyers").update({
       // A. Company & Firm Identification
@@ -500,18 +548,141 @@ export default function BuyerDetail() {
               ) : null}
             </div>
           </div>
-          <Button
-            variant="outline"
-            onClick={enrichFromWebsite}
-            disabled={isEnriching || (!buyer.platform_website && !buyer.pe_firm_website)}
-          >
-            {isEnriching ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Sparkles className="w-4 h-4 mr-2" />
-            )}
-            Enrich from Website
-          </Button>
+          <div className="flex items-center gap-2">
+            <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <Edit className="w-4 h-4 mr-2" />
+                  Edit
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Edit Buyer Info</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-6 py-4">
+                  {/* Platform Company Section */}
+                  <div className="space-y-3">
+                    <h4 className="font-medium text-sm text-muted-foreground">Platform Company</h4>
+                    <div className="space-y-2">
+                      <div>
+                        <Label htmlFor="platform_company_name">Company Name</Label>
+                        <Input
+                          id="platform_company_name"
+                          value={coreEditData.platform_company_name}
+                          onChange={(e) => setCoreEditData({ ...coreEditData, platform_company_name: e.target.value })}
+                          placeholder="e.g., Minuteman Collision"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="platform_website">Website</Label>
+                        <Input
+                          id="platform_website"
+                          value={coreEditData.platform_website}
+                          onChange={(e) => setCoreEditData({ ...coreEditData, platform_website: e.target.value })}
+                          placeholder="https://www.company.com"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="buyer_linkedin">LinkedIn</Label>
+                        <Input
+                          id="buyer_linkedin"
+                          value={coreEditData.buyer_linkedin}
+                          onChange={(e) => setCoreEditData({ ...coreEditData, buyer_linkedin: e.target.value })}
+                          placeholder="https://linkedin.com/company/..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* PE Firm Section */}
+                  <div className="space-y-3">
+                    <h4 className="font-medium text-sm text-muted-foreground">PE / Parent Firm</h4>
+                    <div className="space-y-2">
+                      <div>
+                        <Label htmlFor="pe_firm_name">Firm Name</Label>
+                        <Input
+                          id="pe_firm_name"
+                          value={coreEditData.pe_firm_name}
+                          onChange={(e) => setCoreEditData({ ...coreEditData, pe_firm_name: e.target.value })}
+                          placeholder="e.g., Willow River"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="pe_firm_website">Website</Label>
+                        <Input
+                          id="pe_firm_website"
+                          value={coreEditData.pe_firm_website}
+                          onChange={(e) => setCoreEditData({ ...coreEditData, pe_firm_website: e.target.value })}
+                          placeholder="https://www.pefirm.com"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="pe_firm_linkedin">LinkedIn</Label>
+                        <Input
+                          id="pe_firm_linkedin"
+                          value={coreEditData.pe_firm_linkedin}
+                          onChange={(e) => setCoreEditData({ ...coreEditData, pe_firm_linkedin: e.target.value })}
+                          placeholder="https://linkedin.com/company/..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Location Section */}
+                  <div className="space-y-3">
+                    <h4 className="font-medium text-sm text-muted-foreground">HQ Location</h4>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <Label htmlFor="hq_city">City</Label>
+                        <Input
+                          id="hq_city"
+                          value={coreEditData.hq_city}
+                          onChange={(e) => setCoreEditData({ ...coreEditData, hq_city: e.target.value })}
+                          placeholder="City"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="hq_state">State</Label>
+                        <Input
+                          id="hq_state"
+                          value={coreEditData.hq_state}
+                          onChange={(e) => setCoreEditData({ ...coreEditData, hq_state: e.target.value })}
+                          placeholder="State"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="hq_country">Country</Label>
+                        <Input
+                          id="hq_country"
+                          value={coreEditData.hq_country}
+                          onChange={(e) => setCoreEditData({ ...coreEditData, hq_country: e.target.value })}
+                          placeholder="Country"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+                    <Button onClick={saveCoreInfo}>Save</Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+            <Button
+              variant="outline"
+              onClick={enrichFromWebsite}
+              disabled={isEnriching || (!buyer.platform_website && !buyer.pe_firm_website)}
+            >
+              {isEnriching ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4 mr-2" />
+              )}
+              Enrich from Website
+            </Button>
+          </div>
         </div>
 
         <Tabs defaultValue="overview" className="space-y-4">
