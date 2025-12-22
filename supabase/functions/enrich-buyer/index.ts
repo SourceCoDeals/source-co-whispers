@@ -1125,17 +1125,34 @@ EXAMPLE OUTPUT:
       warnings.push(`PE firm website (${buyer.pe_firm_website}) could not be scraped`);
     }
 
+    // If we couldn't update any meaningful fields, treat it as a non-success so the client can retry.
+    if (fieldsUpdated === 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'No extractable data found (0 fields updated). The site may be blocked, thin, or mostly non-text content.',
+          fieldsUpdated,
+          scraped: {
+            platform: !!platformContent,
+            peFirm: !!peFirmContent,
+          },
+          warning: warnings.length > 0 ? warnings.join('; ') : null,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         message: `Enriched ${fieldsUpdated} fields from ${evidenceRecords.length} source(s)`,
         fieldsUpdated,
         extractedData: updateData,
         scraped: {
           platform: !!platformContent,
-          peFirm: !!peFirmContent
+          peFirm: !!peFirmContent,
         },
-        warning: warnings.length > 0 ? warnings.join('; ') : null
+        warning: warnings.length > 0 ? warnings.join('; ') : null,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
