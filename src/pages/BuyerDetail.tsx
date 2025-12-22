@@ -500,8 +500,8 @@ export default function BuyerDetail() {
                 </div>
               </BuyerDataSection>
 
-              {/* 4. Investment Criteria Summary - Elevated */}
-              <BuyerDataSection title="Investment Criteria Summary" icon={<Target className="w-4 h-4 text-muted-foreground" />}>
+              {/* 4. Platform Investment Criteria - What they're looking for in acquisitions */}
+              <BuyerDataSection title="Platform Investment Criteria" icon={<Target className="w-4 h-4 text-muted-foreground" />}>
                 <div className="space-y-4">
                   {buyer.thesis_summary && (
                     <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
@@ -515,11 +515,14 @@ export default function BuyerDetail() {
                     </div>
                   )}
                   <DataField label="Strategic Priorities" value={buyer.strategic_priorities} />
-                  <DataField label="Acquisition Appetite" value={buyer.acquisition_appetite} />
-                  <DataField label="Acquisition Timeline" value={buyer.acquisition_timeline} />
                   <DataListField label="Target Services" items={buyer.target_services} />
                   <DataListField label="Required Capabilities" items={buyer.required_capabilities} />
+                  <DataField label="Service Mix Preferences" value={buyer.service_mix_prefs} />
                   <DataListField label="Deal Breakers" items={buyer.deal_breakers} variant="destructive" />
+                  
+                  {!buyer.thesis_summary && !buyer.strategic_priorities && (!buyer.target_services || buyer.target_services.length === 0) && (
+                    <p className="text-sm text-muted-foreground italic">Investment criteria not yet extracted. Add a call transcript to populate this section.</p>
+                  )}
                 </div>
               </BuyerDataSection>
 
@@ -563,8 +566,18 @@ export default function BuyerDetail() {
 
                   <div className="border-t pt-4">
                     <p className="text-xs font-semibold uppercase text-muted-foreground mb-3">Ownership Structure</p>
-                    <DataField label="Owner Roll Requirement" value={buyer.owner_roll_requirement} />
-                    <DataField label="Owner Transition Goals" value={buyer.owner_transition_goals} />
+                    <DataGrid columns={2}>
+                      <DataField label="Owner Roll Requirement" value={buyer.owner_roll_requirement} />
+                      <DataField label="Owner Transition Goals" value={buyer.owner_transition_goals} />
+                    </DataGrid>
+                  </div>
+
+                  <div className="border-t pt-4">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground mb-3">Acquisition Appetite</p>
+                    <DataGrid columns={2}>
+                      <DataField label="Current Appetite" value={buyer.acquisition_appetite} />
+                      <DataField label="Acquisition Timeline" value={buyer.acquisition_timeline} />
+                    </DataGrid>
                   </div>
                 </div>
               </BuyerDataSection>
