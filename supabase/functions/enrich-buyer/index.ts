@@ -411,7 +411,7 @@ async function scrapeWithLocationPages(baseUrl: string, firecrawlApiKey: string)
   return { main: mainContent, locations: locationsContent };
 }
 
-async function callAIWithTool(lovableApiKey: string, systemPrompt: string, userPrompt: string, tool: any, maxRetries = 3): Promise<any> {
+async function callAIWithTool(openaiApiKey: string, systemPrompt: string, userPrompt: string, tool: any, maxRetries = 3): Promise<any> {
   let lastError: Error | null = null;
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -423,14 +423,14 @@ async function callAIWithTool(lovableApiKey: string, systemPrompt: string, userP
         await new Promise(resolve => setTimeout(resolve, delay));
       }
       
-      const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${lovableApiKey}`,
+          'Authorization': `Bearer ${openaiApiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
+          model: 'gpt-4o-mini',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
@@ -659,7 +659,7 @@ Deno.serve(async (req) => {
     }
 
     const firecrawlApiKey = Deno.env.get('FIRECRAWL_API_KEY');
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
@@ -670,9 +670,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!lovableApiKey) {
+    if (!openaiApiKey) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Lovable AI not configured' }),
+        JSON.stringify({ success: false, error: 'OpenAI API key not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -749,7 +749,7 @@ EXAMPLE OUTPUT:
 - revenue_model: "Project-based and recurring maintenance contracts"`;
 
       const businessOverview = await callAIWithTool(
-        lovableApiKey,
+        openaiApiKey,
         'You are extracting business overview information from a company website. Be precise and only include information clearly stated.',
         businessOverviewPrompt,
         extractBusinessOverviewTool
@@ -771,7 +771,7 @@ EXAMPLE OUTPUT:
 - go_to_market_strategy: "Direct sales with dedicated account managers for commercial clients"`;
 
       const customers = await callAIWithTool(
-        lovableApiKey,
+        openaiApiKey,
         'You are extracting customer and market information from a company website. Be precise and only include information clearly stated.',
         customersPrompt,
         extractCustomersEndMarketTool
@@ -822,7 +822,7 @@ EXAMPLE OUTPUT for a collision repair company:
 Be THOROUGH - extract EVERY state where they have shops or offices, using 2-letter abbreviations ONLY.`;
 
       const geography = await callAIWithTool(
-        lovableApiKey,
+        openaiApiKey,
         'You are extracting CURRENT physical location information from a company website. Focus on where they have existing shops, offices, or facilities. Look carefully at any locations page content. Output 2-letter US state abbreviations ONLY for geographic_footprint. Be exhaustive - list every state mentioned.',
         geographyPrompt,
         extractGeographyFootprintTool
@@ -873,7 +873,7 @@ EXAMPLE OUTPUT:
 - last_acquisition_date: "2024-03-15"`;
 
       const acquisitions = await callAIWithTool(
-        lovableApiKey,
+        openaiApiKey,
         'You are extracting PLATFORM acquisition history - companies acquired BY this platform. Look for press releases, news, and announcements about their acquisitions.',
         acquisitionsPrompt,
         extractPlatformAcquisitionsTool
@@ -914,7 +914,7 @@ EXAMPLE OUTPUT:
 - target_industries: ["HVAC", "Plumbing", "Electrical", "Home Services"]`;
 
       const thesis = await callAIWithTool(
-        lovableApiKey,
+        openaiApiKey,
         'You are extracting investment thesis information from a PE firm website. Be precise and only include information clearly stated.',
         thesisPrompt,
         extractPEInvestmentThesisTool
@@ -937,7 +937,7 @@ EXAMPLE OUTPUT:
 - num_platforms: 3`;
 
       const portfolio = await callAIWithTool(
-        lovableApiKey,
+        openaiApiKey,
         'You are extracting portfolio and acquisition history from a PE firm website. Be precise and only include information clearly stated.',
         portfolioPrompt,
         extractPEPortfolioTool
@@ -962,7 +962,7 @@ EXAMPLE OUTPUT:
 - business_model_prefs: "Recurring revenue, maintenance contracts preferred"`;
 
       const criteria = await callAIWithTool(
-        lovableApiKey,
+        openaiApiKey,
         'You are extracting target acquisition criteria from a PE firm website. Be precise and only include information clearly stated.',
         criteriaPrompt,
         extractPETargetCriteriaTool

@@ -358,15 +358,15 @@ const extractTranscriptDealBreakersTool = {
   }
 };
 
-async function callAIWithTool(lovableApiKey: string, systemPrompt: string, userPrompt: string, tool: any): Promise<any> {
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+async function callAIWithTool(openaiApiKey: string, systemPrompt: string, userPrompt: string, tool: any): Promise<any> {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${lovableApiKey}`,
+      'Authorization': `Bearer ${openaiApiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -415,13 +415,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    if (!lovableApiKey) {
+    if (!openaiApiKey) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Lovable AI not configured' }),
+        JSON.stringify({ success: false, error: 'OpenAI API key not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -589,7 +589,7 @@ EXAMPLE OUTPUT for a collision repair platform:
 
 **IMPORTANT:** You MUST provide a thesis_summary - do NOT leave it empty. Synthesize from ALL available information in the transcript.`;
 
-    const thesis = await callAIWithTool(lovableApiKey, systemPrompt, thesisPrompt, extractTranscriptThesisTool);
+    const thesis = await callAIWithTool(openaiApiKey, systemPrompt, thesisPrompt, extractTranscriptThesisTool);
     Object.assign(extractedData, thesis);
     if (thesis.key_quotes_thesis) allKeyQuotes.push(...thesis.key_quotes_thesis);
 
@@ -612,7 +612,7 @@ EXAMPLE OUTPUT:
 
 Focus on FUTURE ${industryName} acquisition targets, not where they already have locations.`;
 
-    const geography = await callAIWithTool(lovableApiKey, systemPrompt, geographyPrompt, extractTranscriptGeographyTool);
+    const geography = await callAIWithTool(openaiApiKey, systemPrompt, geographyPrompt, extractTranscriptGeographyTool);
     Object.assign(extractedData, geography);
     if (geography.key_quotes_geography) allKeyQuotes.push(...geography.key_quotes_geography);
 
@@ -637,7 +637,7 @@ EXAMPLE OUTPUT:
 - ebitda_sweet_spot: 2.5
 - key_quotes_size: ["Our sweet spot for ${industryName} is $10-20M in revenue", "We need at least $1M EBITDA"]`;
 
-    const size = await callAIWithTool(lovableApiKey, systemPrompt, sizePrompt, extractTranscriptSizeTool);
+    const size = await callAIWithTool(openaiApiKey, systemPrompt, sizePrompt, extractTranscriptSizeTool);
     Object.assign(extractedData, size);
     if (size.key_quotes_size) allKeyQuotes.push(...size.key_quotes_size);
 
@@ -660,7 +660,7 @@ EXAMPLE OUTPUT:
 - acquisition_appetite: "Very active - looking to do 3-4 ${industryName} deals this year"
 - key_quotes_deal_structure: ["We prefer some rollover but it's not a deal breaker", "We can move quickly once we have a signed LOI"]`;
 
-    const dealStructure = await callAIWithTool(lovableApiKey, systemPrompt, dealStructurePrompt, extractTranscriptDealStructureTool);
+    const dealStructure = await callAIWithTool(openaiApiKey, systemPrompt, dealStructurePrompt, extractTranscriptDealStructureTool);
     Object.assign(extractedData, dealStructure);
     if (dealStructure.key_quotes_deal_structure) allKeyQuotes.push(...dealStructure.key_quotes_deal_structure);
 
@@ -699,7 +699,7 @@ EXAMPLE OUTPUT for a collision repair tracker:
 - industry_exclusions: [] (empty unless they exclude specific collision sub-types)
 - key_quotes_deal_breakers: ["We won't look at single-location shops", "Too much DRP concentration is a concern"]`;
 
-    const dealBreakers = await callAIWithTool(lovableApiKey, systemPrompt, dealBreakersPrompt, extractTranscriptDealBreakersTool);
+    const dealBreakers = await callAIWithTool(openaiApiKey, systemPrompt, dealBreakersPrompt, extractTranscriptDealBreakersTool);
     Object.assign(extractedData, dealBreakers);
     if (dealBreakers.key_quotes_deal_breakers) allKeyQuotes.push(...dealBreakers.key_quotes_deal_breakers);
 
@@ -723,14 +723,14 @@ Synthesize these into a thesis_summary that describes what they're looking for i
 
 Return ONLY a JSON object like: {"thesis_summary": "...", "thesis_confidence": "Medium"}`;
 
-        const synthesisResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        const synthesisResponse = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${lovableApiKey}`,
+            'Authorization': `Bearer ${openaiApiKey}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'google/gemini-2.5-flash',
+            model: 'gpt-4o-mini',
             messages: [{ role: 'user', content: synthesisPrompt }],
             response_format: { type: 'json_object' }
           }),

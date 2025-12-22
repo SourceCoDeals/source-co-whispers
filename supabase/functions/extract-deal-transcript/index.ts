@@ -341,7 +341,7 @@ async function scrapeTranscriptUrl(firecrawlApiKey: string, url: string): Promis
   return data.data?.markdown || '';
 }
 
-async function extractDealInfo(lovableApiKey: string, transcriptContent: string): Promise<any> {
+async function extractDealInfo(openaiApiKey: string, transcriptContent: string): Promise<any> {
   const userPrompt = `Analyze the following call transcript and extract all relevant deal information.
 
 Apply the M&A financial extraction framework strictly:
@@ -370,14 +370,14 @@ Extract all available information including:
 
   console.log('Calling AI with M&A extraction prompt...');
 
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${lovableApiKey}`,
+      'Authorization': `Bearer ${openaiApiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: MA_ANALYST_SYSTEM_PROMPT },
         { role: 'user', content: userPrompt }
@@ -430,14 +430,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     const firecrawlApiKey = Deno.env.get('FIRECRAWL_API_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    if (!lovableApiKey) {
+    if (!openaiApiKey) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Lovable AI not configured' }),
+        JSON.stringify({ success: false, error: 'OpenAI API key not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -496,7 +496,7 @@ Deno.serve(async (req) => {
     console.log('Transcript scraped, length:', transcriptContent.length);
 
     // Extract deal info using AI with M&A framework
-    const extractedInfo = await extractDealInfo(lovableApiKey, transcriptContent);
+    const extractedInfo = await extractDealInfo(openaiApiKey, transcriptContent);
     console.log('Extracted deal info with financial metadata');
 
     // Build update object with enhanced financial metadata
