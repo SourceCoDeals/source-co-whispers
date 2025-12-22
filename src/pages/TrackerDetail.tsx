@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { CSVImport } from "@/components/CSVImport";
 import { StructuredCriteriaPanel } from "@/components/StructuredCriteriaPanel";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, Target } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, Target, FileSearch, Download } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -51,6 +51,7 @@ export default function TrackerDetail() {
   const [editedBuyerTypesCriteria, setEditedBuyerTypesCriteria] = useState("");
   const [isSavingFitCriteria, setIsSavingFitCriteria] = useState(false);
   const [isParsingCriteria, setIsParsingCriteria] = useState(false);
+  const [isAnalyzingDocuments, setIsAnalyzingDocuments] = useState(false);
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -335,6 +336,65 @@ export default function TrackerDetail() {
     }
   };
 
+  const analyzeDocuments = async () => {
+    const documents = tracker?.documents as { name: string; path: string; size: number }[] | null;
+    if (!documents || documents.length === 0) {
+      toast({ title: "No documents", description: "Upload documents first to analyze them", variant: "destructive" });
+      return;
+    }
+
+    setIsAnalyzingDocuments(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('parse-tracker-documents', {
+        body: { tracker_id: id }
+      });
+
+      if (error) {
+        toast({ title: "Analysis failed", description: error.message, variant: "destructive" });
+        return;
+      }
+
+      if (!data.success) {
+        toast({ title: "Analysis failed", description: data.error || "Unknown error", variant: "destructive" });
+        return;
+      }
+
+      setTracker({
+        ...tracker,
+        size_criteria: data.size_criteria,
+        service_criteria: data.service_criteria,
+        geography_criteria: data.geography_criteria,
+        buyer_types_criteria: data.buyer_types_criteria,
+        documents_analyzed_at: new Date().toISOString()
+      });
+
+      toast({ 
+        title: "Documents analyzed", 
+        description: `Extracted criteria from ${data.documents_processed} document(s)` 
+      });
+    } catch (err) {
+      toast({ title: "Analysis failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setIsAnalyzingDocuments(false);
+    }
+  };
+
+  const getDocumentDownloadUrl = async (path: string) => {
+    const { data } = await supabase.storage
+      .from('tracker-documents')
+      .createSignedUrl(path, 3600); // 1 hour expiry
+    return data?.signedUrl;
+  };
+
+  const downloadDocument = async (doc: { name: string; path: string }) => {
+    const url = await getDocumentDownloadUrl(doc.path);
+    if (url) {
+      window.open(url, '_blank');
+    } else {
+      toast({ title: "Error", description: "Could not generate download link", variant: "destructive" });
+    }
+  };
+
   if (isLoading) return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
   if (!tracker) return <AppLayout><div className="text-center py-12">Tracker not found</div></AppLayout>;
 
@@ -545,6 +605,54 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                 </p>
               )}
             </>
+          )}
+
+          {/* Documents Section */}
+          {tracker.documents && (tracker.documents as any[]).length > 0 && (
+            <div className="mt-4 pt-4 border-t">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Supporting Documents</span>
+                  <Badge variant="outline" className="text-xs">
+                    {(tracker.documents as any[]).length}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  {tracker.documents_analyzed_at && (
+                    <span className="text-xs text-muted-foreground">
+                      Analyzed {new Date(tracker.documents_analyzed_at).toLocaleDateString()}
+                    </span>
+                  )}
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={analyzeDocuments}
+                    disabled={isAnalyzingDocuments}
+                  >
+                    {isAnalyzingDocuments ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <FileSearch className="w-3.5 h-3.5 mr-1" />
+                    )}
+                    {tracker.documents_analyzed_at ? 'Re-analyze' : 'Analyze Documents'}
+                  </Button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(tracker.documents as { name: string; path: string; size: number }[]).map((doc, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => downloadDocument(doc)}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-muted/50 hover:bg-muted rounded-md text-sm transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="truncate max-w-[200px]">{doc.name}</span>
+                    <Download className="w-3 h-3 text-muted-foreground" />
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 

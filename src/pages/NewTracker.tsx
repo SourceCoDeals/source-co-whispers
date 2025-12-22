@@ -116,8 +116,24 @@ export default function NewTracker() {
       }
     }
 
-    toast({ title: "Success", description: `${name} buyer universe created!` });
-    navigate(`/trackers/${data.id}`);
+    // If documents were uploaded, trigger document analysis in the background
+    if (uploadedDocs.length > 0) {
+      toast({ title: "Success", description: `${name} created! Analyzing documents...` });
+      
+      // Fire off document analysis (don't await - let it run in background)
+      supabase.functions.invoke('parse-tracker-documents', {
+        body: { tracker_id: data.id }
+      }).then(({ data: analysisData, error: analysisError }) => {
+        if (analysisError || !analysisData?.success) {
+          console.error('Document analysis failed:', analysisError || analysisData?.error);
+        }
+      });
+
+      navigate(`/trackers/${data.id}`);
+    } else {
+      toast({ title: "Success", description: `${name} buyer universe created!` });
+      navigate(`/trackers/${data.id}`);
+    }
   };
 
   const exampleCriteria = `Example for Collision Repair:
