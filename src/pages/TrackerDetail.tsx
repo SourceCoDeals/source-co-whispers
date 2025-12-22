@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { CSVImport } from "@/components/CSVImport";
 import { StructuredCriteriaPanel } from "@/components/StructuredCriteriaPanel";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -55,6 +55,8 @@ export default function TrackerDetail() {
   const [isParsingCriteria, setIsParsingCriteria] = useState(false);
   const [isAnalyzingDocuments, setIsAnalyzingDocuments] = useState(false);
   const [isCriteriaCollapsed, setIsCriteriaCollapsed] = useState(false);
+  const [isUploadingDocs, setIsUploadingDocs] = useState(false);
+  const docFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -433,6 +435,75 @@ export default function TrackerDetail() {
     }
   };
 
+  const uploadDocuments = async (files: FileList) => {
+    setIsUploadingDocs(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast({ title: "Error", description: "You must be logged in to upload documents", variant: "destructive" });
+      setIsUploadingDocs(false);
+      return;
+    }
+
+    const existingDocs = (tracker?.documents as { name: string; path: string; size: number }[]) || [];
+    const newDocs = [...existingDocs];
+
+    for (const file of Array.from(files)) {
+      const timestamp = Date.now();
+      const filePath = `${user.id}/${timestamp}-${file.name}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('tracker-documents')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        toast({ title: "Upload failed", description: `${file.name}: ${uploadError.message}`, variant: "destructive" });
+        continue;
+      }
+
+      newDocs.push({ name: file.name, path: filePath, size: file.size });
+    }
+
+    const { error: updateError } = await supabase
+      .from('industry_trackers')
+      .update({ documents: newDocs, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (updateError) {
+      toast({ title: "Error", description: "Failed to save document list", variant: "destructive" });
+    } else {
+      setTracker({ ...tracker, documents: newDocs });
+      toast({ title: "Documents uploaded", description: `${files.length} file(s) added` });
+    }
+
+    setIsUploadingDocs(false);
+  };
+
+  const removeDocument = async (doc: { name: string; path: string }) => {
+    const { error: deleteError } = await supabase.storage
+      .from('tracker-documents')
+      .remove([doc.path]);
+
+    if (deleteError) {
+      toast({ title: "Error", description: `Failed to delete ${doc.name}`, variant: "destructive" });
+      return;
+    }
+
+    const existingDocs = (tracker?.documents as { name: string; path: string; size: number }[]) || [];
+    const updatedDocs = existingDocs.filter(d => d.path !== doc.path);
+
+    const { error: updateError } = await supabase
+      .from('industry_trackers')
+      .update({ documents: updatedDocs, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (updateError) {
+      toast({ title: "Error", description: "Failed to update document list", variant: "destructive" });
+    } else {
+      setTracker({ ...tracker, documents: updatedDocs });
+      toast({ title: "Document removed", description: doc.name });
+    }
+  };
+
   if (isLoading) return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
   if (!tracker) return <AppLayout><div className="text-center py-12">Tracker not found</div></AppLayout>;
 
@@ -656,15 +727,17 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
           
           
           {/* Documents Section */}
-          {!isCriteriaCollapsed && tracker.documents && (tracker.documents as any[]).length > 0 && (
+          {!isCriteriaCollapsed && (
             <div className="mt-4 pt-4 border-t">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm font-medium">Supporting Documents</span>
-                  <Badge variant="outline" className="text-xs">
-                    {(tracker.documents as any[]).length}
-                  </Badge>
+                  {tracker.documents && (tracker.documents as any[]).length > 0 && (
+                    <Badge variant="outline" className="text-xs">
+                      {(tracker.documents as any[]).length}
+                    </Badge>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   {tracker.documents_analyzed_at && (
@@ -672,34 +745,75 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                       Analyzed {new Date(tracker.documents_analyzed_at).toLocaleDateString()}
                     </span>
                   )}
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={analyzeDocuments}
-                    disabled={isAnalyzingDocuments}
+                  <input
+                    type="file"
+                    ref={docFileInputRef}
+                    onChange={(e) => e.target.files && uploadDocuments(e.target.files)}
+                    multiple
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                    className="hidden"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => docFileInputRef.current?.click()}
+                    disabled={isUploadingDocs}
                   >
-                    {isAnalyzingDocuments ? (
+                    {isUploadingDocs ? (
                       <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
                     ) : (
-                      <FileSearch className="w-3.5 h-3.5 mr-1" />
+                      <Upload className="w-3.5 h-3.5 mr-1" />
                     )}
-                    {tracker.documents_analyzed_at ? 'Re-analyze' : 'Analyze Documents'}
+                    Add Documents
                   </Button>
+                  {tracker.documents && (tracker.documents as any[]).length > 0 && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={analyzeDocuments}
+                      disabled={isAnalyzingDocuments}
+                    >
+                      {isAnalyzingDocuments ? (
+                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <FileSearch className="w-3.5 h-3.5 mr-1" />
+                      )}
+                      {tracker.documents_analyzed_at ? 'Re-analyze' : 'Analyze'}
+                    </Button>
+                  )}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {(tracker.documents as { name: string; path: string; size: number }[]).map((doc, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => downloadDocument(doc)}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-muted/50 hover:bg-muted rounded-md text-sm transition-colors"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span className="truncate max-w-[200px]">{doc.name}</span>
-                    <Download className="w-3 h-3 text-muted-foreground" />
-                  </button>
-                ))}
-              </div>
+              {tracker.documents && (tracker.documents as any[]).length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {(tracker.documents as { name: string; path: string; size: number }[]).map((doc, idx) => (
+                    <div
+                      key={idx}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-muted/50 rounded-md text-sm group"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="truncate max-w-[200px]">{doc.name}</span>
+                      <button
+                        onClick={() => downloadDocument(doc)}
+                        className="p-0.5 hover:bg-muted rounded transition-colors"
+                        title="Download"
+                      >
+                        <Download className="w-3 h-3 text-muted-foreground" />
+                      </button>
+                      <button
+                        onClick={() => removeDocument(doc)}
+                        className="p-0.5 hover:bg-destructive/20 rounded transition-colors"
+                        title="Remove"
+                      >
+                        <X className="w-3 h-3 text-muted-foreground hover:text-destructive" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground italic">
+                  No documents uploaded. Add documents to analyze and extract criteria.
+                </p>
+              )}
             </div>
           )}
         </div>
