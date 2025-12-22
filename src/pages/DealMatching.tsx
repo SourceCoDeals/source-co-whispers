@@ -8,10 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
-import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle } from "lucide-react";
+import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PassReasonDialog } from "@/components/PassReasonDialog";
 
 interface GeographicScore {
   buyerId: string;
@@ -35,6 +36,8 @@ export default function DealMatching() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [contactedStatus, setContactedStatus] = useState<Record<string, boolean>>({});
   const [hideDisqualified, setHideDisqualified] = useState(false);
+  const [passDialogOpen, setPassDialogOpen] = useState(false);
+  const [buyerToPass, setBuyerToPass] = useState<any>(null);
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -145,7 +148,8 @@ export default function DealMatching() {
   const qualifiedBuyers = sortedBuyers.filter(b => !b.isDisqualified);
   const disqualifiedBuyers = sortedBuyers.filter(b => b.isDisqualified);
   const displayBuyers = hideDisqualified ? qualifiedBuyers : sortedBuyers;
-  const approvedBuyers = sortedBuyers.filter(b => b.score?.selected_for_outreach);
+  const approvedBuyers = sortedBuyers.filter(b => b.score?.selected_for_outreach && !b.score?.passed_on_deal);
+  const passedBuyers = sortedBuyers.filter(b => b.score?.passed_on_deal);
   const allBuyers = displayBuyers;
 
   const toggleSelect = (buyerId: string) => {
@@ -188,6 +192,39 @@ export default function DealMatching() {
         });
       }
     }
+  };
+
+  const handleMarkAsPassed = async (category: string, reason: string, notes: string) => {
+    if (!buyerToPass || !id) return;
+    
+    const { error } = await supabase
+      .from("buyer_deal_scores")
+      .update({
+        passed_on_deal: true,
+        pass_category: category,
+        pass_reason: reason,
+        pass_notes: notes,
+        passed_at: new Date().toISOString(),
+      })
+      .eq("deal_id", id)
+      .eq("buyer_id", buyerToPass.id);
+
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+
+    setScores(scores.map(s => 
+      s.buyer_id === buyerToPass.id 
+        ? { ...s, passed_on_deal: true, pass_category: category, pass_reason: reason, pass_notes: notes, passed_at: new Date().toISOString() }
+        : s
+    ));
+    toast({ title: "Buyer marked as passed", description: `${buyerToPass.platform_company_name || buyerToPass.pe_firm_name} - ${reason}` });
+  };
+
+  const openPassDialog = (buyer: any) => {
+    setBuyerToPass(buyer);
+    setPassDialogOpen(true);
   };
 
   const getHQ = (buyer: any) => {
@@ -445,10 +482,11 @@ export default function DealMatching() {
     );
   };
 
-  const renderBuyerRow = (buyer: any, showCheckbox = true, showContacts = false) => {
+  const renderBuyerRow = (buyer: any, showCheckbox = true, showContacts = false, showPassButton = false) => {
     const score = buyer.score;
     const isExpanded = expanded.has(buyer.id);
-    const isApproved = score?.selected_for_outreach;
+    const isApproved = score?.selected_for_outreach && !score?.passed_on_deal;
+    const isPassed = score?.passed_on_deal;
     const buyerContacts = getBuyerContacts(buyer.id);
 
     return (
@@ -477,7 +515,12 @@ export default function DealMatching() {
                       <AlertTriangle className="w-3 h-3 mr-1" />Disqualified
                     </Badge>
                   )}
-                  {isApproved && !buyer.isDisqualified && (
+                  {isPassed && (
+                    <Badge variant="outline" className="text-xs bg-destructive/10 text-destructive border-destructive/30">
+                      <XCircle className="w-3 h-3 mr-1" />Passed
+                    </Badge>
+                  )}
+                  {isApproved && !buyer.isDisqualified && !isPassed && (
                     <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
                       <CheckCircle2 className="w-3 h-3 mr-1" />Approved
                     </Badge>
@@ -638,8 +681,33 @@ export default function DealMatching() {
                 </div>
               )}
               
+              {/* Pass reason if buyer passed */}
+              {isPassed && score?.pass_reason && (
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                  <p className="text-sm font-medium text-destructive">Pass Reason: {score.pass_reason}</p>
+                  {score.pass_notes && (
+                    <p className="text-xs text-muted-foreground mt-1">{score.pass_notes}</p>
+                  )}
+                </div>
+              )}
+              
               {buyer.thesis_summary && (
                 <p className="text-sm text-muted-foreground italic border-l-2 border-primary/30 pl-3">"{buyer.thesis_summary}"</p>
+              )}
+              
+              {/* Mark as Passed button in Approved tab */}
+              {showPassButton && !isPassed && (
+                <div className="flex justify-end">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                    onClick={(e) => { e.stopPropagation(); openPassDialog(buyer); }}
+                  >
+                    <XCircle className="w-4 h-4 mr-2" />
+                    Mark as Passed
+                  </Button>
+                </div>
               )}
             </CollapsibleContent>
           </Collapsible>
@@ -672,6 +740,7 @@ export default function DealMatching() {
           <span className="text-destructive">❌ {disqualifiedBuyers.length} disqualified (no nearby presence)</span>
           <span>🎯 {qualifiedBuyers.filter(b => (b.score?.composite_score || 0) >= 70).length} strong matches (&gt;70%)</span>
           <span>✓ {approvedBuyers.length} approved</span>
+          {passedBuyers.length > 0 && <span className="text-destructive">✗ {passedBuyers.length} passed</span>}
           <label className="flex items-center gap-2 ml-auto cursor-pointer">
             <Switch 
               checked={hideDisqualified} 
@@ -686,10 +755,11 @@ export default function DealMatching() {
           <TabsList>
             <TabsTrigger value="all">All Buyers ({allBuyers.length})</TabsTrigger>
             <TabsTrigger value="approved">Approved ({approvedBuyers.length})</TabsTrigger>
+            <TabsTrigger value="passed">Passed ({passedBuyers.length})</TabsTrigger>
           </TabsList>
           <TabsContent value="all" className="mt-4">
             <div className="bg-card rounded-lg border divide-y">
-              {allBuyers.map((buyer) => renderBuyerRow(buyer, true))}
+              {allBuyers.map((buyer) => renderBuyerRow(buyer, true, false, false))}
             </div>
           </TabsContent>
           <TabsContent value="approved" className="mt-4">
@@ -697,11 +767,29 @@ export default function DealMatching() {
               {approvedBuyers.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">No buyers approved yet. Select buyers and click "Approve Buyers as Fit".</div>
               ) : (
-                approvedBuyers.map((buyer) => renderBuyerRow(buyer, false, true))
+                approvedBuyers.map((buyer) => renderBuyerRow(buyer, false, true, true))
+              )}
+            </div>
+          </TabsContent>
+          <TabsContent value="passed" className="mt-4">
+            <div className="bg-card rounded-lg border divide-y">
+              {passedBuyers.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground">No buyers have passed on this deal yet.</div>
+              ) : (
+                passedBuyers.map((buyer) => renderBuyerRow(buyer, false, false, false))
               )}
             </div>
           </TabsContent>
         </Tabs>
+        
+        {/* Pass Reason Dialog */}
+        <PassReasonDialog
+          open={passDialogOpen}
+          onOpenChange={setPassDialogOpen}
+          buyerName={buyerToPass?.platform_company_name || buyerToPass?.pe_firm_name || ""}
+          dealName={deal?.deal_name || ""}
+          onConfirm={handleMarkAsPassed}
+        />
       </div>
     </AppLayout>
   );
