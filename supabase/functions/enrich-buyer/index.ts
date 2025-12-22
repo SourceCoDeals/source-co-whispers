@@ -980,6 +980,30 @@ EXAMPLE OUTPUT:
 
     console.log('Total extracted data:', extractedData);
 
+    // Fields that should NEVER be overwritten if they came from a transcript
+    // Transcript data is primary authority for investment criteria
+    const transcriptProtectedFields = [
+      'thesis_summary', 'strategic_priorities', 'thesis_confidence',
+      'target_geographies', 'geographic_exclusions', 'acquisition_geography',
+      'min_revenue', 'max_revenue', 'revenue_sweet_spot',
+      'min_ebitda', 'max_ebitda', 'ebitda_sweet_spot', 'preferred_ebitda',
+      'owner_roll_requirement', 'owner_transition_goals', 'acquisition_timeline', 'acquisition_appetite',
+      'deal_breakers', 'business_model_exclusions', 'industry_exclusions', 'key_quotes',
+      'target_services', 'target_industries', 'required_capabilities',
+      'service_mix_prefs', 'business_model_prefs', 'target_business_model'
+    ];
+
+    // Check if this buyer has transcript-sourced data
+    const existingSources = Array.isArray(buyer.extraction_sources) ? buyer.extraction_sources : [];
+    const hasTranscriptSource = existingSources.some(
+      (src: any) => src.source === 'transcript' || src.source === 'buyer_transcript'
+    );
+    
+    console.log('Has transcript source:', hasTranscriptSource);
+    if (hasTranscriptSource) {
+      console.log('Transcript-protected fields will NOT be overwritten by website data');
+    }
+
     // Build update object - only update fields that are empty or where new data is more substantial
     const updateData: Record<string, any> = {
       data_last_updated: new Date().toISOString(),
@@ -1002,6 +1026,19 @@ EXAMPLE OUTPUT:
         const existingValue = buyer[field];
         const newValue = extractedData[field];
         
+        // CRITICAL: Never overwrite transcript-protected fields if transcript data exists
+        if (hasTranscriptSource && transcriptProtectedFields.includes(field)) {
+          // Only update if existing value is empty/null
+          const isEmpty = existingValue === null || existingValue === undefined || 
+            (typeof existingValue === 'string' && existingValue.trim() === '') ||
+            (Array.isArray(existingValue) && existingValue.length === 0);
+          
+          if (!isEmpty) {
+            console.log(`Skipping ${field}: protected by transcript data`);
+            continue;
+          }
+        }
+        
         // For strings, only update if we don't have data or new data is longer
         if (typeof newValue === 'string') {
           if (!existingValue || newValue.length > (existingValue?.length || 0)) {
@@ -1023,8 +1060,7 @@ EXAMPLE OUTPUT:
       }
     }
 
-    // Merge extraction sources
-    const existingSources = Array.isArray(buyer.extraction_sources) ? buyer.extraction_sources : [];
+    // Merge extraction sources (reuse existingSources from above)
     updateData.extraction_sources = [...existingSources, ...evidenceRecords];
     updateData.extraction_evidence = {
       last_website_enrichment: new Date().toISOString(),
