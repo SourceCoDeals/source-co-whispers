@@ -494,29 +494,48 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Industry-aware system prompt
+    // Industry-aware system prompt - very explicit about platform vs PE firm distinction
+    const platformName = buyer.platform_company_name || `their ${industryName} platform`;
+    const peFirmName = buyer.pe_firm_name;
+    
     const systemPrompt = `You are extracting buyer intelligence from a call transcript between SourceCo (an M&A advisory firm) and a private equity buyer.
 
-This buyer is in the **${industryName}** buyer universe/tracker.
+**CONTEXT:**
+- PE Firm: ${peFirmName} (the parent private equity firm)
+- Platform Company: ${platformName} (their ${industryName} portfolio company)
+- Buyer Universe: **${industryName}**
 
-CRITICAL FILTERING RULES:
-1. ONLY extract information that is RELEVANT to ${industryName} acquisitions
-2. The PE firm may discuss multiple portfolio companies across different industries - IGNORE discussions about other industries
-3. Focus on their ${industryName} platform company's acquisition criteria, NOT the PE firm's general strategy
-4. If they mention "we" or "our strategy" - determine if it's referring to the ${industryName} platform or the PE firm generally
-5. Key quotes should ONLY be statements specifically about ${industryName} acquisition criteria
+**CRITICAL DISTINCTION - READ CAREFULLY:**
+The PE firm (${peFirmName}) invests across MANY industries. They may have healthcare platforms, environmental services platforms, etc.
+We are ONLY interested in their **${industryName}** platform (${platformName}).
 
-DO NOT EXTRACT information about:
-- Other portfolio companies (healthcare, oil & gas, pest control, waste, etc. - unless that IS the ${industryName})
-- General PE firm strategy not specific to ${industryName}
-- Personal anecdotes unrelated to ${industryName}
-- Other industries the PE firm invests in
+When the PE firm says things like "we don't invest in healthcare" or "we avoid oil & gas" - this is IRRELEVANT because:
+- Those are PE firm-level statements about OTHER industries they don't pursue
+- We already know this buyer is in the ${industryName} tracker - other industries are out of scope by definition
+- We want to know what makes a GOOD or BAD **${industryName}** acquisition target
 
-IMPORTANT: Information from transcripts is PRIMARY AUTHORITY for ${industryName} acquisitions. Extract direct quotes where possible, but ONLY if they relate to ${industryName}.`;
+**WHAT TO EXTRACT:**
+✅ ${platformName}'s specific criteria for ${industryName} add-on acquisitions
+✅ Geographic preferences for ${industryName} expansion
+✅ Size criteria for ${industryName} targets
+✅ What makes a ${industryName} business attractive or unattractive TO THEM
+✅ Deal breakers WITHIN the ${industryName} space (e.g., "no shops under $1M revenue", "avoid X type of ${industryName} business")
 
-    const transcriptPromptBase = `Analyze the following call transcript with ${buyer.pe_firm_name} / ${buyer.platform_company_name || 'their platform'}.
+**WHAT TO IGNORE:**
+❌ PE firm's general investment thesis (unless specifically about ${industryName})
+❌ Industries the PE firm doesn't invest in (healthcare, oil & gas, etc.) - these are NOT exclusions for this tracker
+❌ Other portfolio companies the PE firm owns
+❌ General PE firm deal structure preferences (unless they specifically apply to ${industryName})
 
-REMINDER: This buyer is in the **${industryName}** tracker. ONLY extract information relevant to ${industryName} acquisitions. Ignore discussions about other industries or portfolio companies.
+**REMEMBER:** Industry exclusions should be sub-categories WITHIN ${industryName} that they avoid, NOT other industries entirely.`;
+
+    const transcriptPromptBase = `Analyze the following call transcript with ${peFirmName} about their ${industryName} platform (${platformName}).
+
+**CRITICAL:** You are extracting criteria for their **${industryName}** acquisitions ONLY.
+- ${peFirmName} = the PE firm (parent company) - may discuss many industries
+- ${platformName} = their ${industryName} platform - THIS is what we care about
+
+Ignore any discussion about other industries the PE firm invests in. Focus ONLY on what they want in ${industryName} acquisitions.
 
 Transcript Content:
 ${transcriptContent}
@@ -526,22 +545,29 @@ ${transcriptContent}
     const extractedData: Record<string, any> = {};
     const allKeyQuotes: string[] = [];
 
-    // Prompt 7: Investment Thesis (OVERRIDE)
+    // Prompt 7: Investment Thesis (OVERRIDE) - Platform-specific, not PE firm
     console.log('Running Prompt 7: Investment Thesis from Transcript for', industryName);
     const thesisPrompt = transcriptPromptBase + `
-WHAT TO DO: Extract the buyer's stated investment thesis and strategic priorities for ${industryName} acquisitions ONLY.
+WHAT TO DO: Extract ${platformName}'s investment thesis for ${industryName} add-on acquisitions.
+
+**CRITICAL:** 
+- We want the PLATFORM's thesis (${platformName}), not the PE firm's general thesis (${peFirmName})
+- ${peFirmName} may describe their firm as "investing in environmental services, business services, manufacturing" - IGNORE this
+- We want to know what ${platformName} is specifically looking for in ${industryName} add-ons
+
 Look for:
-- What they say they are looking for in ${industryName} acquisitions specifically
-- Their stated investment strategy for the ${industryName} platform
-- Strategic goals or priorities for ${industryName}
+- What makes an attractive ${industryName} acquisition target for ${platformName}
+- Geographic expansion goals for the ${industryName} platform
+- Service line expansion goals within ${industryName}
+- Strategic priorities for growing the ${industryName} business
 
-IGNORE: Any discussion of other industries, other portfolio companies, or general PE firm strategy.
+**DO NOT include:** The PE firm's general description of their investment focus across industries.
 
-EXAMPLE OUTPUT:
-- thesis_summary: "Looking to build a national ${industryName} platform through add-on acquisitions"
-- strategic_priorities: "Geographic expansion into the Southeast and Texas, adding new capabilities"
+EXAMPLE OUTPUT for a collision repair platform:
+- thesis_summary: "Building a regional collision repair platform focused on the Midwest, targeting shops with strong insurance relationships"
+- strategic_priorities: "Geographic density in core markets, adding OEM certifications, growing fleet/commercial business"
 - thesis_confidence: "high"
-- key_quotes_thesis: ["We're really focused on ${industryName} right now", "Our goal is to be in 10 states by end of next year"]`;
+- key_quotes_thesis: ["We want shops with strong DRP relationships", "Looking to get denser in our core Midwest markets"]`;
 
     const thesis = await callAIWithTool(lovableApiKey, systemPrompt, thesisPrompt, extractTranscriptThesisTool);
     Object.assign(extractedData, thesis);
@@ -618,23 +644,40 @@ EXAMPLE OUTPUT:
     Object.assign(extractedData, dealStructure);
     if (dealStructure.key_quotes_deal_structure) allKeyQuotes.push(...dealStructure.key_quotes_deal_structure);
 
-    // Prompt 11: Deal Breakers (OVERRIDE)
+    // Prompt 11: Deal Breakers (OVERRIDE) - Very explicit about industry context
     console.log('Running Prompt 11: Deal Breakers from Transcript for', industryName);
     const dealBreakersPrompt = transcriptPromptBase + `
-WHAT TO DO: Extract deal breakers and strong preferences against certain things for ${industryName} acquisitions.
-Look for:
-- Hard deal breakers that would kill a ${industryName} deal
-- Business models within ${industryName} they won't consider
-- Sub-industries or service types within ${industryName} they avoid
-- Strong negative statements about certain ${industryName} characteristics
+WHAT TO DO: Extract deal breakers for ${industryName} acquisitions specifically.
 
-IMPORTANT: Only extract deal breakers RELEVANT to ${industryName}. Do not include other industries the PE firm doesn't invest in - those are not deal breakers, they're just outside this tracker's scope.
+**CRITICAL DISTINCTION:**
+- If the PE firm says "we don't do healthcare" or "we avoid oil & gas" → IGNORE THIS. These are other industries, not deal breakers for ${industryName}.
+- Deal breakers should be things WITHIN ${industryName} they don't want. 
 
-EXAMPLE OUTPUT:
-- deal_breakers: ["No residential-only businesses", "Won't consider companies with customer concentration over 30%"]
-- business_model_exclusions: ["Pure construction/new build", "Manufacturer reps"]
-- industry_exclusions: ["Residential-only ${industryName}", "Specific sub-type they avoid"]
-- key_quotes_deal_breakers: ["We absolutely won't do residential-only", "Customer concentration over 30% is a non-starter for us"]`;
+**EXAMPLES OF VALID ${industryName} DEAL BREAKERS:**
+- "No shops under $1M revenue" ✅
+- "Avoid single-location businesses" ✅  
+- "Won't do businesses with high customer concentration" ✅
+- "No [specific sub-type of ${industryName}]" ✅
+
+**EXAMPLES TO IGNORE (NOT deal breakers for this tracker):**
+- "We don't invest in healthcare" ❌ (different industry entirely)
+- "No oil & gas" ❌ (different industry entirely)
+- "We avoid IT services" ❌ (different industry entirely)
+
+**FOR BUSINESS MODEL EXCLUSIONS:**
+Only include business models WITHIN ${industryName} they avoid. For example, if this is collision repair:
+- "No PDR-only shops" ✅
+- "No glass-only businesses" ✅
+- "No IT services" ❌ (not a ${industryName} business model)
+
+**FOR INDUSTRY EXCLUSIONS:**
+Only include sub-categories WITHIN ${industryName}. Leave empty if they haven't mentioned excluding specific types of ${industryName} businesses.
+
+EXAMPLE OUTPUT for a collision repair tracker:
+- deal_breakers: ["No single-location shops", "Avoid high DRP concentration over 80%"]
+- business_model_exclusions: ["PDR-only", "Glass-only operations"]
+- industry_exclusions: [] (empty unless they exclude specific collision sub-types)
+- key_quotes_deal_breakers: ["We won't look at single-location shops", "Too much DRP concentration is a concern"]`;
 
     const dealBreakers = await callAIWithTool(lovableApiKey, systemPrompt, dealBreakersPrompt, extractTranscriptDealBreakersTool);
     Object.assign(extractedData, dealBreakers);
