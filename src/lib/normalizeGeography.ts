@@ -35,6 +35,64 @@ const MISSPELLINGS: Record<string, string> = {
   'new jersery': 'NJ',
 };
 
+// Regional mappings - translate region names to their constituent states
+const REGION_TO_STATES: Record<string, string[]> = {
+  // Standard US Census regions
+  'midwest': ['IL', 'IN', 'IA', 'KS', 'MI', 'MN', 'MO', 'NE', 'ND', 'OH', 'SD', 'WI'],
+  'the midwest': ['IL', 'IN', 'IA', 'KS', 'MI', 'MN', 'MO', 'NE', 'ND', 'OH', 'SD', 'WI'],
+  'midwestern': ['IL', 'IN', 'IA', 'KS', 'MI', 'MN', 'MO', 'NE', 'ND', 'OH', 'SD', 'WI'],
+  'northeast': ['CT', 'ME', 'MA', 'NH', 'NJ', 'NY', 'PA', 'RI', 'VT'],
+  'the northeast': ['CT', 'ME', 'MA', 'NH', 'NJ', 'NY', 'PA', 'RI', 'VT'],
+  'northeastern': ['CT', 'ME', 'MA', 'NH', 'NJ', 'NY', 'PA', 'RI', 'VT'],
+  'new england': ['CT', 'ME', 'MA', 'NH', 'RI', 'VT'],
+  'south': ['AL', 'AR', 'DE', 'FL', 'GA', 'KY', 'LA', 'MD', 'MS', 'NC', 'OK', 'SC', 'TN', 'TX', 'VA', 'WV'],
+  'the south': ['AL', 'AR', 'DE', 'FL', 'GA', 'KY', 'LA', 'MD', 'MS', 'NC', 'OK', 'SC', 'TN', 'TX', 'VA', 'WV'],
+  'southern': ['AL', 'AR', 'DE', 'FL', 'GA', 'KY', 'LA', 'MD', 'MS', 'NC', 'OK', 'SC', 'TN', 'TX', 'VA', 'WV'],
+  'southeast': ['AL', 'FL', 'GA', 'KY', 'MS', 'NC', 'SC', 'TN', 'VA', 'WV'],
+  'the southeast': ['AL', 'FL', 'GA', 'KY', 'MS', 'NC', 'SC', 'TN', 'VA', 'WV'],
+  'southeastern': ['AL', 'FL', 'GA', 'KY', 'MS', 'NC', 'SC', 'TN', 'VA', 'WV'],
+  'southwest': ['AZ', 'NM', 'OK', 'TX'],
+  'the southwest': ['AZ', 'NM', 'OK', 'TX'],
+  'southwestern': ['AZ', 'NM', 'OK', 'TX'],
+  'west': ['AK', 'AZ', 'CA', 'CO', 'HI', 'ID', 'MT', 'NV', 'NM', 'OR', 'UT', 'WA', 'WY'],
+  'the west': ['AK', 'AZ', 'CA', 'CO', 'HI', 'ID', 'MT', 'NV', 'NM', 'OR', 'UT', 'WA', 'WY'],
+  'western': ['AK', 'AZ', 'CA', 'CO', 'HI', 'ID', 'MT', 'NV', 'NM', 'OR', 'UT', 'WA', 'WY'],
+  'pacific northwest': ['OR', 'WA', 'ID'],
+  'the pacific northwest': ['OR', 'WA', 'ID'],
+  'pnw': ['OR', 'WA', 'ID'],
+  'northwest': ['OR', 'WA', 'ID', 'MT', 'WY'],
+  'the northwest': ['OR', 'WA', 'ID', 'MT', 'WY'],
+  'northwestern': ['OR', 'WA', 'ID', 'MT', 'WY'],
+  'mountain west': ['AZ', 'CO', 'ID', 'MT', 'NV', 'NM', 'UT', 'WY'],
+  'rocky mountain': ['CO', 'ID', 'MT', 'UT', 'WY'],
+  'rockies': ['CO', 'ID', 'MT', 'UT', 'WY'],
+  'great plains': ['KS', 'NE', 'ND', 'OK', 'SD', 'TX'],
+  'plains states': ['KS', 'NE', 'ND', 'OK', 'SD'],
+  'mid-atlantic': ['DE', 'MD', 'NJ', 'NY', 'PA'],
+  'mid atlantic': ['DE', 'MD', 'NJ', 'NY', 'PA'],
+  'midatlantic': ['DE', 'MD', 'NJ', 'NY', 'PA'],
+  'east coast': ['CT', 'DE', 'FL', 'GA', 'MA', 'MD', 'ME', 'NC', 'NH', 'NJ', 'NY', 'PA', 'RI', 'SC', 'VA', 'VT'],
+  'eastern seaboard': ['CT', 'DE', 'FL', 'GA', 'MA', 'MD', 'ME', 'NC', 'NH', 'NJ', 'NY', 'PA', 'RI', 'SC', 'VA', 'VT'],
+  'west coast': ['CA', 'OR', 'WA'],
+  'pacific': ['CA', 'OR', 'WA', 'AK', 'HI'],
+  'gulf coast': ['AL', 'FL', 'LA', 'MS', 'TX'],
+  'gulf states': ['AL', 'FL', 'LA', 'MS', 'TX'],
+  'sun belt': ['AL', 'AZ', 'CA', 'FL', 'GA', 'LA', 'MS', 'NM', 'NV', 'SC', 'TX'],
+  'sunbelt': ['AL', 'AZ', 'CA', 'FL', 'GA', 'LA', 'MS', 'NM', 'NV', 'SC', 'TX'],
+  'rust belt': ['IL', 'IN', 'MI', 'OH', 'PA', 'WI'],
+  'rustbelt': ['IL', 'IN', 'MI', 'OH', 'PA', 'WI'],
+  'tri-state': ['CT', 'NJ', 'NY'],  // NY metro tri-state
+  'tristate': ['CT', 'NJ', 'NY'],
+  'carolinas': ['NC', 'SC'],
+  'the carolinas': ['NC', 'SC'],
+  'dakotas': ['ND', 'SD'],
+  'the dakotas': ['ND', 'SD'],
+  'upper midwest': ['IA', 'MN', 'ND', 'SD', 'WI'],
+  'lower midwest': ['IL', 'IN', 'KS', 'MO', 'NE', 'OH'],
+  'deep south': ['AL', 'GA', 'LA', 'MS', 'SC'],
+  'texas triangle': ['TX'],  // Houston, Dallas, San Antonio, Austin
+};
+
 // Patterns to skip - UI text, URLs, garbage data
 const SKIP_PATTERNS = [
   /find\s*(a\s*)?shop/i,
@@ -110,6 +168,14 @@ export function normalizeGeography(input: string[] | string | null | undefined):
     if (MISSPELLINGS[lower]) {
       console.log(`[normalizeGeography] Fixed misspelling: "${item}" → "${MISSPELLINGS[lower]}"`);
       normalized.push(MISSPELLINGS[lower]);
+      continue;
+    }
+    
+    // Check if it's a regional term (Midwest, Southeast, etc.)
+    const regionStates = REGION_TO_STATES[lower];
+    if (regionStates) {
+      console.log(`[normalizeGeography] Expanding region "${item}" to states: ${regionStates.join(', ')}`);
+      normalized.push(...regionStates);
       continue;
     }
     
