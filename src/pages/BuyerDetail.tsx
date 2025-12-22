@@ -518,6 +518,8 @@ export default function BuyerDetail() {
                   <DataListField label="Target Services" items={buyer.target_services} />
                   <DataListField label="Required Capabilities" items={buyer.required_capabilities} />
                   <DataField label="Service Mix Preferences" value={buyer.service_mix_prefs} />
+                  <DataListField label="Target Industries" items={buyer.target_industries} collapsible collapsedCount={5} />
+                  <DataListField label="Industry Exclusions" items={buyer.industry_exclusions} variant="destructive" />
                   <DataListField label="Deal Breakers" items={buyer.deal_breakers} variant="destructive" />
                   
                   {!buyer.thesis_summary && !buyer.strategic_priorities && (!buyer.target_services || buyer.target_services.length === 0) && (
@@ -526,15 +528,13 @@ export default function BuyerDetail() {
                 </div>
               </BuyerDataSection>
 
-              {/* 5. Geographic Footprint - Standalone */}
+              {/* 5. Geographic Footprint - Standalone (Geography only) */}
               <BuyerDataSection title="Geographic Footprint" icon={<Globe className="w-4 h-4 text-muted-foreground" />}>
                 <div className="space-y-4">
                   <DataListField label="Current Locations" items={buyer.geographic_footprint} variant="default" collapsible collapsedCount={5} />
                   <DataListField label="Service Regions" items={buyer.service_regions} variant="default" collapsible collapsedCount={5} />
                   <DataListField label="Target Geographies" items={buyer.target_geographies} variant="outline" collapsible collapsedCount={5} />
                   <DataListField label="Geographic Exclusions" items={buyer.geographic_exclusions} variant="destructive" />
-                  <DataListField label="Target Industries" items={buyer.target_industries} collapsible collapsedCount={5} />
-                  <DataListField label="Industry Exclusions" items={buyer.industry_exclusions} variant="destructive" />
                 </div>
               </BuyerDataSection>
 
@@ -655,16 +655,38 @@ export default function BuyerDetail() {
                 </div>
               </BuyerDataSection>
 
-              {/* Key Quotes */}
+              {/* Key Quotes - Collapsible */}
               {buyer.key_quotes?.length > 0 && (
-                <BuyerDataSection title="Key Quotes" icon={<Quote className="w-4 h-4 text-muted-foreground" />} className="lg:col-span-2">
-                  <div className="space-y-3">
-                    {buyer.key_quotes.map((quote: string, i: number) => (
-                      <blockquote key={i} className="border-l-2 border-primary/50 pl-4 py-1 text-sm italic text-muted-foreground">
-                        "{quote}"
-                      </blockquote>
-                    ))}
-                  </div>
+                <BuyerDataSection title={`Key Quotes (${buyer.key_quotes.length})`} icon={<Quote className="w-4 h-4 text-muted-foreground" />} className="lg:col-span-2">
+                  <Collapsible>
+                    <div className="space-y-3">
+                      {buyer.key_quotes.slice(0, 3).map((quote: string, i: number) => (
+                        <blockquote key={i} className="border-l-2 border-primary/50 pl-4 py-1 text-sm italic text-muted-foreground">
+                          "{quote}"
+                        </blockquote>
+                      ))}
+                    </div>
+                    {buyer.key_quotes.length > 3 && (
+                      <>
+                        <CollapsibleContent>
+                          <div className="space-y-3 mt-3">
+                            {buyer.key_quotes.slice(3).map((quote: string, i: number) => (
+                              <blockquote key={i + 3} className="border-l-2 border-primary/50 pl-4 py-1 text-sm italic text-muted-foreground">
+                                "{quote}"
+                              </blockquote>
+                            ))}
+                          </div>
+                        </CollapsibleContent>
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" size="sm" className="mt-3 w-full flex items-center gap-1 text-muted-foreground">
+                            <span className="group-data-[state=open]:hidden">Show {buyer.key_quotes.length - 3} more quotes</span>
+                            <span className="hidden group-data-[state=open]:inline">Show less</span>
+                            <ChevronDown className="w-4 h-4 group-data-[state=open]:rotate-180 transition-transform" />
+                          </Button>
+                        </CollapsibleTrigger>
+                      </>
+                    )}
+                  </Collapsible>
                 </BuyerDataSection>
               )}
 
