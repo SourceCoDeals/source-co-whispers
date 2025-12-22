@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import JSZip from "https://esm.sh/jszip@3.10.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,6 +17,39 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
     binary += String.fromCharCode.apply(null, Array.from(chunk));
   }
   return btoa(binary);
+}
+
+// Extract text from DOCX file (DOCX is a ZIP with XML inside)
+async function extractTextFromDocx(arrayBuffer: ArrayBuffer): Promise<string> {
+  try {
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    const documentXml = await zip.file('word/document.xml')?.async('string');
+    
+    if (!documentXml) {
+      console.error('No document.xml found in DOCX');
+      return '';
+    }
+    
+    // Extract text from XML, removing all tags
+    // Handle paragraph breaks by adding newlines
+    let text = documentXml
+      .replace(/<w:p[^>]*>/g, '\n') // Paragraph starts
+      .replace(/<w:br[^>]*>/g, '\n') // Line breaks
+      .replace(/<w:tab[^>]*>/g, '\t') // Tabs
+      .replace(/<[^>]+>/g, '') // Remove all XML tags
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/\n{3,}/g, '\n\n') // Collapse multiple newlines
+      .trim();
+    
+    return text;
+  } catch (error) {
+    console.error('Error extracting text from DOCX:', error);
+    return '';
+  }
 }
 
 serve(async (req) => {
@@ -124,15 +158,25 @@ serve(async (req) => {
         continue;
       }
 
-      // Use the Lovable document parsing API for binary documents
+      // For DOCX files, extract text directly from the XML inside the ZIP
+      if (extension === 'docx') {
+        console.log(`Extracting text from DOCX: ${doc.name}`);
+        const docxText = await extractTextFromDocx(arrayBuffer);
+        if (docxText) {
+          console.log(`Extracted ${docxText.length} chars from DOCX ${doc.name}`);
+          documentContents.push(`=== Document: ${doc.name} ===\n\n${docxText}`);
+        } else {
+          console.error(`Failed to extract text from DOCX: ${doc.name}`);
+        }
+        continue;
+      }
+
+      // For PDFs and other binary documents, use Gemini with image_url
       try {
         const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
         if (!LOVABLE_API_KEY) {
           throw new Error('LOVABLE_API_KEY is not configured');
         }
-
-        // For DOCX files, use a simpler approach - send to Gemini directly with the file
-        // Gemini 2.5 Flash can handle document content natively
         const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
           method: 'POST',
           headers: {
