@@ -5,67 +5,30 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Users, Search, ChevronDown, ChevronRight, Building2, RefreshCw, Globe } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { Loader2, Users, Search, ChevronDown, ChevronRight, Building2, Globe } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { usePEFirmsHierarchy, PEFirmWithPlatforms } from "@/hooks/usePEFirmsHierarchy";
 
 export default function AllBuyers() {
-  const { peFirms, isLoading: isLoadingNew, refetch } = usePEFirmsHierarchy();
+  const { peFirms, isLoading: isLoadingNew } = usePEFirmsHierarchy();
   const [trackers, setTrackers] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [expandedFirms, setExpandedFirms] = useState<Set<string>>(new Set());
-  const [isMigrating, setIsMigrating] = useState(false);
-  const { toast } = useToast();
-
-  // Also check if we have legacy buyers that need migration
-  const [legacyBuyerCount, setLegacyBuyerCount] = useState(0);
 
   useEffect(() => {
     loadData();
   }, []);
 
   const loadData = async () => {
-    const [trackersRes, buyersCountRes] = await Promise.all([
-      supabase.from("industry_trackers").select("id, industry_name"),
-      supabase.from("buyers").select("id", { count: "exact", head: true }),
-    ]);
+    const trackersRes = await supabase.from("industry_trackers").select("id, industry_name");
 
     const trackerMap: Record<string, string> = {};
     (trackersRes.data || []).forEach((t) => { 
       trackerMap[t.id] = t.industry_name; 
     });
     setTrackers(trackerMap);
-    setLegacyBuyerCount(buyersCountRes.count || 0);
     setIsLoading(false);
-  };
-
-  const migrateData = async () => {
-    setIsMigrating(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('migrate-buyers-to-hierarchy');
-      
-      if (error) throw error;
-      
-      if (data.success) {
-        toast({
-          title: "Migration complete",
-          description: data.message,
-        });
-        refetch();
-      } else {
-        throw new Error(data.error || "Migration failed");
-      }
-    } catch (err: any) {
-      toast({
-        title: "Migration failed",
-        description: err.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsMigrating(false);
-    }
   };
 
   const toggleFirm = (firmId: string) => {
@@ -111,9 +74,6 @@ export default function AllBuyers() {
     );
   }
 
-  // Show migration prompt if we have legacy data but no new data
-  const needsMigration = legacyBuyerCount > 0 && peFirms.length === 0;
-
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -124,21 +84,6 @@ export default function AllBuyers() {
               {peFirms.length} PE firm{peFirms.length !== 1 ? "s" : ""} · {totalPlatforms} platform{totalPlatforms !== 1 ? "s" : ""}
             </p>
           </div>
-          {needsMigration && (
-            <Button onClick={migrateData} disabled={isMigrating}>
-              {isMigrating ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Migrating...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Migrate {legacyBuyerCount} Buyers
-                </>
-              )}
-            </Button>
-          )}
         </div>
 
         <div className="flex items-center gap-4">
@@ -167,14 +112,12 @@ export default function AllBuyers() {
           <div className="bg-card rounded-lg border p-12 text-center">
             <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="font-semibold mb-2">
-              {search ? "No matches found" : needsMigration ? "Data needs migration" : "No buyers yet"}
+              {search ? "No matches found" : "No buyers yet"}
             </h3>
             <p className="text-muted-foreground">
               {search 
                 ? "Try a different search term" 
-                : needsMigration 
-                  ? "Click 'Migrate Buyers' to convert your existing data to the new structure."
-                  : "Add buyers to a universe to get started."
+                : "Add buyers to a universe to get started."
               }
             </p>
           </div>
