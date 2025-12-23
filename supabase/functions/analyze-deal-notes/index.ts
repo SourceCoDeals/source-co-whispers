@@ -224,8 +224,8 @@ CRITICAL: Extract owner goals:
           // If applyToRecord is true, apply extracted data to empty fields
           // Notes have priority 80 (below transcript at 100), so only fill empty fields
           if (applyToRecord) {
-            // Universal placeholder check - treats location_count=1 as a placeholder
-            // since that's the database default value
+            // Universal placeholder check - treats location_count=1 and employee_count=1 as placeholders
+            // since 1 is often the database default value and unlikely to be real data
             const isEmptyOrPlaceholder = (value: any, fieldName?: string): boolean => {
               if (value === null || value === undefined) return true;
               if (typeof value === 'string') {
@@ -233,8 +233,8 @@ CRITICAL: Extract owner goals:
                 return trimmed === '' || trimmed === 'n/a' || trimmed === 'na' || trimmed === '-' || trimmed === 'none' || trimmed === 'unknown';
               }
               if (Array.isArray(value)) return value.length === 0;
-              // Special case: location_count of 1 is the database default, treat as empty
-              if (fieldName === 'location_count' && value === 1) return true;
+              // Special case: location_count and employee_count of 1 are often defaults, treat as empty
+              if ((fieldName === 'location_count' || fieldName === 'employee_count') && value === 1) return true;
               if (typeof value === 'number') return false; // Other numbers are considered filled
               return false;
             };
@@ -263,9 +263,10 @@ CRITICAL: Extract owner goals:
               updateData.location_count = extractedData.location_count;
             }
             // Handle employee_count from additional_info
+            // Treat employee_count=1 as placeholder similar to location_count
             if (extractedData.additional_info) {
               const empMatch = extractedData.additional_info.match(/(\d+)\s*employees?/i);
-              if (empMatch && isEmptyOrPlaceholder(userDeal.employee_count)) {
+              if (empMatch && isEmptyOrPlaceholder(userDeal.employee_count, 'employee_count')) {
                 updateData.employee_count = parseInt(empMatch[1], 10);
               }
             }
