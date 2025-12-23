@@ -311,6 +311,28 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Verify ownership via user client before using service role
+    const userClient = createClient(
+      supabaseUrl!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+    );
+
+    const { data: userDeal, error: accessError } = await userClient
+      .from('deals')
+      .select('id, tracker_id')
+      .eq('id', dealId)
+      .single();
+
+    if (accessError || !userDeal) {
+      console.error('[enrich-deal] Access denied for deal:', dealId, accessError?.message);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Deal not found or access denied' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Now safe to use SERVICE_ROLE_KEY
     const supabase = createClient(supabaseUrl!, supabaseKey!);
 
     // Fetch deal

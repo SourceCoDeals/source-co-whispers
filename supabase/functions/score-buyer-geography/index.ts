@@ -376,6 +376,31 @@ serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const authHeader = req.headers.get("Authorization")!;
+    
+    // Create user client to verify ownership via RLS
+    const userClient = createClient(
+      supabaseUrl,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    // Verify user has access to this deal via RLS
+    const { data: userDeal, error: accessError } = await userClient
+      .from("deals")
+      .select("id, tracker_id")
+      .eq("id", dealId)
+      .single();
+
+    if (accessError || !userDeal) {
+      console.error("Access denied for deal:", dealId, accessError?.message);
+      return new Response(JSON.stringify({ error: "Deal not found or access denied" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Now safe to use SERVICE_ROLE_KEY
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 

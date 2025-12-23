@@ -106,6 +106,15 @@ serve(async (req) => {
   }
 
   try {
+    // Verify authentication
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { dealId, query, messages } = await req.json();
     
     if (!dealId || !query) {
@@ -121,6 +130,30 @@ serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    
+    // Create user client to verify ownership via RLS
+    const userClient = createClient(
+      supabaseUrl,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    // Verify user has access to this deal via RLS
+    const { data: userDeal, error: accessError } = await userClient
+      .from("deals")
+      .select("id, tracker_id")
+      .eq("id", dealId)
+      .single();
+
+    if (accessError || !userDeal) {
+      console.error("Access denied for deal:", dealId, accessError?.message);
+      return new Response(
+        JSON.stringify({ error: "Deal not found or access denied" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Now safe to use SERVICE_ROLE_KEY for efficient querying
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 

@@ -346,7 +346,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Fetch buyer data
+    // Verify user has access to this buyer via RLS
+    const { data: userBuyer, error: accessError } = await supabase
+      .from('buyers')
+      .select('id, tracker_id')
+      .eq('id', buyerId)
+      .single();
+
+    if (accessError || !userBuyer) {
+      console.error('Access denied for buyer:', buyerId, accessError?.message);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Buyer not found or access denied' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Fetch buyer data (already verified ownership)
     const { data: buyer, error: buyerError } = await supabase
       .from('buyers')
       .select('*')
