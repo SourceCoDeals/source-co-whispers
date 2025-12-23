@@ -149,7 +149,7 @@ Best regards`);
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="w-4 h-4" /></Button>
           <div className="flex-1">
-            <h1 className="text-2xl font-display font-bold">Outreach Tracker</h1>
+            <h1 className="text-2xl font-display font-bold">Buyer History</h1>
             <p className="text-muted-foreground">{deal?.deal_name} · {approvedBuyers.length} approved buyers</p>
           </div>
           <Button variant="outline" onClick={() => navigate(`/deals/${id}/matching`)}>Manage Approved Buyers</Button>

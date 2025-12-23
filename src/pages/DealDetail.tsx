@@ -296,7 +296,7 @@ export default function DealDetail() {
               <Users className="w-4 h-4 mr-2" />View Buyer Matches
             </Button>
             <Button variant="outline" onClick={() => navigate(`/deals/${id}/introductions`)}>
-              Track Introductions
+              Buyer History
             </Button>
           </div>
         </EditableSection>
