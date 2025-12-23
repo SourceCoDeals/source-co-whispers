@@ -251,7 +251,8 @@ async function scrapeWebsite(firecrawlApiKey: string, url: string): Promise<stri
   if (!response.ok) {
     const errorText = await response.text();
     console.error('[enrich-deal] Firecrawl error:', response.status, errorText);
-    throw new Error(`Failed to scrape website: ${response.status}`);
+    // Return empty string instead of throwing - website may be unavailable
+    return '';
   }
 
   const data = await response.json();
@@ -426,9 +427,10 @@ Deno.serve(async (req) => {
     const websiteContent = await scrapeWebsite(firecrawlApiKey, deal.company_website);
     
     if (!websiteContent || websiteContent.length < 100) {
+      console.log('[enrich-deal] Website could not be scraped or content too short');
       return new Response(
-        JSON.stringify({ success: false, error: 'Could not scrape website content' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'Could not scrape website content', updatedFields: [], skippedFields: [] }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
