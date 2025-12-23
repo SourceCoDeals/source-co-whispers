@@ -14,6 +14,7 @@ export interface PEFirm {
   hq_region: string | null;
   num_platforms: number | null;
   portfolio_companies: string[] | null;
+  has_fee_agreement: boolean | null;
   created_at: string;
   updated_at: string;
 }
@@ -36,6 +37,8 @@ export interface Platform {
   min_ebitda: number | null;
   max_ebitda: number | null;
   ebitda_sweet_spot: number | null;
+  // Fee agreement
+  has_fee_agreement: boolean | null;
   // Timestamps
   created_at: string;
   updated_at: string;
