@@ -742,6 +742,7 @@ export type Database = {
           id: string
           industry_type: string | null
           key_risks: string[] | null
+          last_enriched_at: string | null
           location_count: number | null
           owner_goals: string | null
           ownership_structure: string | null
@@ -793,6 +794,7 @@ export type Database = {
           id?: string
           industry_type?: string | null
           key_risks?: string[] | null
+          last_enriched_at?: string | null
           location_count?: number | null
           owner_goals?: string | null
           ownership_structure?: string | null
@@ -844,6 +846,7 @@ export type Database = {
           id?: string
           industry_type?: string | null
           key_risks?: string[] | null
+          last_enriched_at?: string | null
           location_count?: number | null
           owner_goals?: string | null
           ownership_structure?: string | null

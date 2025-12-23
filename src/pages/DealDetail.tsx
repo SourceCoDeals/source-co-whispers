@@ -16,6 +16,8 @@ import { ContactCard } from "@/components/ContactCard";
 import { DealTranscriptsSection } from "@/components/DealTranscriptsSection";
 import { DealHistorySection } from "@/components/DealHistorySection";
 import { DealNotesSection } from "@/components/DealNotesSection";
+import { DealDetailSkeleton } from "@/components/skeletons/DealDetailSkeleton";
+import { SourceBadge } from "@/components/SourceBadge";
 
 import {
   Collapsible,
@@ -64,11 +66,22 @@ export default function DealDetail() {
     return false;
   };
 
-  // Check if deal needs auto-enrichment
+  // Check if deal needs auto-enrichment (with caching - only enrich if not enriched in last 24 hours)
   const needsEnrichment = (dealData: any) => {
     // Has sources to enrich from?
     const hasSources = !!dealData.transcript_link || !!dealData.additional_info || !!dealData.company_website;
     if (!hasSources) return false;
+    
+    // Check if already enriched recently (within 24 hours)
+    if (dealData.last_enriched_at) {
+      const lastEnrichedTime = new Date(dealData.last_enriched_at).getTime();
+      const now = Date.now();
+      const hoursSinceEnrichment = (now - lastEnrichedTime) / (1000 * 60 * 60);
+      if (hoursSinceEnrichment < 24) {
+        console.log(`[DealDetail] Skipping auto-enrichment - last enriched ${hoursSinceEnrichment.toFixed(1)} hours ago`);
+        return false;
+      }
+    }
     
     // Check if key fields are missing
     const missingOverview = isEmptyOrPlaceholder(dealData.company_overview) || (dealData.company_overview?.length || 0) < 50;
@@ -213,13 +226,17 @@ export default function DealDetail() {
   };
 
   const saveSection = useCallback(async (updates: any) => {
+    // Optimistic update - immediately update local state
+    setDeal((prev: any) => ({ ...prev, ...updates }));
+    
     const { error } = await supabase.from("deals").update({ ...updates, updated_at: new Date().toISOString() }).eq("id", id);
     if (error) {
       toast({ title: "Save failed", description: error.message, variant: "destructive" });
+      // Rollback on error
+      await loadData();
       throw error;
     }
     toast({ title: "Saved", description: "Changes saved successfully." });
-    await loadData();
   }, [id, toast]);
 
   const handleExtractTranscript = async () => {
@@ -299,7 +316,7 @@ export default function DealDetail() {
   const hasLowConfidenceData = deal?.revenue_confidence === 'low' || deal?.ebitda_confidence === 'low';
   const hasFollowupQuestions = deal?.financial_followup_questions?.length > 0;
 
-  if (isLoading) return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
+  if (isLoading) return <AppLayout><DealDetailSkeleton /></AppLayout>;
   if (!deal) return <AppLayout><div className="text-center py-12">Deal not found</div></AppLayout>;
 
   return (
