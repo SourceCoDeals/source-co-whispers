@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { CSVImport } from "@/components/CSVImport";
+import { DealCSVImport } from "@/components/DealCSVImport";
 import { StructuredCriteriaPanel } from "@/components/StructuredCriteriaPanel";
 import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -1162,6 +1163,9 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
           </TabsContent>
 
           <TabsContent value="deals" className="mt-4 space-y-4">
+            <div className="flex justify-end mb-2">
+              <DealCSVImport trackerId={id!} onComplete={loadData} />
+            </div>
             <div className="bg-card rounded-lg border divide-y">
               {deals.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">No deals yet. List a deal to match it with buyers.</div>

@@ -41,3 +41,6 @@ verify_jwt = true
 
 [functions.analyze-deal-notes]
 verify_jwt = true
+
+[functions.map-deal-csv-columns]
+verify_jwt = true
