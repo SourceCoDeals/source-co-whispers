@@ -385,20 +385,43 @@ function analyzeEngagementSignals(callIntelligence: any[] | null): EngagementSig
   return signals;
 }
 
-// Score SIZE category - with strict enforcement for small deals
-function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore {
+// Score SIZE category - SIZE IS A GATING FACTOR
+// When deal is too small for buyer, it should significantly limit the overall score
+// Even if geography and services are perfect, a too-small deal is rarely a fit
+function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore & { sizeMultiplier: number } {
   const dealRevenue = deal.revenue || 0;
   const dealLocations = deal.location_count || 1;
   
-  // STRICT: Disqualify if deal revenue is below buyer's minimum
-  if (buyer.min_revenue && dealRevenue < buyer.min_revenue) {
+  // Calculate a "size multiplier" that will be applied to the final composite score
+  // This enforces the rule that size matters more than other factors when it's wrong
+  let sizeMultiplier = 1.0;
+  
+  // STRICT: Hard disqualify if deal revenue is significantly below buyer's minimum (more than 30% below)
+  if (buyer.min_revenue && dealRevenue < buyer.min_revenue * 0.7) {
     const percentBelow = ((buyer.min_revenue - dealRevenue) / buyer.min_revenue * 100).toFixed(0);
     return {
       score: 0,
-      reasoning: `Deal revenue ($${dealRevenue}M) is ${percentBelow}% below buyer minimum ($${buyer.min_revenue}M)`,
+      reasoning: `Deal revenue ($${dealRevenue}M) is ${percentBelow}% below buyer minimum ($${buyer.min_revenue}M) - too small`,
       isDisqualified: true,
-      disqualificationReason: `Revenue ($${dealRevenue}M) below minimum threshold ($${buyer.min_revenue}M)`,
-      confidence: 'high'
+      disqualificationReason: `Revenue ($${dealRevenue}M) significantly below minimum ($${buyer.min_revenue}M)`,
+      confidence: 'high',
+      sizeMultiplier: 0
+    };
+  }
+  
+  // Soft disqualification: Below minimum but within 30% - apply heavy penalty multiplier
+  if (buyer.min_revenue && dealRevenue < buyer.min_revenue) {
+    const percentBelow = ((buyer.min_revenue - dealRevenue) / buyer.min_revenue * 100);
+    // If 20% below, multiplier = 0.5; if 10% below, multiplier = 0.65; etc.
+    sizeMultiplier = 0.35 + (1 - percentBelow / 30) * 0.35; // Range from 0.35 to 0.70
+    
+    return {
+      score: Math.round(25 + (30 - percentBelow)), // Score between 25-55
+      reasoning: `Deal revenue ($${dealRevenue}M) is ${percentBelow.toFixed(0)}% below buyer minimum ($${buyer.min_revenue}M) - challenging fit`,
+      isDisqualified: false, // Not hard-disqualified, but heavily penalized
+      disqualificationReason: null,
+      confidence: 'high',
+      sizeMultiplier
     };
   }
   
@@ -408,7 +431,8 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore {
       reasoning: `Deal revenue ($${dealRevenue}M) significantly exceeds buyer maximum ($${buyer.max_revenue}M)`,
       isDisqualified: true,
       disqualificationReason: `Revenue ($${dealRevenue}M) exceeds maximum threshold ($${buyer.max_revenue}M)`,
-      confidence: 'high'
+      confidence: 'high',
+      sizeMultiplier: 0
     };
   }
   
@@ -418,21 +442,29 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore {
     (buyer.target_geographies && buyer.target_geographies.length > 3) ||
     (buyer.geographic_footprint && buyer.geographic_footprint.length > 3);
     
-  if (dealLocations === 1 && buyerIsNationalPlatform && buyer.min_revenue && dealRevenue < buyer.min_revenue * 1.5) {
-    return {
-      score: 15,
-      reasoning: `Single-location deal ($${dealRevenue}M) unlikely to attract national platform with ${buyer.total_acquisitions || 'multiple'} acquisitions`,
-      isDisqualified: true,
-      disqualificationReason: `Single-location deal too small for national platform (min $${buyer.min_revenue}M)`,
-      confidence: 'high'
-    };
+  // Single-location deals are penalized for national platforms  
+  if (dealLocations === 1 && buyerIsNationalPlatform) {
+    // If they're also below the sweet spot, it's a double penalty
+    if (buyer.revenue_sweet_spot && dealRevenue < buyer.revenue_sweet_spot * 0.6) {
+      sizeMultiplier = Math.min(sizeMultiplier, 0.45);
+      return {
+        score: 20,
+        reasoning: `Single-location deal ($${dealRevenue}M) significantly below national platform's sweet spot ($${buyer.revenue_sweet_spot}M)`,
+        isDisqualified: true,
+        disqualificationReason: `Single location + small revenue unlikely to attract national platform`,
+        confidence: 'high',
+        sizeMultiplier
+      };
+    }
+    // Just single location but revenue OK - mild penalty
+    sizeMultiplier = Math.min(sizeMultiplier, 0.80);
   }
   
   let score = 50; // Baseline
   let reasons: string[] = [];
   let hasData = false;
   
-  // Revenue scoring with stricter penalties for being below minimum
+  // Revenue scoring with penalties for being near but not at minimum
   if (buyer.min_revenue || buyer.max_revenue || buyer.revenue_sweet_spot) {
     hasData = true;
     const min = buyer.min_revenue || 0;
@@ -440,20 +472,27 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore {
     const sweet = buyer.revenue_sweet_spot || (min + max) / 2;
     
     if (dealRevenue >= min && dealRevenue <= max) {
-      // Within range
-      const distanceFromSweet = Math.abs(dealRevenue - sweet);
-      const rangeSize = max - min;
-      const fitPercent = rangeSize > 0 ? 1 - (distanceFromSweet / rangeSize) : 1;
-      score = 70 + (fitPercent * 30);
-      reasons.push(`Revenue ($${dealRevenue}M) within target range ($${min}-${max}M)`);
-    } else if (dealRevenue < min) {
-      // Strict penalty for being below minimum
-      const gap = (min - dealRevenue) / min;
-      score = Math.max(10, 40 - (gap * 50)); // Heavier penalty
-      reasons.push(`Revenue ($${dealRevenue}M) below target ($${min}M min)`);
-    } else {
+      // Within range - check proximity to sweet spot
+      if (sweet && dealRevenue >= sweet * 0.8 && dealRevenue <= sweet * 1.2) {
+        score = 95;
+        sizeMultiplier = Math.min(sizeMultiplier, 1.05); // Slight boost
+        reasons.push(`Revenue ($${dealRevenue}M) near sweet spot ($${sweet}M) ✓`);
+      } else if (dealRevenue >= min && dealRevenue < min * 1.3) {
+        // Within range but on the low end - still penalize slightly
+        score = 65;
+        sizeMultiplier = Math.min(sizeMultiplier, 0.85);
+        reasons.push(`Revenue ($${dealRevenue}M) within range but on low end (min $${min}M)`);
+      } else {
+        const distanceFromSweet = Math.abs(dealRevenue - sweet);
+        const rangeSize = max - min;
+        const fitPercent = rangeSize > 0 ? 1 - (distanceFromSweet / rangeSize) : 1;
+        score = 70 + (fitPercent * 25);
+        reasons.push(`Revenue ($${dealRevenue}M) within target range ($${min}-${max}M)`);
+      }
+    } else if (dealRevenue > max) {
       const gap = (dealRevenue - max) / max;
       score = Math.max(20, 60 - (gap * 60));
+      sizeMultiplier = Math.min(sizeMultiplier, 0.75);
       reasons.push(`Revenue ($${dealRevenue}M) above target ($${max}M max)`);
     }
   }
@@ -474,15 +513,19 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore {
         reasons.push(`EBITDA ($${dealEbitda.toFixed(1)}M) within range`);
       } else if (dealEbitda < min) {
         score = Math.max(score - 15, 10);
+        sizeMultiplier = Math.min(sizeMultiplier, 0.75);
         reasons.push(`EBITDA ($${dealEbitda.toFixed(1)}M) below minimum ($${min}M)`);
       }
     }
   }
   
-  // Location count consideration - significant penalty for single location
-  if (dealLocations === 1) {
-    score = Math.max(10, score - 10); // Penalty for single location
-    reasons.push(`Single-location deal may limit buyer interest`);
+  // Location count consideration - significant penalty for single location with national buyers
+  if (dealLocations === 1 && buyerIsNationalPlatform) {
+    score = Math.max(10, score - 15);
+    reasons.push(`Single-location deal facing national platform`);
+  } else if (dealLocations === 1) {
+    score = Math.max(10, score - 5);
+    reasons.push(`Single location - limited scale`);
   } else if (dealLocations >= 3) {
     score = Math.min(100, score + 5);
     reasons.push(`Multi-location (${dealLocations} locations) provides infrastructure`);
@@ -493,7 +536,8 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore {
     reasoning: reasons.length > 0 ? reasons.join(". ") : "Limited size criteria data available",
     isDisqualified: false,
     disqualificationReason: null,
-    confidence: hasData ? 'high' : 'low'
+    confidence: hasData ? 'high' : 'low',
+    sizeMultiplier
   };
 }
 
@@ -1179,8 +1223,10 @@ serve(async (req) => {
       
       const isDisqualified = disqualificationReasons.length > 0;
       
-      // Calculate composite score (0 if disqualified)
-      const compositeScore = isDisqualified ? 0 : (
+      // Calculate base composite score (0 if disqualified)
+      // Then apply sizeMultiplier - this enforces that size is a GATING factor
+      // Even perfect geography/services can't overcome a too-small deal
+      let baseComposite = isDisqualified ? 0 : (
         (sizeScore.score * weights.size) +
         (geographyScore.score * weights.geography) +
         (servicesScore.score * weights.services) +
@@ -1189,10 +1235,17 @@ serve(async (req) => {
         engagementBonus // Engagement bonus adds up to 15 points
       );
       
-      // Generate overall reasoning
+      // Apply size multiplier - this is the key mechanism for making size a gating factor
+      // When size is below minimums, sizeMultiplier < 1.0 caps the maximum achievable score
+      const compositeScore = baseComposite * sizeScore.sizeMultiplier;
+      
+      // Generate overall reasoning with size context
       let overallReasoning = "";
       if (isDisqualified) {
         overallReasoning = `❌ DISQUALIFIED: ${disqualificationReasons[0]}`;
+      } else if (sizeScore.sizeMultiplier < 0.7) {
+        // Size is a major limiting factor
+        overallReasoning = `⚠️ Size challenge: ${sizeScore.reasoning}. Even with ${geographyScore.reasoning.split('.')[0].toLowerCase()}, size limits fit.`;
       } else if (compositeScore >= 75) {
         overallReasoning = `✅ Strong fit: ${geographyScore.reasoning.split('.')[0]}. ${servicesScore.reasoning.split('.')[0]}.`;
         if (engagementSignals.signals.length > 0) {
@@ -1200,11 +1253,14 @@ serve(async (req) => {
         }
       } else if (compositeScore >= 50) {
         overallReasoning = `✓ Moderate fit: ${geographyScore.reasoning.split('.')[0]}. Consider for outreach.`;
+        if (sizeScore.sizeMultiplier < 0.9) {
+          overallReasoning += ` Size may be a limiting factor.`;
+        }
         if (engagementSignals.signals.length > 0) {
           overallReasoning += ` 🎯 ${engagementSignals.signals[0]}.`;
         }
       } else {
-        overallReasoning = `⚠️ Long shot: ${geographyScore.reasoning.split('.')[0]}. ${sizeScore.reasoning.split('.')[0]}.`;
+        overallReasoning = `⚠️ Long shot: ${sizeScore.reasoning}. ${geographyScore.reasoning.split('.')[0]}.`;
       }
       
       return {
