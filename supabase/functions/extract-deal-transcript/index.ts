@@ -336,9 +336,17 @@ From each call transcript, determine:
 - Revenue (explicit or inferred)
 - EBITDA (explicit or inferred)
 - EBITDA margin (if possible)
+- Location count (number of physical sites/shops/branches)
 - How confident the data is and what it is based on
 
 If something is unclear, you must flag it rather than guessing.
+
+## LOCATION COUNT EXTRACTION
+CRITICAL: Always extract the number of physical locations, shops, branches, offices, or sites.
+- Look for: "X locations", "X shops", "X branches", "X offices", "sites across", "operate out of X", "facilities in"
+- Count individual location mentions if total not stated (e.g., "shops in Dallas, Houston, and Austin" = 3)
+- Look for expansion mentions: "opened 2 new locations", "growing from 4 to 6 shops"
+- Single location business = 1
 
 ## REVENUE EXTRACTION
 - If the owner states revenue directly (e.g., "we do about $7 million a year"), record it as revenue.
