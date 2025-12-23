@@ -32,3 +32,6 @@ verify_jwt = true
 
 [functions.score-buyer-deal]
 verify_jwt = true
+
+[functions.query-buyer-universe]
+verify_jwt = false
