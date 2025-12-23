@@ -162,12 +162,38 @@ export default function DealMatching() {
     if (selected.size === 0) return;
     const selectedArray = Array.from(selected);
     
-    // Update scores to mark as approved
-    const updates = selectedArray.map(buyerId => 
-      supabase.from("buyer_deal_scores").update({ selected_for_outreach: true }).eq("deal_id", id).eq("buyer_id", buyerId)
-    );
-    await Promise.all(updates);
-    setScores(scores.map(s => selected.has(s.buyer_id) ? { ...s, selected_for_outreach: true } : s));
+    // Upsert scores to mark as approved (creates record if it doesn't exist)
+    for (const buyerId of selectedArray) {
+      const { error } = await supabase
+        .from("buyer_deal_scores")
+        .upsert({
+          buyer_id: buyerId,
+          deal_id: id,
+          selected_for_outreach: true,
+          scored_at: new Date().toISOString()
+        }, {
+          onConflict: 'buyer_id,deal_id'
+        });
+      
+      if (error) {
+        console.error(`Failed to approve buyer ${buyerId}:`, error);
+        toast({ title: "Error", description: `Failed to approve buyer: ${error.message}`, variant: "destructive" });
+        return;
+      }
+    }
+    
+    // Update local state
+    const existingBuyerIds = new Set(scores.map(s => s.buyer_id));
+    const newScores = [...scores];
+    for (const buyerId of selectedArray) {
+      if (existingBuyerIds.has(buyerId)) {
+        const idx = newScores.findIndex(s => s.buyer_id === buyerId);
+        if (idx >= 0) newScores[idx] = { ...newScores[idx], selected_for_outreach: true };
+      } else {
+        newScores.push({ buyer_id: buyerId, deal_id: id, selected_for_outreach: true, scored_at: new Date().toISOString() });
+      }
+    }
+    setScores(newScores);
     
     // Trigger contact discovery for each approved buyer
     toast({ title: `${selected.size} buyers approved. Finding contacts...` });
@@ -197,28 +223,37 @@ export default function DealMatching() {
   const handleMarkAsPassed = async (category: string, reason: string, notes: string) => {
     if (!buyerToPass || !id) return;
     
+    const passData = {
+      buyer_id: buyerToPass.id,
+      deal_id: id,
+      passed_on_deal: true,
+      pass_category: category,
+      pass_reason: reason,
+      pass_notes: notes,
+      passed_at: new Date().toISOString(),
+      scored_at: new Date().toISOString(),
+    };
+    
     const { error } = await supabase
       .from("buyer_deal_scores")
-      .update({
-        passed_on_deal: true,
-        pass_category: category,
-        pass_reason: reason,
-        pass_notes: notes,
-        passed_at: new Date().toISOString(),
-      })
-      .eq("deal_id", id)
-      .eq("buyer_id", buyerToPass.id);
+      .upsert(passData, { onConflict: 'buyer_id,deal_id' });
 
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
       return;
     }
 
-    setScores(scores.map(s => 
-      s.buyer_id === buyerToPass.id 
-        ? { ...s, passed_on_deal: true, pass_category: category, pass_reason: reason, pass_notes: notes, passed_at: new Date().toISOString() }
-        : s
-    ));
+    // Update local state
+    const existingIdx = scores.findIndex(s => s.buyer_id === buyerToPass.id);
+    if (existingIdx >= 0) {
+      setScores(scores.map(s => 
+        s.buyer_id === buyerToPass.id 
+          ? { ...s, passed_on_deal: true, pass_category: category, pass_reason: reason, pass_notes: notes, passed_at: new Date().toISOString() }
+          : s
+      ));
+    } else {
+      setScores([...scores, passData]);
+    }
     toast({ title: "Buyer marked as passed", description: `${buyerToPass.platform_company_name || buyerToPass.pe_firm_name} - ${reason}` });
   };
 
@@ -228,25 +263,34 @@ export default function DealMatching() {
   };
 
   const handleInterestedToggle = async (buyer: any, interested: boolean) => {
+    const interestedData = {
+      buyer_id: buyer.id,
+      deal_id: id,
+      interested,
+      interested_at: new Date().toISOString(),
+      scored_at: new Date().toISOString(),
+    };
+    
     const { error } = await supabase
       .from("buyer_deal_scores")
-      .update({
-        interested,
-        interested_at: new Date().toISOString(),
-      })
-      .eq("deal_id", id)
-      .eq("buyer_id", buyer.id);
+      .upsert(interestedData, { onConflict: 'buyer_id,deal_id' });
 
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
       return;
     }
 
-    setScores(scores.map(s => 
-      s.buyer_id === buyer.id 
-        ? { ...s, interested, interested_at: new Date().toISOString() }
-        : s
-    ));
+    // Update local state
+    const existingIdx = scores.findIndex(s => s.buyer_id === buyer.id);
+    if (existingIdx >= 0) {
+      setScores(scores.map(s => 
+        s.buyer_id === buyer.id 
+          ? { ...s, interested, interested_at: new Date().toISOString() }
+          : s
+      ));
+    } else {
+      setScores([...scores, interestedData]);
+    }
     toast({ 
       title: interested ? "Marked as interested" : "Marked as not interested",
       description: buyer.platform_company_name || buyer.pe_firm_name
