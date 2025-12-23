@@ -109,6 +109,7 @@ interface BuyerDataSectionProps {
   className?: string;
   emptyMessage?: string;
   isEmpty?: boolean;
+  actions?: ReactNode;
 }
 
 export function BuyerDataSection({ 
@@ -117,13 +118,17 @@ export function BuyerDataSection({
   children, 
   className,
   emptyMessage = "No data available",
-  isEmpty = false
+  isEmpty = false,
+  actions
 }: BuyerDataSectionProps) {
   return (
     <div className={cn("bg-card rounded-lg border", className)}>
-      <div className="flex items-center gap-2 px-4 py-3 border-b bg-muted/30">
-        {icon}
-        <h3 className="font-semibold text-sm">{title}</h3>
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
+        <div className="flex items-center gap-2">
+          {icon}
+          <h3 className="font-semibold text-sm">{title}</h3>
+        </div>
+        {actions}
       </div>
       <div className="p-4">
         {isEmpty ? (
