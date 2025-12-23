@@ -15,6 +15,7 @@ import { EditableSection } from "@/components/EditableSection";
 import { ContactCard } from "@/components/ContactCard";
 import { DealTranscriptsSection } from "@/components/DealTranscriptsSection";
 import { DealHistorySection } from "@/components/DealHistorySection";
+import { DealNotesSection } from "@/components/DealNotesSection";
 
 import {
   Collapsible,
@@ -248,7 +249,14 @@ export default function DealDetail() {
           />
         </div>
 
-        {/* Website & Actions */}
+        {/* General Notes Section */}
+        <DealNotesSection
+          dealId={id!}
+          existingExtractionSources={deal.extraction_sources as Record<string, { source: string; extractedAt: string }> | undefined}
+          onNotesApplied={loadData}
+        />
+
+
         <EditableSection
           title="Website & Actions"
           icon={<Globe className="w-5 h-5" />}
