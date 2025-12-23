@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
 import { BuyerDataSection, DataField, DataListField, DataGrid } from "@/components/BuyerDataSection";
-import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2, Briefcase, DollarSign, TrendingUp, Linkedin, Sparkles, CheckCircle, Clock, ChevronDown, ChevronUp, Check } from "lucide-react";
+import { BuyerSectionEditDialog } from "@/components/BuyerSectionEditDialog";
+import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2, Briefcase, DollarSign, TrendingUp, Linkedin, Sparkles, CheckCircle, Clock, ChevronDown, ChevronUp, Check, Pencil } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,16 @@ import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Card } from "@/components/ui/card";
+
+type SectionType = 
+  | 'company_info'
+  | 'hq_address'
+  | 'business_description'
+  | 'investment_criteria'
+  | 'geographic_footprint'
+  | 'deal_structure'
+  | 'customer_info'
+  | 'acquisition_history';
 
 export default function BuyerDetail() {
   const { id } = useParams();
@@ -55,6 +66,9 @@ export default function BuyerDetail() {
   
   // Deal history state
   const [dealHistory, setDealHistory] = useState<any[]>([]);
+
+  // Section edit state
+  const [editingSection, setEditingSection] = useState<SectionType | null>(null);
 
   useEffect(() => { loadData(); }, [id, dealId]);
 
@@ -697,7 +711,11 @@ export default function BuyerDetail() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               
               {/* 1. Company & Firm Identification */}
-              <BuyerDataSection title="Company & Firm Info" icon={<Building2 className="w-4 h-4 text-muted-foreground" />}>
+              <BuyerDataSection 
+                title="Company & Firm Info" 
+                icon={<Building2 className="w-4 h-4 text-muted-foreground" />}
+                actions={<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingSection('company_info')}><Pencil className="w-3.5 h-3.5" /></Button>}
+              >
                 <DataGrid columns={2}>
                   <DataField label="Buyer Company Name" value={buyer.platform_company_name} />
                   <DataField label="PE / Parent Firm" value={buyer.pe_firm_name} />
@@ -710,7 +728,11 @@ export default function BuyerDetail() {
               </BuyerDataSection>
 
               {/* 2. Headquarter Address */}
-              <BuyerDataSection title="Headquarter Address" icon={<MapPin className="w-4 h-4 text-muted-foreground" />}>
+              <BuyerDataSection 
+                title="Headquarter Address" 
+                icon={<MapPin className="w-4 h-4 text-muted-foreground" />}
+                actions={<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingSection('hq_address')}><Pencil className="w-3.5 h-3.5" /></Button>}
+              >
                 <div className="space-y-4">
                   {/* Prominent full address display */}
                   {(buyer.hq_city || buyer.hq_state || buyer.hq_country) && (
@@ -727,7 +749,11 @@ export default function BuyerDetail() {
               </BuyerDataSection>
 
               {/* 3. Business Description */}
-              <BuyerDataSection title="Business Description" icon={<Briefcase className="w-4 h-4 text-muted-foreground" />}>
+              <BuyerDataSection 
+                title="Business Description" 
+                icon={<Briefcase className="w-4 h-4 text-muted-foreground" />}
+                actions={<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingSection('business_description')}><Pencil className="w-3.5 h-3.5" /></Button>}
+              >
                 <div className="space-y-4">
                   <DataField label="Primary Services / Products" value={buyer.services_offered} />
                   <DataField label="Industry Vertical" value={buyer.industry_vertical} />
@@ -738,7 +764,11 @@ export default function BuyerDetail() {
               </BuyerDataSection>
 
               {/* 4. Platform Investment Criteria - What they're looking for in acquisitions */}
-              <BuyerDataSection title="Platform Investment Criteria" icon={<Target className="w-4 h-4 text-muted-foreground" />}>
+              <BuyerDataSection 
+                title="Platform Investment Criteria" 
+                icon={<Target className="w-4 h-4 text-muted-foreground" />}
+                actions={<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingSection('investment_criteria')}><Pencil className="w-3.5 h-3.5" /></Button>}
+              >
                 <div className="space-y-4">
                   {buyer.thesis_summary && (
                     <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
@@ -766,7 +796,11 @@ export default function BuyerDetail() {
               </BuyerDataSection>
 
               {/* 5. Geographic Footprint - Standalone (Geography only) */}
-              <BuyerDataSection title="Geographic Footprint" icon={<Globe className="w-4 h-4 text-muted-foreground" />}>
+              <BuyerDataSection 
+                title="Geographic Footprint" 
+                icon={<Globe className="w-4 h-4 text-muted-foreground" />}
+                actions={<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingSection('geographic_footprint')}><Pencil className="w-3.5 h-3.5" /></Button>}
+              >
                 <div className="space-y-4">
                   <DataListField label="Current Locations" items={buyer.geographic_footprint} variant="default" collapsible collapsedCount={5} />
                   <DataListField label="Service Regions" items={buyer.service_regions} variant="default" collapsible collapsedCount={5} />
@@ -776,7 +810,11 @@ export default function BuyerDetail() {
               </BuyerDataSection>
 
               {/* 6. Deal Structure */}
-              <BuyerDataSection title="Deal Structure" icon={<DollarSign className="w-4 h-4 text-muted-foreground" />}>
+              <BuyerDataSection 
+                title="Deal Structure" 
+                icon={<DollarSign className="w-4 h-4 text-muted-foreground" />}
+                actions={<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingSection('deal_structure')}><Pencil className="w-3.5 h-3.5" /></Button>}
+              >
                 <div className="space-y-4">
                   <p className="text-xs font-semibold uppercase text-muted-foreground">Size Criteria</p>
                   <DataGrid columns={3}>
@@ -820,7 +858,11 @@ export default function BuyerDetail() {
               </BuyerDataSection>
 
               {/* 7. Customer/End Market Info */}
-              <BuyerDataSection title="Customer / End Market Info" icon={<Users className="w-4 h-4 text-muted-foreground" />}>
+              <BuyerDataSection 
+                title="Customer / End Market Info" 
+                icon={<Users className="w-4 h-4 text-muted-foreground" />}
+                actions={<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingSection('customer_info')}><Pencil className="w-3.5 h-3.5" /></Button>}
+              >
                 <div className="space-y-4">
                   <p className="text-xs font-semibold uppercase text-muted-foreground">Current Customers</p>
                   <DataGrid columns={2}>
@@ -842,7 +884,11 @@ export default function BuyerDetail() {
               </BuyerDataSection>
 
               {/* 8. Platform Acquisition History */}
-              <BuyerDataSection title="Platform Acquisition History" icon={<History className="w-4 h-4 text-muted-foreground" />}>
+              <BuyerDataSection 
+                title="Platform Acquisition History" 
+                icon={<History className="w-4 h-4 text-muted-foreground" />}
+                actions={<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingSection('acquisition_history')}><Pencil className="w-3.5 h-3.5" /></Button>}
+              >
                 <div className="space-y-4">
                   {/* Prominent Last Acquisition Date */}
                   {buyer.last_acquisition_date && (
@@ -1288,6 +1334,17 @@ export default function BuyerDetail() {
             </BuyerDataSection>
           </TabsContent>
         </Tabs>
+
+        {/* Section Edit Dialog */}
+        {editingSection && (
+          <BuyerSectionEditDialog
+            open={!!editingSection}
+            onOpenChange={(open) => !open && setEditingSection(null)}
+            section={editingSection}
+            buyer={buyer}
+            onSave={loadData}
+          />
+        )}
       </div>
     </AppLayout>
   );
