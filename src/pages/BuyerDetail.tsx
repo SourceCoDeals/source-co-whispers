@@ -811,7 +811,9 @@ export default function BuyerDetail() {
                 <MainContactSection 
                   buyerId={id!} 
                   contacts={contacts} 
-                  onContactUpdate={loadData} 
+                  onContactUpdate={loadData}
+                  peFirmName={buyer.pe_firm_name}
+                  platformCompanyName={buyer.platform_company_name || undefined}
                 />
               </div>
 
@@ -1387,6 +1389,8 @@ export default function BuyerDetail() {
                   buyerId={id!} 
                   onContactAdded={loadData}
                   existingContactsCount={contacts.length}
+                  peFirmName={buyer.pe_firm_name}
+                  platformCompanyName={buyer.platform_company_name || undefined}
                 />
                 <ContactCSVImport buyerId={id!} onComplete={loadData} />
               </div>
