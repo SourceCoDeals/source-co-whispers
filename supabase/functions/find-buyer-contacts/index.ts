@@ -162,7 +162,7 @@ Website content:
 ${content.slice(0, 15000)}`;
 
   try {
-    const response = await fetch('https://api.lovable.dev/v1/chat/completions', {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${lovableApiKey}`,
@@ -306,6 +306,9 @@ Deno.serve(async (req) => {
     // Platform company contact discovery
     if (buyer.platform_website) {
       const platformPaths = [
+        '/our-executive-team',
+        '/executive-team',
+        '/leadership-team',
         '/team',
         '/leadership',
         '/about',
@@ -313,6 +316,8 @@ Deno.serve(async (req) => {
         '/our-team',
         '/management',
         '/executives',
+        '/meet-the-team',
+        '/who-we-are',
       ];
 
       const platformResult = await findBestUrl(buyer.platform_website, platformPaths, firecrawlKey);
