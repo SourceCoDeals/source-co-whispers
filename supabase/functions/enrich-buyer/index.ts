@@ -278,11 +278,13 @@ const extractPEPortfolioTool = {
 };
 
 // Prompt 6: PE Firm Target Criteria
+// NOTE: We only extract SIZE criteria from websites. Deal structure preferences 
+// (geographies, business models, exclusions, etc.) should ONLY come from transcripts/notes.
 const extractPETargetCriteriaTool = {
   type: "function",
   function: {
     name: "extract_pe_target_criteria",
-    description: "Extract target acquisition criteria from PE firm website",
+    description: "Extract target SIZE criteria only from PE firm website. Do NOT extract deal structure preferences, geography preferences, or business model preferences - those should only come from transcripts.",
     parameters: {
       type: "object",
       properties: {
@@ -301,25 +303,6 @@ const extractPETargetCriteriaTool = {
         max_ebitda: {
           type: "number",
           description: "Maximum target EBITDA in millions"
-        },
-        target_geographies: {
-          type: "array",
-          items: { type: "string" },
-          description: "Target geographic regions for acquisitions"
-        },
-        geographic_exclusions: {
-          type: "array",
-          items: { type: "string" },
-          description: "Geographic regions to avoid"
-        },
-        business_model_prefs: {
-          type: "string",
-          description: "Preferred business models"
-        },
-        business_model_exclusions: {
-          type: "array",
-          items: { type: "string" },
-          description: "Business models to avoid"
         }
       },
       required: [],
@@ -1139,26 +1122,29 @@ EXAMPLE OUTPUT:
       );
       Object.assign(extractedData, portfolio);
 
-      // Prompt 6: Target Criteria
-      console.log('Running Prompt 6: PE Target Criteria');
+      // Prompt 6: Target Criteria - SIZE ONLY
+      // NOTE: We ONLY extract size criteria from websites. Deal structure preferences
+      // (geographies, business models, exclusions, deal breakers) should ONLY come from transcripts/notes.
+      console.log('Running Prompt 6: PE Target Size Criteria (NOT deal structure)');
       const criteriaPrompt = peFirmPromptBase + `
-WHAT TO DO: Identify the firm's target acquisition criteria, including:
+WHAT TO DO: Identify the firm's target SIZE criteria ONLY:
 - What revenue or EBITDA ranges do they target?
-- What geographic regions do they focus on?
-- What business models do they prefer or avoid?
-- What are their must-haves or deal breakers?
+
+DO NOT EXTRACT:
+- Geographic preferences (target_geographies, geographic_exclusions)
+- Business model preferences (business_model_prefs, business_model_exclusions)
+- Deal structure preferences (owner roll, transition goals, deal breakers)
+These should ONLY come from call transcripts.
 
 EXAMPLE OUTPUT:
 - min_revenue: 5
 - max_revenue: 50
 - min_ebitda: 1
-- max_ebitda: 10
-- target_geographies: ["Southeast", "Texas", "Midwest"]
-- business_model_prefs: "Recurring revenue, maintenance contracts preferred"`;
+- max_ebitda: 10`;
 
       const criteria = await callAIWithTool(
         openaiApiKey,
-        'You are extracting target acquisition criteria from a PE firm website. Be precise and only include information clearly stated.',
+        'You are extracting target SIZE criteria ONLY from a PE firm website. Only extract revenue/EBITDA ranges. Do NOT extract geography preferences, business model preferences, or any deal structure preferences.',
         criteriaPrompt,
         extractPETargetCriteriaTool
       );
@@ -1240,16 +1226,22 @@ EXAMPLE OUTPUT:
       return unique;
     };
 
+    // Fields to update from website enrichment
+    // NOTE: Deal structure fields are EXCLUDED - they should ONLY come from transcripts/notes:
+    // - target_geographies, geographic_exclusions, acquisition_geography
+    // - business_model_prefs, business_model_exclusions
+    // - deal_breakers, owner_roll_requirement, owner_transition_goals
+    // - service_mix_prefs, target_business_model
     const fieldsToUpdate = [
       'services_offered', 'business_summary', 'industry_vertical', 'specialized_focus',
       'business_type', 'revenue_model', 'go_to_market_strategy',
       'primary_customer_size', 'customer_industries', 'customer_geographic_reach', 'target_customer_profile',
       'hq_city', 'hq_state', 'hq_country', 'hq_region', 'service_regions', 'geographic_footprint', 'other_office_locations',
       'thesis_summary', 'strategic_priorities', 'acquisition_appetite',
-      'target_industries', 'target_services', 'target_geographies', 'geographic_exclusions',
+      'target_industries', 'target_services',
       'portfolio_companies', 'total_acquisitions', 'acquisition_frequency', 'num_platforms',
-      'min_revenue', 'max_revenue', 'min_ebitda', 'max_ebitda',
-      'business_model_prefs', 'business_model_exclusions'
+      'min_revenue', 'max_revenue', 'min_ebitda', 'max_ebitda'
+      // REMOVED from website updates: target_geographies, geographic_exclusions, business_model_prefs, business_model_exclusions
     ];
 
     for (const field of fieldsToUpdate) {
