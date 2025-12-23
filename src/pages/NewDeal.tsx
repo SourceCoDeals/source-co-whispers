@@ -139,6 +139,23 @@ export default function NewDeal() {
     const domain = normalizeDomain(form.company_website);
     const normalizedGeography = normalizeGeography(form.geography);
 
+    // Track which fields came from notes analysis
+    const notesExtractedFields: string[] = [];
+    if (form.deal_name) notesExtractedFields.push('deal_name');
+    if (form.geography) notesExtractedFields.push('geography');
+    if (form.revenue) notesExtractedFields.push('revenue');
+    if (form.ebitda_percentage) notesExtractedFields.push('ebitda_percentage');
+    if (form.service_mix) notesExtractedFields.push('service_mix');
+    if (form.owner_goals) notesExtractedFields.push('owner_goals');
+    if (form.location_count && form.location_count !== "1") notesExtractedFields.push('location_count');
+
+    // Build initial extraction_sources if we have notes data
+    const initialSources = notesExtractedFields.length > 0 ? [{
+      source: 'notes',
+      timestamp: new Date().toISOString(),
+      fields: notesExtractedFields
+    }] : [];
+
     try {
       let companyId: string;
 
@@ -183,7 +200,7 @@ export default function NewDeal() {
         companyId = newCompany.id;
       }
 
-      // Create deal (linking to company)
+      // Create deal (linking to company) with notes-sourced extraction_sources
       const { data: dealData, error: dealError } = await supabase.from("deals").insert({
         tracker_id: trackerId,
         company_id: companyId,
@@ -198,6 +215,7 @@ export default function NewDeal() {
         additional_info: form.additional_info,
         transcript_link: form.transcript_link || null,
         location_count: parseInt(form.location_count) || 1,
+        extraction_sources: initialSources, // Mark notes-sourced fields
       }).select().single();
       
       if (dealError) { 
@@ -206,25 +224,9 @@ export default function NewDeal() {
         return; 
       }
 
-      // Step 1: If website provided, enrich from website FIRST
-      if (form.company_website) {
-        setExtractionStatus("Enriching from website...");
-        try {
-          const { data: enrichResult, error: enrichError } = await supabase.functions.invoke('enrich-deal', {
-            body: { dealId: dealData.id, onlyFillEmpty: true }
-          });
-          
-          if (enrichError) {
-            console.error('Website enrichment error:', enrichError);
-          } else if (enrichResult?.success && enrichResult.updatedFields?.length > 0) {
-            console.log(`Enriched ${enrichResult.updatedFields.length} fields from website`);
-          }
-        } catch (err) {
-          console.error('Website enrichment failed:', err);
-        }
-      }
-
-      // Step 2: If transcript link provided, extract info
+      // DATA PRIORITY ORDER: Transcript > Notes > Website
+      // Step 1: If transcript link provided, extract info FIRST (highest priority)
+      let transcriptSucceeded = false;
       if (form.transcript_link) {
         setExtractionStatus("Extracting from transcript...");
         try {
@@ -239,6 +241,7 @@ export default function NewDeal() {
               description: "Transcript extraction failed, but you can retry from the deal page." 
             });
           } else if (extractionResult?.success) {
+            transcriptSucceeded = true;
             const followupNote = extractionResult.hasFollowupQuestions ? " Some data needs clarification." : "";
             toast({ 
               title: "Deal listed!", 
@@ -254,9 +257,32 @@ export default function NewDeal() {
           console.error('Extraction failed:', err);
           toast({ title: "Deal created", description: "Transcript extraction failed." });
         }
-      } else if (form.company_website) {
-        toast({ title: "Deal listed!", description: "Enriched with data from website." });
-      } else {
+      }
+
+      // Step 2: If website provided, enrich LAST (lowest priority - will not overwrite transcript/notes data)
+      if (form.company_website) {
+        setExtractionStatus("Enriching from website...");
+        try {
+          const { data: enrichResult, error: enrichError } = await supabase.functions.invoke('enrich-deal', {
+            body: { dealId: dealData.id, onlyFillEmpty: true }
+          });
+          
+          if (enrichError) {
+            console.error('Website enrichment error:', enrichError);
+          } else if (enrichResult?.success && enrichResult.updatedFields?.length > 0) {
+            console.log(`Enriched ${enrichResult.updatedFields.length} fields from website`);
+            // Only show toast if transcript didn't run (to avoid duplicate toasts)
+            if (!form.transcript_link) {
+              toast({ title: "Deal listed!", description: "Enriched with data from website." });
+            }
+          }
+        } catch (err) {
+          console.error('Website enrichment failed:', err);
+        }
+      }
+
+      // Show generic success if no extraction ran
+      if (!form.transcript_link && !form.company_website) {
         toast({ title: "Deal listed!" });
       }
 

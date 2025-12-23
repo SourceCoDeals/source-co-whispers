@@ -729,6 +729,7 @@ export type Database = {
           ebitda_source_quote: string | null
           employee_count: number | null
           end_market_customers: string | null
+          extraction_sources: Json | null
           financial_followup_questions: string[] | null
           financial_notes: string | null
           founded_year: number | null
@@ -776,6 +777,7 @@ export type Database = {
           ebitda_source_quote?: string | null
           employee_count?: number | null
           end_market_customers?: string | null
+          extraction_sources?: Json | null
           financial_followup_questions?: string[] | null
           financial_notes?: string | null
           founded_year?: number | null
@@ -823,6 +825,7 @@ export type Database = {
           ebitda_source_quote?: string | null
           employee_count?: number | null
           end_market_customers?: string | null
+          extraction_sources?: Json | null
           financial_followup_questions?: string[] | null
           financial_notes?: string | null
           founded_year?: number | null

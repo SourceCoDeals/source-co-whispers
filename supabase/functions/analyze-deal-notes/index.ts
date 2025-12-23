@@ -159,8 +159,21 @@ Extract everything that is clearly stated. Convert all values to the correct uni
         .filter((g: string) => g.length === 2);
     }
 
+    // Build list of fields that were extracted
+    const fieldsExtracted: string[] = [];
+    if (extractedData.deal_name) fieldsExtracted.push('deal_name');
+    if (extractedData.company_website) fieldsExtracted.push('company_website');
+    if (extractedData.geography?.length) fieldsExtracted.push('geography');
+    if (extractedData.revenue) fieldsExtracted.push('revenue');
+    if (extractedData.ebitda_percentage) fieldsExtracted.push('ebitda_percentage');
+    if (extractedData.ebitda_amount) fieldsExtracted.push('ebitda_amount');
+    if (extractedData.service_mix) fieldsExtracted.push('service_mix');
+    if (extractedData.owner_goals) fieldsExtracted.push('owner_goals');
+    if (extractedData.location_count) fieldsExtracted.push('location_count');
+    if (extractedData.additional_info) fieldsExtracted.push('additional_info');
+
     return new Response(
-      JSON.stringify({ success: true, data: extractedData }),
+      JSON.stringify({ success: true, data: extractedData, fieldsExtracted }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {

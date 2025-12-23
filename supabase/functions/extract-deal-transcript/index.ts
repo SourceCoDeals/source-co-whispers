@@ -749,30 +749,71 @@ Deno.serve(async (req) => {
     console.log('Extracted deal info with financial metadata');
 
     // Build update object with enhanced financial metadata
+    // TRANSCRIPT DATA HAS HIGHEST PRIORITY - overrides notes and website data
     const updateData: Record<string, any> = {
       updated_at: new Date().toISOString()
     };
+    const extractedFieldsList: string[] = [];
 
-    // Standard fields
-    if (extractedInfo.company_overview) updateData.company_overview = extractedInfo.company_overview;
+    // Standard fields - transcript ALWAYS overrides
+    if (extractedInfo.company_overview) {
+      updateData.company_overview = extractedInfo.company_overview;
+      extractedFieldsList.push('company_overview');
+    }
     // Normalize geography to standardized 2-letter state abbreviations
     const normalizedGeo = normalizeGeography(extractedInfo.geography);
-    if (normalizedGeo) updateData.geography = normalizedGeo;
-    if (extractedInfo.service_mix) updateData.service_mix = extractedInfo.service_mix;
-    if (extractedInfo.owner_goals) updateData.owner_goals = extractedInfo.owner_goals;
-    if (extractedInfo.business_model) updateData.business_model = extractedInfo.business_model;
-    if (extractedInfo.employee_count) updateData.employee_count = extractedInfo.employee_count;
-    if (extractedInfo.founded_year) updateData.founded_year = extractedInfo.founded_year;
-    if (extractedInfo.headquarters) updateData.headquarters = extractedInfo.headquarters;
-    if (extractedInfo.location_count) updateData.location_count = extractedInfo.location_count;
-    if (extractedInfo.ownership_structure) updateData.ownership_structure = extractedInfo.ownership_structure;
-    if (extractedInfo.special_requirements) updateData.special_requirements = extractedInfo.special_requirements;
-    if (extractedInfo.contact_name) updateData.contact_name = extractedInfo.contact_name;
+    if (normalizedGeo) {
+      updateData.geography = normalizedGeo;
+      extractedFieldsList.push('geography');
+    }
+    if (extractedInfo.service_mix) {
+      updateData.service_mix = extractedInfo.service_mix;
+      extractedFieldsList.push('service_mix');
+    }
+    if (extractedInfo.owner_goals) {
+      updateData.owner_goals = extractedInfo.owner_goals;
+      extractedFieldsList.push('owner_goals');
+    }
+    if (extractedInfo.business_model) {
+      updateData.business_model = extractedInfo.business_model;
+      extractedFieldsList.push('business_model');
+    }
+    if (extractedInfo.employee_count) {
+      updateData.employee_count = extractedInfo.employee_count;
+      extractedFieldsList.push('employee_count');
+    }
+    if (extractedInfo.founded_year) {
+      updateData.founded_year = extractedInfo.founded_year;
+      extractedFieldsList.push('founded_year');
+    }
+    if (extractedInfo.headquarters) {
+      updateData.headquarters = extractedInfo.headquarters;
+      extractedFieldsList.push('headquarters');
+    }
+    if (extractedInfo.location_count) {
+      updateData.location_count = extractedInfo.location_count;
+      extractedFieldsList.push('location_count');
+    }
+    if (extractedInfo.ownership_structure) {
+      updateData.ownership_structure = extractedInfo.ownership_structure;
+      extractedFieldsList.push('ownership_structure');
+    }
+    if (extractedInfo.special_requirements) {
+      updateData.special_requirements = extractedInfo.special_requirements;
+      extractedFieldsList.push('special_requirements');
+    }
+    if (extractedInfo.contact_name) {
+      updateData.contact_name = extractedInfo.contact_name;
+      extractedFieldsList.push('contact_name');
+    }
 
     // Enhanced revenue extraction with metadata
     if (extractedInfo.revenue) {
       const rev = extractedInfo.revenue;
-      if (rev.value) updateData.revenue = rev.value;
+      if (rev.value) {
+        updateData.revenue = rev.value;
+        extractedFieldsList.push('revenue');
+      }
       if (rev.confidence) updateData.revenue_confidence = rev.confidence;
       if (rev.is_inferred !== undefined) updateData.revenue_is_inferred = rev.is_inferred;
       if (rev.source_quote) updateData.revenue_source_quote = rev.source_quote;
@@ -781,8 +822,14 @@ Deno.serve(async (req) => {
     // Enhanced EBITDA extraction with metadata
     if (extractedInfo.ebitda) {
       const ebitda = extractedInfo.ebitda;
-      if (ebitda.margin_percentage) updateData.ebitda_percentage = ebitda.margin_percentage;
-      if (ebitda.amount) updateData.ebitda_amount = ebitda.amount;
+      if (ebitda.margin_percentage) {
+        updateData.ebitda_percentage = ebitda.margin_percentage;
+        extractedFieldsList.push('ebitda_percentage');
+      }
+      if (ebitda.amount) {
+        updateData.ebitda_amount = ebitda.amount;
+        extractedFieldsList.push('ebitda_amount');
+      }
       if (ebitda.confidence) updateData.ebitda_confidence = ebitda.confidence;
       if (ebitda.is_inferred !== undefined) updateData.ebitda_is_inferred = ebitda.is_inferred;
       if (ebitda.source_quote) updateData.ebitda_source_quote = ebitda.source_quote;
@@ -795,16 +842,53 @@ Deno.serve(async (req) => {
     }
 
     // End Market / Customers fields
-    if (extractedInfo.end_market_customers) updateData.end_market_customers = extractedInfo.end_market_customers;
-    if (extractedInfo.customer_concentration) updateData.customer_concentration = extractedInfo.customer_concentration;
-    if (extractedInfo.customer_geography) updateData.customer_geography = extractedInfo.customer_geography;
+    if (extractedInfo.end_market_customers) {
+      updateData.end_market_customers = extractedInfo.end_market_customers;
+      extractedFieldsList.push('end_market_customers');
+    }
+    if (extractedInfo.customer_concentration) {
+      updateData.customer_concentration = extractedInfo.customer_concentration;
+      extractedFieldsList.push('customer_concentration');
+    }
+    if (extractedInfo.customer_geography) {
+      updateData.customer_geography = extractedInfo.customer_geography;
+      extractedFieldsList.push('customer_geography');
+    }
 
     // Additional Information structured fields
-    if (extractedInfo.key_risks?.length) updateData.key_risks = extractedInfo.key_risks;
-    if (extractedInfo.competitive_position) updateData.competitive_position = extractedInfo.competitive_position;
-    if (extractedInfo.technology_systems) updateData.technology_systems = extractedInfo.technology_systems;
-    if (extractedInfo.real_estate) updateData.real_estate = extractedInfo.real_estate;
-    if (extractedInfo.growth_trajectory) updateData.growth_trajectory = extractedInfo.growth_trajectory;
+    if (extractedInfo.key_risks?.length) {
+      updateData.key_risks = extractedInfo.key_risks;
+      extractedFieldsList.push('key_risks');
+    }
+    if (extractedInfo.competitive_position) {
+      updateData.competitive_position = extractedInfo.competitive_position;
+      extractedFieldsList.push('competitive_position');
+    }
+    if (extractedInfo.technology_systems) {
+      updateData.technology_systems = extractedInfo.technology_systems;
+      extractedFieldsList.push('technology_systems');
+    }
+    if (extractedInfo.real_estate) {
+      updateData.real_estate = extractedInfo.real_estate;
+      extractedFieldsList.push('real_estate');
+    }
+    if (extractedInfo.growth_trajectory) {
+      updateData.growth_trajectory = extractedInfo.growth_trajectory;
+      extractedFieldsList.push('growth_trajectory');
+    }
+
+    // CRITICAL: Add transcript source tracking - this marks fields as protected
+    if (extractedFieldsList.length > 0) {
+      const existingSources = deal.extraction_sources || [];
+      // Remove any previous transcript source entries (we're replacing with fresh extraction)
+      const filteredSources = existingSources.filter((s: any) => s.source !== 'transcript');
+      const newSource = {
+        source: 'transcript',
+        timestamp: new Date().toISOString(),
+        fields: extractedFieldsList
+      };
+      updateData.extraction_sources = [...filteredSources, newSource];
+    }
 
     // Update the deal
     const { error: updateError } = await supabase
