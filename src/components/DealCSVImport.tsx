@@ -3,9 +3,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Upload, FileSpreadsheet, Loader2, ArrowRight, Check } from 'lucide-react';
+import { Upload, FileSpreadsheet, Loader2, ArrowRight, Check, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { normalizeDomain } from '@/lib/normalizeDomain';
 
 interface DealCSVImportProps {
   trackerId: string;
@@ -18,7 +19,14 @@ interface AvailableField {
   description: string;
 }
 
-type ImportStep = 'upload' | 'mapping' | 'preview';
+interface DuplicateInfo {
+  rowIndex: number;
+  existingDealId: string;
+  existingDealName: string;
+  domain: string;
+}
+
+type ImportStep = 'upload' | 'mapping' | 'preview' | 'duplicates';
 
 export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
   const [open, setOpen] = useState(false);
@@ -29,6 +37,8 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
   const [rows, setRows] = useState<string[][]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [availableFields, setAvailableFields] = useState<AvailableField[]>([]);
+  const [duplicates, setDuplicates] = useState<DuplicateInfo[]>([]);
+  const [duplicateActions, setDuplicateActions] = useState<Record<number, 'skip' | 'merge' | 'create'>>({});
 
   const parseCSV = (text: string): { headers: string[]; rows: string[][] } => {
     const lines = text.split('\n').filter(line => line.trim());
@@ -117,49 +127,206 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
     return field?.label || fieldKey;
   };
 
+  const checkForDuplicates = async () => {
+    setIsLoading(true);
+    
+    try {
+      // Get website column index
+      const websiteColIndex = headers.findIndex(h => mapping[h] === 'company_website');
+      if (websiteColIndex === -1) {
+        // No website column mapped, skip deduplication
+        setStep('preview');
+        return;
+      }
+
+      // Extract domains from CSV
+      const csvDomains: { rowIndex: number; domain: string }[] = [];
+      rows.forEach((row, idx) => {
+        const website = row[websiteColIndex];
+        if (website) {
+          const domain = normalizeDomain(website);
+          if (domain) {
+            csvDomains.push({ rowIndex: idx, domain });
+          }
+        }
+      });
+
+      if (csvDomains.length === 0) {
+        setStep('preview');
+        return;
+      }
+
+      // Fetch existing deals in this tracker
+      const { data: existingDeals, error } = await supabase
+        .from('deals')
+        .select('id, deal_name, company_website')
+        .eq('tracker_id', trackerId);
+
+      if (error) throw error;
+
+      // Build domain map of existing deals
+      const existingDomainMap = new Map<string, { id: string; name: string }>();
+      (existingDeals || []).forEach(deal => {
+        if (deal.company_website) {
+          const domain = normalizeDomain(deal.company_website);
+          if (domain) {
+            existingDomainMap.set(domain, { id: deal.id, name: deal.deal_name });
+          }
+        }
+      });
+
+      // Find duplicates
+      const foundDuplicates: DuplicateInfo[] = [];
+      csvDomains.forEach(({ rowIndex, domain }) => {
+        const existing = existingDomainMap.get(domain);
+        if (existing) {
+          foundDuplicates.push({
+            rowIndex,
+            existingDealId: existing.id,
+            existingDealName: existing.name,
+            domain,
+          });
+        }
+      });
+
+      if (foundDuplicates.length > 0) {
+        setDuplicates(foundDuplicates);
+        // Default action: skip duplicates
+        const defaultActions: Record<number, 'skip' | 'merge' | 'create'> = {};
+        foundDuplicates.forEach(d => {
+          defaultActions[d.rowIndex] = 'skip';
+        });
+        setDuplicateActions(defaultActions);
+        setStep('duplicates');
+      } else {
+        setStep('preview');
+      }
+    } catch (error) {
+      console.error('Error checking duplicates:', error);
+      toast.error('Failed to check for duplicates');
+      setStep('preview');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleImport = async () => {
     setIsLoading(true);
 
     try {
-      const deals = rows.map(row => {
+      const duplicateRowIndices = new Set(duplicates.map(d => d.rowIndex));
+      const dealsToInsert: any[] = [];
+      const dealsToUpdate: { id: string; data: Record<string, any> }[] = [];
+
+      rows.forEach((row, rowIndex) => {
         const deal: Record<string, string> = {};
 
-        headers.forEach((header, index) => {
+        headers.forEach((header, colIndex) => {
           const fieldKey = mapping[header];
-          if (fieldKey && fieldKey !== 'skip' && row[index]) {
-            deal[fieldKey] = row[index];
+          if (fieldKey && fieldKey !== 'skip' && row[colIndex]) {
+            deal[fieldKey] = row[colIndex];
           }
         });
 
-        return deal;
-      }).filter(deal => deal.deal_name); // Only include deals with a name
+        // Skip rows without a name
+        if (!deal.deal_name) return;
 
-      if (deals.length === 0) {
-        toast.error('No valid deals found. Make sure Company Name is mapped.');
+        // Handle duplicates
+        if (duplicateRowIndices.has(rowIndex)) {
+          const action = duplicateActions[rowIndex];
+          const dupInfo = duplicates.find(d => d.rowIndex === rowIndex);
+          
+          if (action === 'skip') {
+            return; // Skip this row
+          } else if (action === 'merge' && dupInfo) {
+            // Prepare update for existing deal
+            const updateData: Record<string, any> = {};
+            
+            if (deal.company_website) updateData.company_website = deal.company_website;
+            if (deal.transcript_link) updateData.transcript_link = deal.transcript_link;
+            if (deal.additional_info) updateData.additional_info = deal.additional_info;
+            
+            const contactName = [deal.contact_first_name, deal.contact_last_name]
+              .filter(Boolean).join(' ');
+            if (contactName) updateData.contact_name = contactName;
+            if (deal.contact_title) updateData.contact_title = deal.contact_title;
+            if (deal.contact_email) updateData.contact_email = deal.contact_email;
+            if (deal.contact_phone) updateData.contact_phone = deal.contact_phone;
+
+            if (Object.keys(updateData).length > 0) {
+              dealsToUpdate.push({ id: dupInfo.existingDealId, data: updateData });
+            }
+            return;
+          }
+          // action === 'create' falls through to insert
+        }
+
+        // Create new deal
+        dealsToInsert.push({
+          tracker_id: trackerId,
+          deal_name: deal.deal_name,
+          company_website: deal.company_website || null,
+          transcript_link: deal.transcript_link || null,
+          additional_info: deal.additional_info || null,
+          contact_name: [deal.contact_first_name, deal.contact_last_name]
+            .filter(Boolean).join(' ') || null,
+          contact_title: deal.contact_title || null,
+          contact_email: deal.contact_email || null,
+          contact_phone: deal.contact_phone || null,
+          status: 'Active',
+          extraction_sources: [
+            {
+              source: 'csv',
+              timestamp: new Date().toISOString(),
+              fields: Object.keys(deal).filter(k => k !== 'contact_first_name' && k !== 'contact_last_name'),
+            }
+          ],
+        });
+      });
+
+      // Validate we have something to import
+      if (dealsToInsert.length === 0 && dealsToUpdate.length === 0) {
+        toast.error('No deals to import after applying duplicate rules.');
         setIsLoading(false);
         return;
       }
 
-      const dealsToInsert = deals.map(deal => ({
-        tracker_id: trackerId,
-        deal_name: deal.deal_name,
-        company_website: deal.company_website || null,
-        transcript_link: deal.transcript_link || null,
-        additional_info: deal.additional_info || null,
-        // Combine first + last name into contact_name
-        contact_name: [deal.contact_first_name, deal.contact_last_name]
-          .filter(Boolean).join(' ') || null,
-        contact_title: deal.contact_title || null,
-        contact_email: deal.contact_email || null,
-        contact_phone: deal.contact_phone || null,
-        status: 'Active',
-      }));
+      // Insert new deals
+      if (dealsToInsert.length > 0) {
+        const { error: insertError } = await supabase.from('deals').insert(dealsToInsert);
+        if (insertError) throw insertError;
+      }
 
-      const { error } = await supabase.from('deals').insert(dealsToInsert);
+      // Update merged deals
+      for (const { id, data } of dealsToUpdate) {
+        // Add csv source tracking for merged fields
+        const { data: existingDeal } = await supabase
+          .from('deals')
+          .select('extraction_sources')
+          .eq('id', id)
+          .single();
+        
+        const existingSources = (existingDeal?.extraction_sources as any[]) || [];
+        const newSource = {
+          source: 'csv',
+          timestamp: new Date().toISOString(),
+          fields: Object.keys(data),
+        };
+        
+        const { error: updateError } = await supabase
+          .from('deals')
+          .update({ 
+            ...data, 
+            extraction_sources: [...existingSources, newSource],
+            updated_at: new Date().toISOString() 
+          })
+          .eq('id', id);
+        
+        if (updateError) throw updateError;
+      }
 
-      if (error) throw error;
-
-      toast.success(`Successfully imported ${dealsToInsert.length} deals`);
+      const totalProcessed = dealsToInsert.length + dealsToUpdate.length;
+      toast.success(`Successfully processed ${totalProcessed} deals (${dealsToInsert.length} new, ${dealsToUpdate.length} merged)`);
       resetAndClose();
       onComplete();
     } catch (error) {
@@ -178,9 +345,11 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
     setRows([]);
     setMapping({});
     setAvailableFields([]);
+    setDuplicates([]);
+    setDuplicateActions({});
   };
 
-  const previewDeals = rows.slice(0, 5).map(row => {
+  const previewDeals = rows.slice(0, 5).map((row, rowIndex) => {
     const deal: Record<string, string> = {};
     headers.forEach((header, index) => {
       const fieldKey = mapping[header];
@@ -188,8 +357,14 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
         deal[fieldKey] = row[index];
       }
     });
+    deal._rowIndex = String(rowIndex);
     return deal;
   }).filter(deal => deal.deal_name);
+
+  const duplicateRowSet = new Set(duplicates.map(d => d.rowIndex));
+  const skippedCount = duplicates.filter(d => duplicateActions[d.rowIndex] === 'skip').length;
+  const mergeCount = duplicates.filter(d => duplicateActions[d.rowIndex] === 'merge').length;
+  const createCount = duplicates.filter(d => duplicateActions[d.rowIndex] === 'create').length;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -208,7 +383,7 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
         </DialogHeader>
 
         {/* Step indicators */}
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
           <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm ${step === 'upload' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
             1. Upload
           </div>
@@ -217,8 +392,12 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
             2. Map Columns
           </div>
           <ArrowRight className="h-4 w-4 text-muted-foreground" />
+          <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm ${step === 'duplicates' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+            3. Duplicates
+          </div>
+          <ArrowRight className="h-4 w-4 text-muted-foreground" />
           <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm ${step === 'preview' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-            3. Preview & Import
+            4. Import
           </div>
         </div>
 
@@ -235,7 +414,7 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
                 <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-lg font-medium mb-2">Upload your spreadsheet</p>
                 <p className="text-sm text-muted-foreground mb-4">
-                  CSV files supported. We'll map: Company Name, Website, Fireflies Link, Notes, and Owner contact info.
+                  CSV files supported. We'll detect duplicates by website domain.
                 </p>
                 <label className="cursor-pointer">
                   <input
@@ -301,8 +480,76 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
               <Button variant="outline" onClick={() => setStep('upload')}>
                 Back
               </Button>
+              <Button onClick={checkForDuplicates} disabled={isLoading}>
+                {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                Check for Duplicates
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Duplicates Step */}
+        {step === 'duplicates' && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              <p className="text-sm">
+                Found <span className="font-medium">{duplicates.length}</span> potential duplicate(s) based on website domain.
+              </p>
+            </div>
+
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>CSV Company</TableHead>
+                  <TableHead>Existing Deal</TableHead>
+                  <TableHead>Domain</TableHead>
+                  <TableHead>Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {duplicates.map((dup) => {
+                  const nameColIndex = headers.findIndex(h => mapping[h] === 'deal_name');
+                  const csvName = rows[dup.rowIndex]?.[nameColIndex] || 'Unknown';
+                  
+                  return (
+                    <TableRow key={dup.rowIndex}>
+                      <TableCell className="font-medium">{csvName}</TableCell>
+                      <TableCell className="text-muted-foreground">{dup.existingDealName}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">{dup.domain}</TableCell>
+                      <TableCell>
+                        <Select
+                          value={duplicateActions[dup.rowIndex] || 'skip'}
+                          onValueChange={(value: 'skip' | 'merge' | 'create') => 
+                            setDuplicateActions(prev => ({ ...prev, [dup.rowIndex]: value }))
+                          }
+                        >
+                          <SelectTrigger className="w-[140px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="skip">Skip</SelectItem>
+                            <SelectItem value="merge">Merge into existing</SelectItem>
+                            <SelectItem value="create">Create new</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+
+            <div className="text-sm text-muted-foreground">
+              Summary: {skippedCount} skip, {mergeCount} merge, {createCount} create new
+            </div>
+
+            <div className="flex justify-between">
+              <Button variant="outline" onClick={() => setStep('mapping')}>
+                Back
+              </Button>
               <Button onClick={() => setStep('preview')}>
-                Preview Deals
+                Continue to Preview
               </Button>
             </div>
           </div>
@@ -343,14 +590,22 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
             </Table>
 
             <p className="text-sm text-muted-foreground">
-              Total deals to import: <span className="font-medium">{rows.filter(row => {
+              Total deals to import: <span className="font-medium">{rows.filter((row, idx) => {
                 const nameIndex = headers.findIndex(h => mapping[h] === 'deal_name');
-                return nameIndex >= 0 && row[nameIndex];
+                if (nameIndex < 0 || !row[nameIndex]) return false;
+                // Exclude skipped duplicates
+                if (duplicateRowSet.has(idx) && duplicateActions[idx] === 'skip') return false;
+                return true;
               }).length}</span>
+              {duplicates.length > 0 && (
+                <span className="ml-2">
+                  ({skippedCount} skipped, {mergeCount} merged)
+                </span>
+              )}
             </p>
 
             <div className="flex justify-between">
-              <Button variant="outline" onClick={() => setStep('mapping')}>
+              <Button variant="outline" onClick={() => duplicates.length > 0 ? setStep('duplicates') : setStep('mapping')}>
                 Back
               </Button>
               <Button onClick={handleImport} disabled={isLoading}>
