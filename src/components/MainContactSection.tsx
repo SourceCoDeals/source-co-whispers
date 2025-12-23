@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { User, Mail, Phone, Linkedin, ExternalLink, Star, Plus } from "lucide-react";
+import { User, Mail, Phone, Linkedin, ExternalLink, Star, Plus, Briefcase } from "lucide-react";
 import { AddContactDialog } from "./AddContactDialog";
 
 interface Contact {
@@ -158,11 +158,14 @@ export function MainContactSection({ buyerId, contacts, onContactUpdate, peFirmN
                   )}
                 </div>
                 
-                {primaryContact.title && (
-                  <p className="text-muted-foreground">{primaryContact.title}</p>
-                )}
                 
                 <div className="mt-3 space-y-2">
+                  {primaryContact.title && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Briefcase className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <span>{primaryContact.title}</span>
+                    </div>
+                  )}
                   {primaryContact.email && (
                     <div className="flex items-center gap-2 text-sm">
                       <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
