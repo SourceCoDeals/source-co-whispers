@@ -727,13 +727,6 @@ export default function BuyerDetail() {
           
           {/* Overview Tab - Redesigned 8 Categories */}
           <TabsContent value="overview" className="space-y-4">
-            {/* Main Point of Contact - Prominent at top */}
-            <MainContactSection 
-              buyerId={id!} 
-              contacts={contacts} 
-              onContactUpdate={loadData} 
-            />
-            
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               
               {/* 1. Company & Firm Identification */}
@@ -812,8 +805,17 @@ export default function BuyerDetail() {
                 </div>
               </BuyerDataSection>
 
+              {/* Main Point of Contact - After Company Info & HQ */}
+              <div className="lg:col-span-2">
+                <MainContactSection 
+                  buyerId={id!} 
+                  contacts={contacts} 
+                  onContactUpdate={loadData} 
+                />
+              </div>
+
               {/* 3. Business Description */}
-              <BuyerDataSection 
+              <BuyerDataSection
                 title="Business Description" 
                 icon={<Briefcase className="w-4 h-4 text-muted-foreground" />}
                 actions={<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingSection('business_description')}><Pencil className="w-3.5 h-3.5" /></Button>}
