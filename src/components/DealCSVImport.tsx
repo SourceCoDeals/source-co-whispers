@@ -256,7 +256,12 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
         headers.forEach((header, colIndex) => {
           const fieldKey = mapping[header];
           if (fieldKey && fieldKey !== 'skip' && row[colIndex]) {
-            deal[fieldKey] = row[colIndex];
+            // Concatenate multiple columns mapped to additional_info instead of overwriting
+            if (fieldKey === 'additional_info' && deal[fieldKey]) {
+              deal[fieldKey] = deal[fieldKey] + '\n\n---\n\n' + row[colIndex];
+            } else {
+              deal[fieldKey] = row[colIndex];
+            }
           }
         });
 
@@ -365,18 +370,23 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
         if (updateError) throw updateError;
       }
 
-      // Analyze notes for all deals that have additional_info
-      const dealsWithNotes = insertedDeals.filter(d => d.additional_info && d.additional_info.trim().length > 10);
+      // Analyze notes for all deals that have additional_info (both new inserts AND merged deals)
+      const allDealsWithNotes: { id: string; additional_info: string }[] = [
+        ...insertedDeals.filter(d => d.additional_info && d.additional_info.trim().length > 10)
+          .map(d => ({ id: d.id, additional_info: d.additional_info! })),
+        ...dealsToUpdate.filter(u => u.data.additional_info && u.data.additional_info.trim().length > 10)
+          .map(u => ({ id: u.id, additional_info: u.data.additional_info as string }))
+      ];
       
-      if (dealsWithNotes.length > 0) {
-        toast.info(`Analyzing ${dealsWithNotes.length} deal notes for structured data...`);
+      if (allDealsWithNotes.length > 0) {
+        toast.info(`Analyzing ${allDealsWithNotes.length} deal notes for structured data...`);
         
         // Process notes analysis in parallel (batch of 5 at a time to avoid overwhelming)
         const { data: session } = await supabase.auth.getSession();
         const batchSize = 5;
         
-        for (let i = 0; i < dealsWithNotes.length; i += batchSize) {
-          const batch = dealsWithNotes.slice(i, i + batchSize);
+        for (let i = 0; i < allDealsWithNotes.length; i += batchSize) {
+          const batch = allDealsWithNotes.slice(i, i + batchSize);
           
           await Promise.all(batch.map(async (deal) => {
             try {
