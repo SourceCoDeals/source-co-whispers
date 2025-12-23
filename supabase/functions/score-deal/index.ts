@@ -424,6 +424,9 @@ function calculateServiceScore(deal: DealData, trackerCriteria: TrackerCriteria 
 /**
  * GEOGRAPHY SCORING (15 points max)
  * Based on MSA tier and proximity to buyer target markets
+ * 
+ * IMPORTANT: MSA matching should be done against the HEADQUARTERS field (city names like "Houston, TX")
+ * NOT against the GEOGRAPHY field (which contains state abbreviations like "TX")
  */
 function calculateGeographyScore(deal: DealData, trackerCriteria: TrackerCriteria | null): {
   score: number;
@@ -434,58 +437,72 @@ function calculateGeographyScore(deal: DealData, trackerCriteria: TrackerCriteri
   let score = 0;
   let msaTier = 'unknown';
   
-  // Get location text from multiple fields
-  const locationText = [
-    deal.headquarters || '',
-    ...(deal.geography || [])
-  ].join(' ').toLowerCase();
+  // Get headquarters for MSA matching (contains city names like "Houston, TX", "Dallas, TX")
+  // This is the correct field for MSA matching since it contains actual city names
+  const headquartersText = (deal.headquarters || '').toLowerCase();
   
-  if (!locationText || locationText.trim() === '') {
+  // Get state info from geography array for fallback secondary market scoring
+  const statesList = (deal.geography || []).map(s => s.toUpperCase()).join(' ');
+  
+  // If no location data at all
+  if (!headquartersText && statesList.length === 0) {
     return { score: 2, details: 'No geography data = 2pts (default)', msaTier: 'unknown' };
   }
   
-  // Check Priority MSAs first (from tracker criteria)
-  let isPriority = PRIORITY_MSAS.some(msa => locationText.includes(msa));
+  // Check Priority MSAs using headquarters (city-level matching)
+  let isPriority = PRIORITY_MSAS.some(msa => headquartersText.includes(msa));
   
   // Also check tracker's specific geography criteria if available
-  if (trackerCriteria?.fit_criteria_geography) {
+  if (trackerCriteria?.fit_criteria_geography && headquartersText) {
     const trackerGeos = trackerCriteria.fit_criteria_geography.toLowerCase();
-    // Extract city names from criteria and check if deal matches
+    // Extract city names from criteria and check if deal's headquarters matches
     const geoMatches = ['new york', 'san francisco', 'seattle', 'washington', 'dallas', 'denver']
-      .filter(city => trackerGeos.includes(city) && locationText.includes(city));
+      .filter(city => trackerGeos.includes(city) && headquartersText.includes(city));
     if (geoMatches.length > 0) {
       isPriority = true;
     }
   }
   
+  // Match MSAs against headquarters (city names)
   if (isPriority) {
     score = 15;
     msaTier = 'priority';
     parts.push(`Priority MSA match = 15pts`);
-  } else if (TIER_1_MSAS.some(msa => locationText.includes(msa))) {
+  } else if (TIER_1_MSAS.some(msa => headquartersText.includes(msa))) {
     score = 12;
     msaTier = 'tier1';
     parts.push(`Top 15 MSA = 12pts`);
-  } else if (TIER_2_MSAS.some(msa => locationText.includes(msa))) {
+  } else if (TIER_2_MSAS.some(msa => headquartersText.includes(msa))) {
     score = 8;
     msaTier = 'tier2';
     parts.push(`Top 50 MSA = 8pts`);
-  } else {
-    // Check for any state/region indicators for secondary scoring
-    const hasStateIndicator = /\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b/i.test(locationText);
-    if (hasStateIndicator) {
+  } else if (headquartersText || statesList.length > 0) {
+    // No major MSA match, but we have location data - secondary market
+    // Check if any valid state abbreviation is present
+    const hasStateData = deal.geography && deal.geography.length > 0;
+    if (hasStateData) {
       score = 5;
       msaTier = 'secondary';
-      parts.push(`Secondary market = 5pts`);
+      parts.push(`Secondary market (${deal.geography?.join(', ')}) = 5pts`);
+    } else if (headquartersText) {
+      // Has headquarters but no MSA match - could be smaller city
+      score = 4;
+      msaTier = 'secondary';
+      parts.push(`Secondary market = 4pts`);
     } else {
       score = 2;
       msaTier = 'rural';
       parts.push(`Rural/unknown = 2pts`);
     }
+  } else {
+    score = 2;
+    msaTier = 'rural';
+    parts.push(`Rural/unknown = 2pts`);
   }
   
   // Location context
-  parts.push(`Location: ${locationText.substring(0, 50)}${locationText.length > 50 ? '...' : ''}`);
+  const locationDisplay = headquartersText || statesList.substring(0, 50);
+  parts.push(`Location: ${locationDisplay.substring(0, 50)}${locationDisplay.length > 50 ? '...' : ''}`);
   
   return { score, details: parts.join('; '), msaTier };
 }
