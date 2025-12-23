@@ -24,6 +24,7 @@ export type Database = {
           fee_agreement_status: string | null
           id: string
           is_deal_team: boolean | null
+          is_primary_contact: boolean | null
           last_contacted_date: string | null
           linkedin_url: string | null
           name: string
@@ -44,6 +45,7 @@ export type Database = {
           fee_agreement_status?: string | null
           id?: string
           is_deal_team?: boolean | null
+          is_primary_contact?: boolean | null
           last_contacted_date?: string | null
           linkedin_url?: string | null
           name: string
@@ -64,6 +66,7 @@ export type Database = {
           fee_agreement_status?: string | null
           id?: string
           is_deal_team?: boolean | null
+          is_primary_contact?: boolean | null
           last_contacted_date?: string | null
           linkedin_url?: string | null
           name?: string

@@ -3,6 +3,9 @@ project_id = "gsvsyqjgtjuzrgxqkvxw"
 [functions.map-csv-columns]
 verify_jwt = true
 
+[functions.map-contact-columns]
+verify_jwt = true
+
 [functions.firecrawl-scrape]
 verify_jwt = true
 
