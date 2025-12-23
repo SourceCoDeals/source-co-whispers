@@ -445,6 +445,13 @@ Deno.serve(async (req) => {
     // Check existing extraction sources
     const existingSources: ExtractionSource[] = (deal.extraction_sources as ExtractionSource[]) || [];
 
+    // Helper to check if a value is a placeholder (N/A, none, etc.)
+    const isPlaceholder = (value: any): boolean => {
+      if (typeof value !== 'string') return false;
+      const trimmed = value.trim().toLowerCase();
+      return ['n/a', 'na', '-', 'none', 'unknown', 'tbd', 'pending'].includes(trimmed);
+    };
+
     // Helper to check if we should update a field
     const shouldUpdate = (field: string, extractedValue: any, currentValue: any): boolean => {
       // Check if extracted value is valid
@@ -459,11 +466,13 @@ Deno.serve(async (req) => {
         return false;
       }
 
-      // If onlyFillEmpty is true, only update empty fields
+      // If onlyFillEmpty is true, only update empty fields OR placeholder values
       if (onlyFillEmpty) {
         if (currentValue === null || currentValue === undefined) return true;
         if (Array.isArray(currentValue) && currentValue.length === 0) return true;
         if (typeof currentValue === 'string' && currentValue.trim() === '') return true;
+        // Treat placeholder values as empty
+        if (isPlaceholder(currentValue)) return true;
         // Treat default location_count of 1 as empty
         if (field === 'location_count' && currentValue === 1) return true;
         return false;
