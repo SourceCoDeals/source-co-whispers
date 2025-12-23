@@ -718,6 +718,7 @@ export type Database = {
           contact_linkedin: string | null
           contact_name: string | null
           contact_phone: string | null
+          contact_title: string | null
           created_at: string
           customer_concentration: string | null
           customer_geography: string | null
@@ -766,6 +767,7 @@ export type Database = {
           contact_linkedin?: string | null
           contact_name?: string | null
           contact_phone?: string | null
+          contact_title?: string | null
           created_at?: string
           customer_concentration?: string | null
           customer_geography?: string | null
@@ -814,6 +816,7 @@ export type Database = {
           contact_linkedin?: string | null
           contact_name?: string | null
           contact_phone?: string | null
+          contact_title?: string | null
           created_at?: string
           customer_concentration?: string | null
           customer_geography?: string | null
