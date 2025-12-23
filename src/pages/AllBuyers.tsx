@@ -182,30 +182,46 @@ export default function AllBuyers() {
             </p>
           </div>
         ) : useLegacyBuyers ? (
-          <div className="bg-card rounded-lg border divide-y">
-            {filteredLegacyGroups.map((group) => (
-              <LegacyPEFirmRow 
-                key={group.peFirmName} 
-                group={group} 
-                trackers={trackers}
-                isExpanded={expandedFirms.has(group.peFirmName)}
-                onToggle={() => toggleFirm(group.peFirmName)}
-                searchTerm={search}
-              />
-            ))}
+          <div className="bg-card rounded-lg border">
+            {/* Column Headers */}
+            <div className="grid grid-cols-[1fr_160px_200px] gap-4 px-4 py-3 border-b bg-muted/50 text-sm font-medium text-muted-foreground">
+              <div>PE Firm / Platform</div>
+              <div className="text-center">Fee Agreement</div>
+              <div className="text-right">Buyer Universe</div>
+            </div>
+            <div className="divide-y">
+              {filteredLegacyGroups.map((group) => (
+                <LegacyPEFirmRow 
+                  key={group.peFirmName} 
+                  group={group} 
+                  trackers={trackers}
+                  isExpanded={expandedFirms.has(group.peFirmName)}
+                  onToggle={() => toggleFirm(group.peFirmName)}
+                  searchTerm={search}
+                />
+              ))}
+            </div>
           </div>
         ) : (
-          <div className="bg-card rounded-lg border divide-y">
-            {filteredFirms.map((firm) => (
-              <PEFirmRow 
-                key={firm.id} 
-                firm={firm} 
-                trackers={trackers}
-                isExpanded={expandedFirms.has(firm.id)}
-                onToggle={() => toggleFirm(firm.id)}
-                searchTerm={search}
-              />
-            ))}
+          <div className="bg-card rounded-lg border">
+            {/* Column Headers */}
+            <div className="grid grid-cols-[1fr_160px_200px] gap-4 px-4 py-3 border-b bg-muted/50 text-sm font-medium text-muted-foreground">
+              <div>PE Firm / Platform</div>
+              <div className="text-center">Fee Agreement</div>
+              <div className="text-right">Buyer Universe</div>
+            </div>
+            <div className="divide-y">
+              {filteredFirms.map((firm) => (
+                <PEFirmRow 
+                  key={firm.id} 
+                  firm={firm} 
+                  trackers={trackers}
+                  isExpanded={expandedFirms.has(firm.id)}
+                  onToggle={() => toggleFirm(firm.id)}
+                  searchTerm={search}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -242,11 +258,14 @@ function LegacyPEFirmRow({ group, trackers, isExpanded, onToggle, searchTerm }: 
   // Get the first buyer ID for direct navigation when there's only 1 platform
   const firstBuyerId = group.buyers[0]?.id;
 
+  const hasPeFirmFeeAgreement = group.buyers.some(b => b.fee_agreement_status === 'Signed');
+
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggle}>
-      <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+      <div className="grid grid-cols-[1fr_160px_200px] gap-4 items-center p-4 hover:bg-muted/50 transition-colors">
+        {/* Column 1: PE Firm Name */}
         <CollapsibleTrigger asChild>
-          <div className="flex items-center gap-3 flex-1 cursor-pointer">
+          <div className="flex items-center gap-3 cursor-pointer">
             {hasMultipleBuyers ? (
               isExpanded ? (
                 <ChevronDown className="w-4 h-4 text-muted-foreground" />
@@ -265,14 +284,19 @@ function LegacyPEFirmRow({ group, trackers, isExpanded, onToggle, searchTerm }: 
             </div>
           </div>
         </CollapsibleTrigger>
-        <div className="flex items-center gap-2">
-          {/* PE Firm level fee agreement - show if any buyer has Signed status */}
-          {group.buyers.some(b => b.fee_agreement_status === 'Signed') && (
-            <Badge variant="default" className="text-xs flex items-center gap-1">
+
+        {/* Column 2: Fee Agreement */}
+        <div className="flex justify-center">
+          {hasPeFirmFeeAgreement && (
+            <Badge variant="outline" className="text-xs flex items-center gap-1 bg-primary/10 border-primary/20">
               <FileCheck className="w-3 h-3" />
               Fee Agreement
             </Badge>
           )}
+        </div>
+
+        {/* Column 3: Buyer Universe */}
+        <div className="flex items-center justify-end gap-2">
           {universeNames.map((name, i) => (
             <Badge key={i} variant="secondary" className="text-xs">
               {name}
@@ -283,7 +307,6 @@ function LegacyPEFirmRow({ group, trackers, isExpanded, onToggle, searchTerm }: 
               +{group.trackerIds.length - 3}
             </Badge>
           )}
-          {/* Direct link to buyer profile */}
           {firstBuyerId && (
             <Link 
               to={`/buyers/${firstBuyerId}`}
@@ -303,8 +326,9 @@ function LegacyPEFirmRow({ group, trackers, isExpanded, onToggle, searchTerm }: 
             <Link 
               key={buyer.id} 
               to={`/buyers/${buyer.id}`}
-              className="flex items-center justify-between px-4 py-3 pl-12 hover:bg-muted/50 transition-colors border-t first:border-t-0"
+              className="grid grid-cols-[1fr_160px_200px] gap-4 items-center px-4 py-3 pl-12 hover:bg-muted/50 transition-colors border-t first:border-t-0"
             >
+              {/* Column 1: Platform Name */}
               <div className="flex items-center gap-3">
                 <div className="w-2 h-2 rounded-full bg-primary/60" />
                 <div>
@@ -315,14 +339,19 @@ function LegacyPEFirmRow({ group, trackers, isExpanded, onToggle, searchTerm }: 
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                {/* Platform level fee agreement */}
+
+              {/* Column 2: Fee Agreement */}
+              <div className="flex justify-center">
                 {buyer.has_fee_agreement && (
-                  <Badge variant="default" className="text-xs flex items-center gap-1">
+                  <Badge variant="outline" className="text-xs flex items-center gap-1 bg-primary/10 border-primary/20">
                     <FileCheck className="w-3 h-3" />
-                    Fee
+                    Fee Agreement
                   </Badge>
                 )}
+              </div>
+
+              {/* Column 3: Empty for platforms (confidence badge optional) */}
+              <div className="flex items-center justify-end gap-2">
                 {buyer.thesis_confidence && (
                   <Badge 
                     variant={buyer.thesis_confidence === "high" ? "default" : "secondary"}
@@ -368,9 +397,10 @@ function PEFirmRow({ firm, trackers, isExpanded, onToggle, searchTerm }: PEFirmR
 
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggle}>
-      <CollapsibleTrigger asChild>
-        <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer">
-          <div className="flex items-center gap-3">
+      <div className="grid grid-cols-[1fr_160px_200px] gap-4 items-center p-4 hover:bg-muted/50 transition-colors">
+        {/* Column 1: PE Firm Name */}
+        <CollapsibleTrigger asChild>
+          <div className="flex items-center gap-3 cursor-pointer">
             {hasMultiplePlatforms ? (
               isExpanded ? (
                 <ChevronDown className="w-4 h-4 text-muted-foreground" />
@@ -403,26 +433,32 @@ function PEFirmRow({ firm, trackers, isExpanded, onToggle, searchTerm }: PEFirmR
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {firm.has_fee_agreement && (
-              <Badge variant="default" className="text-xs flex items-center gap-1">
-                <FileCheck className="w-3 h-3" />
-                Fee Agreement
-              </Badge>
-            )}
-            {universeNames.map((name, i) => (
-              <Badge key={i} variant="secondary" className="text-xs">
-                {name}
-              </Badge>
-            ))}
-            {firm.trackerIds.length > 3 && (
-              <Badge variant="outline" className="text-xs">
-                +{firm.trackerIds.length - 3}
-              </Badge>
-            )}
-          </div>
+        </CollapsibleTrigger>
+
+        {/* Column 2: Fee Agreement */}
+        <div className="flex justify-center">
+          {firm.has_fee_agreement && (
+            <Badge variant="outline" className="text-xs flex items-center gap-1 bg-primary/10 border-primary/20">
+              <FileCheck className="w-3 h-3" />
+              Fee Agreement
+            </Badge>
+          )}
         </div>
-      </CollapsibleTrigger>
+
+        {/* Column 3: Buyer Universe */}
+        <div className="flex items-center justify-end gap-2">
+          {universeNames.map((name, i) => (
+            <Badge key={i} variant="secondary" className="text-xs">
+              {name}
+            </Badge>
+          ))}
+          {firm.trackerIds.length > 3 && (
+            <Badge variant="outline" className="text-xs">
+              +{firm.trackerIds.length - 3}
+            </Badge>
+          )}
+        </div>
+      </div>
 
       <CollapsibleContent>
         <div className="border-t bg-muted/30">
@@ -430,8 +466,9 @@ function PEFirmRow({ firm, trackers, isExpanded, onToggle, searchTerm }: PEFirmR
             <Link 
               key={platform.id} 
               to={`/platforms/${platform.id}`}
-              className="flex items-center justify-between px-4 py-3 pl-12 hover:bg-muted/50 transition-colors border-t first:border-t-0"
+              className="grid grid-cols-[1fr_160px_200px] gap-4 items-center px-4 py-3 pl-12 hover:bg-muted/50 transition-colors border-t first:border-t-0"
             >
+              {/* Column 1: Platform Name */}
               <div className="flex items-center gap-3">
                 <div className="w-2 h-2 rounded-full bg-primary/60" />
                 <div>
@@ -442,13 +479,19 @@ function PEFirmRow({ firm, trackers, isExpanded, onToggle, searchTerm }: PEFirmR
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+
+              {/* Column 2: Fee Agreement */}
+              <div className="flex justify-center">
                 {platform.has_fee_agreement && (
-                  <Badge variant="default" className="text-xs flex items-center gap-1">
+                  <Badge variant="outline" className="text-xs flex items-center gap-1 bg-primary/10 border-primary/20">
                     <FileCheck className="w-3 h-3" />
-                    Fee
+                    Fee Agreement
                   </Badge>
                 )}
+              </div>
+
+              {/* Column 3: Confidence badge */}
+              <div className="flex items-center justify-end gap-2">
                 {platform.thesis_confidence && (
                   <Badge 
                     variant={platform.thesis_confidence === "high" ? "default" : "secondary"}
