@@ -163,6 +163,7 @@ Best regards`);
                   <TableHead className="w-[250px]">Buyer Name</TableHead>
                   <TableHead>PE Firm</TableHead>
                   <TableHead>Date Approved</TableHead>
+                  <TableHead>Fit Score</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
@@ -209,6 +210,20 @@ Best regards`);
                             {formatDateApproved(buyer.score)}
                           </TableCell>
                           <TableCell>
+                            {buyer.score?.composite_score != null ? (
+                              <Badge 
+                                variant={
+                                  buyer.score.composite_score >= 70 ? "match-high" : 
+                                  buyer.score.composite_score >= 40 ? "match-medium" : "match-low"
+                                }
+                              >
+                                {Math.round(buyer.score.composite_score)}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
                             {status === "interested" && (
                               <Badge variant="info" className="gap-1">
                                 <CheckCircle2 className="w-3 h-3" />
@@ -232,7 +247,7 @@ Best regards`);
                         </TableRow>
                         <CollapsibleContent asChild>
                           <tr>
-                            <td colSpan={5} className="p-0">
+                            <td colSpan={6} className="p-0">
                               <div className="p-4 bg-muted/30 border-t space-y-4">
                                 {/* Quick Intel Section */}
                                 <div className="bg-background rounded-lg p-4 space-y-3">
