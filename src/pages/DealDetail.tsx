@@ -53,12 +53,29 @@ export default function DealDetail() {
     loadData(); 
   }, [id]);
 
+  // Check if a value is meaningfully empty (null, undefined, empty, or placeholder like "N/A")
+  const isEmptyOrPlaceholder = (value: any): boolean => {
+    if (!value) return true;
+    if (typeof value === 'string') {
+      const trimmed = value.trim().toLowerCase();
+      return trimmed === '' || trimmed === 'n/a' || trimmed === 'na' || trimmed === '-' || trimmed === 'none' || trimmed === 'unknown';
+    }
+    if (Array.isArray(value)) return value.length === 0;
+    return false;
+  };
+
   // Check if deal needs auto-enrichment
   const needsEnrichment = (dealData: any) => {
-    // Don't auto-enrich if already has meaningful data
-    if (dealData.company_overview && dealData.company_overview.length > 50) return false;
     // Has sources to enrich from?
-    return !!dealData.transcript_link || !!dealData.additional_info || !!dealData.company_website;
+    const hasSources = !!dealData.transcript_link || !!dealData.additional_info || !!dealData.company_website;
+    if (!hasSources) return false;
+    
+    // Check if key fields are missing
+    const missingOverview = isEmptyOrPlaceholder(dealData.company_overview) || (dealData.company_overview?.length || 0) < 50;
+    const missingAddress = isEmptyOrPlaceholder(dealData.company_address);
+    const missingGeography = isEmptyOrPlaceholder(dealData.geography);
+    
+    return missingOverview || missingAddress || missingGeography;
   };
 
   // Auto-enrich when deal is loaded
