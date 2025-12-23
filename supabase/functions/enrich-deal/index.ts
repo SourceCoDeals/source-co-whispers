@@ -372,11 +372,35 @@ Deno.serve(async (req) => {
     // Extract info using AI
     const extracted = await extractWebsiteInfo(openaiApiKey, websiteContent, deal.deal_name);
 
-    // Build update object - only update empty/null fields if onlyFillEmpty is true
+    // Build update object - respect data priority: Transcript > Notes > Website
+    // Website enrichment should NEVER overwrite transcript or notes data
     const updateData: Record<string, any> = {};
     const updatedFields: string[] = [];
 
+    // Fields that should be protected if sourced from transcripts or notes
+    const protectedFields = [
+      'revenue', 'ebitda_percentage', 'ebitda_amount', 'geography', 'owner_goals', 
+      'service_mix', 'employee_count', 'location_count', 'headquarters', 'company_overview',
+      'business_model', 'founded_year', 'industry_type'
+    ];
+
+    // Check existing extraction sources
+    const existingSources = deal.extraction_sources || [];
+    const hasTranscriptSource = existingSources.some((s: any) => s.source === 'transcript');
+    const hasNotesSource = existingSources.some((s: any) => s.source === 'notes');
+    const hasHigherPrioritySource = hasTranscriptSource || hasNotesSource;
+
     const shouldUpdate = (field: string, currentValue: any) => {
+      // If this field has data from a higher-priority source (transcript or notes), don't overwrite
+      if (hasHigherPrioritySource && protectedFields.includes(field)) {
+        // Check if field was explicitly extracted from transcript/notes
+        const fieldSource = existingSources.find((s: any) => s.fields?.includes(field));
+        if (fieldSource && (fieldSource.source === 'transcript' || fieldSource.source === 'notes')) {
+          console.log(`[enrich-deal] Skipping ${field}: protected by ${fieldSource.source} source`);
+          return false;
+        }
+      }
+
       if (!onlyFillEmpty) return true;
       if (currentValue === null || currentValue === undefined) return true;
       if (Array.isArray(currentValue) && currentValue.length === 0) return true;
@@ -447,6 +471,18 @@ Deno.serve(async (req) => {
     // Update deal if we have any changes
     if (Object.keys(updateData).length > 0) {
       updateData.updated_at = new Date().toISOString();
+      
+      // Add website source tracking if we're updating fields
+      if (updatedFields.length > 0) {
+        const newSource = {
+          source: 'website',
+          timestamp: new Date().toISOString(),
+          fields: updatedFields
+        };
+        // Append to existing sources
+        const updatedSources = [...existingSources, newSource];
+        updateData.extraction_sources = updatedSources;
+      }
       
       const { error: updateError } = await supabase
         .from('deals')
