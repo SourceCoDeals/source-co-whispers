@@ -44,3 +44,6 @@ verify_jwt = true
 
 [functions.map-deal-csv-columns]
 verify_jwt = true
+
+[functions.score-deal]
+verify_jwt = true
