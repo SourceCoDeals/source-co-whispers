@@ -19,6 +19,8 @@ interface LegacyBuyer {
   thesis_confidence: string | null;
   industry_vertical: string | null;
   tracker_id: string;
+  has_fee_agreement: boolean | null;
+  fee_agreement_status: string | null;
 }
 
 interface GroupedBuyers {
@@ -42,7 +44,7 @@ export default function AllBuyers() {
   const loadData = async () => {
     const [trackersRes, buyersRes] = await Promise.all([
       supabase.from("industry_trackers").select("id, industry_name"),
-      supabase.from("buyers").select("id, pe_firm_name, platform_company_name, platform_website, thesis_summary, thesis_confidence, industry_vertical, tracker_id").order("pe_firm_name")
+      supabase.from("buyers").select("id, pe_firm_name, platform_company_name, platform_website, thesis_summary, thesis_confidence, industry_vertical, tracker_id, has_fee_agreement, fee_agreement_status").order("pe_firm_name")
     ]);
 
     const trackerMap: Record<string, string> = {};
@@ -264,6 +266,13 @@ function LegacyPEFirmRow({ group, trackers, isExpanded, onToggle, searchTerm }: 
           </div>
         </CollapsibleTrigger>
         <div className="flex items-center gap-2">
+          {/* PE Firm level fee agreement - show if any buyer has Signed status */}
+          {group.buyers.some(b => b.fee_agreement_status === 'Signed') && (
+            <Badge variant="default" className="text-xs flex items-center gap-1">
+              <FileCheck className="w-3 h-3" />
+              Fee Agreement
+            </Badge>
+          )}
           {universeNames.map((name, i) => (
             <Badge key={i} variant="secondary" className="text-xs">
               {name}
@@ -307,6 +316,13 @@ function LegacyPEFirmRow({ group, trackers, isExpanded, onToggle, searchTerm }: 
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {/* Platform level fee agreement */}
+                {buyer.has_fee_agreement && (
+                  <Badge variant="default" className="text-xs flex items-center gap-1">
+                    <FileCheck className="w-3 h-3" />
+                    Fee
+                  </Badge>
+                )}
                 {buyer.thesis_confidence && (
                   <Badge 
                     variant={buyer.thesis_confidence === "high" ? "default" : "secondary"}
