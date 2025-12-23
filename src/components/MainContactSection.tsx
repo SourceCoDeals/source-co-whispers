@@ -23,9 +23,11 @@ interface MainContactSectionProps {
   buyerId: string;
   contacts: Contact[];
   onContactUpdate: () => void;
+  peFirmName?: string;
+  platformCompanyName?: string;
 }
 
-export function MainContactSection({ buyerId, contacts, onContactUpdate }: MainContactSectionProps) {
+export function MainContactSection({ buyerId, contacts, onContactUpdate, peFirmName, platformCompanyName }: MainContactSectionProps) {
   const { toast } = useToast();
   const [isUpdating, setIsUpdating] = useState(false);
   
@@ -71,6 +73,8 @@ export function MainContactSection({ buyerId, contacts, onContactUpdate }: MainC
             buyerId={buyerId} 
             onContactAdded={onContactUpdate}
             existingContactsCount={0}
+            peFirmName={peFirmName}
+            platformCompanyName={platformCompanyName}
             trigger={
               <Button variant="outline" size="sm">
                 <Plus className="w-4 h-4 mr-2" />
@@ -99,6 +103,8 @@ export function MainContactSection({ buyerId, contacts, onContactUpdate }: MainC
           buyerId={buyerId} 
           onContactAdded={onContactUpdate}
           existingContactsCount={contacts.length}
+          peFirmName={peFirmName}
+          platformCompanyName={platformCompanyName}
           trigger={
             <Button variant="outline" size="sm">
               <Plus className="w-4 h-4 mr-2" />

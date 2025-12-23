@@ -28,14 +28,24 @@ interface AddContactDialogProps {
   onContactAdded: () => void;
   existingContactsCount?: number;
   trigger?: React.ReactNode;
+  peFirmName?: string;
+  platformCompanyName?: string;
 }
 
 export function AddContactDialog({ 
   buyerId, 
   onContactAdded, 
   existingContactsCount = 0,
-  trigger 
+  trigger,
+  peFirmName,
+  platformCompanyName
 }: AddContactDialogProps) {
+  // Build dynamic company options based on actual buyer data
+  const companyOptions = [
+    ...(peFirmName ? [{ value: peFirmName, label: peFirmName }] : []),
+    ...(platformCompanyName ? [{ value: platformCompanyName, label: platformCompanyName }] : []),
+    { value: "Other", label: "Other" }
+  ];
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -171,18 +181,20 @@ export function AddContactDialog({
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="company_type">Company Type</Label>
+              <Label htmlFor="company_type">Company</Label>
               <Select
                 value={formData.company_type}
                 onValueChange={(value) => setFormData({ ...formData, company_type: value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select type" />
+                  <SelectValue placeholder="Select company" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="PE Firm">PE Firm</SelectItem>
-                  <SelectItem value="Platform">Platform</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
+                  {companyOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
