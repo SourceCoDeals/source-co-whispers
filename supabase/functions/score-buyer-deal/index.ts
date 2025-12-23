@@ -385,16 +385,17 @@ function analyzeEngagementSignals(callIntelligence: any[] | null): EngagementSig
   return signals;
 }
 
-// Score SIZE category
+// Score SIZE category - with strict enforcement for small deals
 function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore {
   const dealRevenue = deal.revenue || 0;
   const dealLocations = deal.location_count || 1;
   
-  // Check for deal breakers
-  if (buyer.min_revenue && dealRevenue < buyer.min_revenue * 0.5) {
+  // STRICT: Disqualify if deal revenue is below buyer's minimum
+  if (buyer.min_revenue && dealRevenue < buyer.min_revenue) {
+    const percentBelow = ((buyer.min_revenue - dealRevenue) / buyer.min_revenue * 100).toFixed(0);
     return {
       score: 0,
-      reasoning: `Deal revenue ($${dealRevenue}M) is significantly below buyer minimum ($${buyer.min_revenue}M)`,
+      reasoning: `Deal revenue ($${dealRevenue}M) is ${percentBelow}% below buyer minimum ($${buyer.min_revenue}M)`,
       isDisqualified: true,
       disqualificationReason: `Revenue ($${dealRevenue}M) below minimum threshold ($${buyer.min_revenue}M)`,
       confidence: 'high'
@@ -411,11 +412,27 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore {
     };
   }
   
+  // Check if this is a single-location deal against a national/multi-location platform
+  const buyerIsNationalPlatform = 
+    (buyer.total_acquisitions && buyer.total_acquisitions > 5) ||
+    (buyer.target_geographies && buyer.target_geographies.length > 3) ||
+    (buyer.geographic_footprint && buyer.geographic_footprint.length > 3);
+    
+  if (dealLocations === 1 && buyerIsNationalPlatform && buyer.min_revenue && dealRevenue < buyer.min_revenue * 1.5) {
+    return {
+      score: 15,
+      reasoning: `Single-location deal ($${dealRevenue}M) unlikely to attract national platform with ${buyer.total_acquisitions || 'multiple'} acquisitions`,
+      isDisqualified: true,
+      disqualificationReason: `Single-location deal too small for national platform (min $${buyer.min_revenue}M)`,
+      confidence: 'high'
+    };
+  }
+  
   let score = 50; // Baseline
   let reasons: string[] = [];
   let hasData = false;
   
-  // Revenue scoring
+  // Revenue scoring with stricter penalties for being below minimum
   if (buyer.min_revenue || buyer.max_revenue || buyer.revenue_sweet_spot) {
     hasData = true;
     const min = buyer.min_revenue || 0;
@@ -430,8 +447,9 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore {
       score = 70 + (fitPercent * 30);
       reasons.push(`Revenue ($${dealRevenue}M) within target range ($${min}-${max}M)`);
     } else if (dealRevenue < min) {
+      // Strict penalty for being below minimum
       const gap = (min - dealRevenue) / min;
-      score = Math.max(20, 60 - (gap * 60));
+      score = Math.max(10, 40 - (gap * 50)); // Heavier penalty
       reasons.push(`Revenue ($${dealRevenue}M) below target ($${min}M min)`);
     } else {
       const gap = (dealRevenue - max) / max;
@@ -454,14 +472,17 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore {
       if (dealEbitda >= min && dealEbitda <= max) {
         score = Math.min(100, score + 10);
         reasons.push(`EBITDA ($${dealEbitda.toFixed(1)}M) within range`);
+      } else if (dealEbitda < min) {
+        score = Math.max(score - 15, 10);
+        reasons.push(`EBITDA ($${dealEbitda.toFixed(1)}M) below minimum ($${min}M)`);
       }
     }
   }
   
-  // Location count consideration
+  // Location count consideration - significant penalty for single location
   if (dealLocations === 1) {
-    // Single location - some buyers specifically avoid these
-    reasons.push(`Single-location deal`);
+    score = Math.max(10, score - 10); // Penalty for single location
+    reasons.push(`Single-location deal may limit buyer interest`);
   } else if (dealLocations >= 3) {
     score = Math.min(100, score + 5);
     reasons.push(`Multi-location (${dealLocations} locations) provides infrastructure`);

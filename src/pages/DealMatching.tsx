@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
-import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle, XCircle, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle, XCircle, ThumbsUp, ThumbsDown, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -572,6 +572,14 @@ export default function DealMatching() {
                   <Link to={`/buyers/${buyer.id}?dealId=${id}`} className="font-semibold hover:text-primary transition-colors">
                     {buyer.platform_company_name || buyer.pe_firm_name}
                   </Link>
+                  <Link 
+                    to={`/buyers/${buyer.id}?dealId=${id}`}
+                    className="text-muted-foreground hover:text-primary" 
+                    title="View full buyer profile"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                  </Link>
                   <a href={getPlatformWebsite(buyer)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary" title="Visit website">
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
@@ -693,23 +701,12 @@ export default function DealMatching() {
                 {showPassButton && !isPassed && (
                   <div className="flex items-center gap-2 mt-1">
                     <div className="flex items-center gap-1.5 border rounded-md px-2 py-1">
-                      <span className="text-xs text-muted-foreground">Interested:</span>
-                      <Button
-                        variant={score?.interested === true ? "default" : "ghost"}
-                        size="sm"
-                        className={`h-6 w-6 p-0 ${score?.interested === true ? 'bg-green-600 hover:bg-green-700' : ''}`}
-                        onClick={(e) => { e.stopPropagation(); handleInterestedToggle(buyer, true); }}
-                      >
-                        <ThumbsUp className="w-3 h-3" />
-                      </Button>
-                      <Button
-                        variant={score?.interested === false ? "default" : "ghost"}
-                        size="sm"
-                        className={`h-6 w-6 p-0 ${score?.interested === false ? 'bg-destructive hover:bg-destructive/90' : ''}`}
-                        onClick={(e) => { e.stopPropagation(); handleInterestedToggle(buyer, false); }}
-                      >
-                        <ThumbsDown className="w-3 h-3" />
-                      </Button>
+                      <span className="text-xs text-muted-foreground">Interested</span>
+                      <Switch
+                        checked={score?.interested === true}
+                        onCheckedChange={(checked) => { handleInterestedToggle(buyer, checked); }}
+                        onClick={(e) => e.stopPropagation()}
+                      />
                     </div>
                     <Button 
                       variant="outline" 
