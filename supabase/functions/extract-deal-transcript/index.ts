@@ -284,6 +284,41 @@ const extractDealInfoTool = {
         contact_name: {
           type: "string",
           description: "Name of the primary contact/owner"
+        },
+        // End Market / Customers fields
+        end_market_customers: {
+          type: "string",
+          description: "Primary customer types/segments - who are they selling to? Examples: 'insurance companies, enterprise rental, individual consumers', 'commercial contractors, residential homeowners', 'Fortune 500 companies, SMBs'"
+        },
+        customer_concentration: {
+          type: "string",
+          description: "Any mentions of top customers, concentration risk, or customer dependencies. Examples: 'Top 3 customers = 40% of revenue', 'No single customer > 10%', 'Main customer is [Company Name] at 25%'"
+        },
+        customer_geography: {
+          type: "string",
+          description: "Where customers are located geographically, if discussed and different from operations. Examples: 'Customers are nationwide', 'Primarily serves local metro area', 'Exports to Canada and Mexico'"
+        },
+        // Additional Information structured fields
+        key_risks: {
+          type: "array",
+          items: { type: "string" },
+          description: "Concerns or risks mentioned during the call. Examples: customer concentration, key-man dependency, lease expiration, regulatory issues, pending litigation, equipment age, union labor"
+        },
+        competitive_position: {
+          type: "string",
+          description: "Market position, competitors, and differentiation mentioned. Examples: 'Largest provider in metro area', 'Competes with [Competitor A] and [Competitor B]', 'Only certified provider in region'"
+        },
+        technology_systems: {
+          type: "string",
+          description: "Key systems, software, and technology dependencies. Examples: 'Uses SAP for ERP', 'Proprietary scheduling software', 'Recently upgraded to cloud-based systems'"
+        },
+        real_estate: {
+          type: "string",
+          description: "Owned vs leased properties, lease terms, property details. Examples: '3 owned locations, 2 leased', 'Main facility lease expires 2026', 'Owns 5-acre lot with building'"
+        },
+        growth_trajectory: {
+          type: "string",
+          description: "Historical growth patterns and future outlook discussed. Examples: '15% CAGR over last 3 years', 'Flat revenue but improving margins', 'Planning expansion into new market'"
         }
       },
       required: [],
@@ -425,7 +460,19 @@ Extract all available information including:
 - Ownership structure
 - Any special requirements for the deal
 - Primary contact name
-- Follow-up questions for unclear financial data`;
+- Follow-up questions for unclear financial data
+
+IMPORTANT - Also extract End Market / Customer information:
+- end_market_customers: Who are their primary customers? What segments do they serve?
+- customer_concentration: Any mentions of top customers, revenue concentration, or dependencies?
+- customer_geography: Where are customers located (if different from operations)?
+
+IMPORTANT - Also extract Additional Intelligence:
+- key_risks: List any concerns or risks mentioned (customer concentration, key-man, lease issues, regulatory, litigation, equipment, labor)
+- competitive_position: Market position, competitors, differentiation
+- technology_systems: Key software, systems, technology used
+- real_estate: Property ownership, lease terms, facility details
+- growth_trajectory: Historical growth, future outlook, expansion plans`;
 
   console.log('Calling AI with M&A extraction prompt...');
 
@@ -706,6 +753,18 @@ Deno.serve(async (req) => {
     if (extractedInfo.financial_followup_questions?.length) {
       updateData.financial_followup_questions = extractedInfo.financial_followup_questions;
     }
+
+    // End Market / Customers fields
+    if (extractedInfo.end_market_customers) updateData.end_market_customers = extractedInfo.end_market_customers;
+    if (extractedInfo.customer_concentration) updateData.customer_concentration = extractedInfo.customer_concentration;
+    if (extractedInfo.customer_geography) updateData.customer_geography = extractedInfo.customer_geography;
+
+    // Additional Information structured fields
+    if (extractedInfo.key_risks?.length) updateData.key_risks = extractedInfo.key_risks;
+    if (extractedInfo.competitive_position) updateData.competitive_position = extractedInfo.competitive_position;
+    if (extractedInfo.technology_systems) updateData.technology_systems = extractedInfo.technology_systems;
+    if (extractedInfo.real_estate) updateData.real_estate = extractedInfo.real_estate;
+    if (extractedInfo.growth_trajectory) updateData.growth_trajectory = extractedInfo.growth_trajectory;
 
     // Update the deal
     const { error: updateError } = await supabase

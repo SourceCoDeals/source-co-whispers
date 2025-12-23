@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, ArrowLeft, Users, ExternalLink, FileText, Calendar, Building2, DollarSign, MapPin, Target, User, Phone, Mail, Briefcase, Clock, Hash, Linkedin, Sparkles, AlertTriangle, MessageSquareWarning, Store, Globe, Pencil, Save, X } from "lucide-react";
+import { Loader2, ArrowLeft, Users, ExternalLink, FileText, Calendar, Building2, DollarSign, MapPin, Target, User, Phone, Mail, Briefcase, Clock, Hash, Linkedin, Sparkles, AlertTriangle, MessageSquareWarning, Store, Globe, Pencil, Save, X, ShoppingCart, TrendingUp, AlertCircle, Server, Home } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
@@ -43,6 +43,7 @@ export default function DealDetail() {
   const [editContact, setEditContact] = useState<any>({});
   const [editAdditional, setEditAdditional] = useState<any>({});
   const [editAttachments, setEditAttachments] = useState<any>({});
+  const [editEndMarket, setEditEndMarket] = useState<any>({});
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -99,10 +100,20 @@ export default function DealDetail() {
     });
     setEditAdditional({
       additional_info: dealData.additional_info || '',
+      key_risks: dealData.key_risks || [],
+      competitive_position: dealData.competitive_position || '',
+      technology_systems: dealData.technology_systems || '',
+      real_estate: dealData.real_estate || '',
+      growth_trajectory: dealData.growth_trajectory || '',
     });
     setEditAttachments({
       company_website: dealData.company_website || '',
       transcript_link: dealData.transcript_link || '',
+    });
+    setEditEndMarket({
+      end_market_customers: dealData.end_market_customers || '',
+      customer_concentration: dealData.customer_concentration || '',
+      customer_geography: dealData.customer_geography || '',
     });
   };
 
@@ -737,25 +748,222 @@ export default function DealDetail() {
           />
         </EditableSection>
 
-        {/* Row 6: Additional Information */}
+        {/* End Market / Customers Section */}
+        <EditableSection
+          title="End Market / Customers"
+          icon={<ShoppingCart className="w-5 h-5" />}
+          onSave={async () => {
+            await saveSection({
+              end_market_customers: editEndMarket.end_market_customers || null,
+              customer_concentration: editEndMarket.customer_concentration || null,
+              customer_geography: editEndMarket.customer_geography || null,
+            });
+          }}
+          editContent={
+            <div className="space-y-3 text-sm">
+              <div>
+                <label className="text-muted-foreground text-xs uppercase tracking-wide mb-1 block">Customer Types / Segments</label>
+                <Textarea 
+                  value={editEndMarket.end_market_customers} 
+                  onChange={(e) => setEditEndMarket({ ...editEndMarket, end_market_customers: e.target.value })} 
+                  placeholder="Who are the primary customers? (e.g., insurance companies, individual consumers, commercial contractors)"
+                  rows={2}
+                />
+              </div>
+              <div>
+                <label className="text-muted-foreground text-xs uppercase tracking-wide mb-1 block">Customer Concentration</label>
+                <Textarea 
+                  value={editEndMarket.customer_concentration} 
+                  onChange={(e) => setEditEndMarket({ ...editEndMarket, customer_concentration: e.target.value })} 
+                  placeholder="Top customer info, concentration risk (e.g., 'Top 3 customers = 40% of revenue')"
+                  rows={2}
+                />
+              </div>
+              <div>
+                <label className="text-muted-foreground text-xs uppercase tracking-wide mb-1 block">Customer Geography</label>
+                <Input 
+                  value={editEndMarket.customer_geography} 
+                  onChange={(e) => setEditEndMarket({ ...editEndMarket, customer_geography: e.target.value })} 
+                  placeholder="Where customers are located (e.g., 'Nationwide', 'Local metro area')"
+                />
+              </div>
+            </div>
+          }
+        >
+          <div className="space-y-3 text-sm">
+            <div>
+              <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Customer Types / Segments</p>
+              <p className={deal.end_market_customers ? "" : "text-muted-foreground italic"}>{deal.end_market_customers || "Not specified"}</p>
+            </div>
+            {deal.customer_concentration && (
+              <div>
+                <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Customer Concentration</p>
+                <p>{deal.customer_concentration}</p>
+              </div>
+            )}
+            {deal.customer_geography && (
+              <div>
+                <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Customer Geography</p>
+                <p>{deal.customer_geography}</p>
+              </div>
+            )}
+          </div>
+        </EditableSection>
+
+        {/* Row 6: Additional Information - Enhanced with structured fields */}
         <EditableSection
           title="Additional Information"
           icon={<Hash className="w-5 h-5" />}
           onSave={async () => {
             await saveSection({
               additional_info: editAdditional.additional_info || null,
+              key_risks: editAdditional.key_risks?.length ? editAdditional.key_risks : null,
+              competitive_position: editAdditional.competitive_position || null,
+              technology_systems: editAdditional.technology_systems || null,
+              real_estate: editAdditional.real_estate || null,
+              growth_trajectory: editAdditional.growth_trajectory || null,
             });
           }}
           editContent={
-            <Textarea 
-              value={editAdditional.additional_info} 
-              onChange={(e) => setEditAdditional({ ...editAdditional, additional_info: e.target.value })} 
-              placeholder="Any additional information..."
-              rows={3}
-            />
+            <div className="space-y-4 text-sm">
+              <div>
+                <label className="text-muted-foreground text-xs uppercase tracking-wide mb-1 block">Key Risks (one per line)</label>
+                <Textarea 
+                  value={editAdditional.key_risks?.join('\n') || ''} 
+                  onChange={(e) => setEditAdditional({ 
+                    ...editAdditional, 
+                    key_risks: e.target.value.split('\n').filter((r: string) => r.trim()) 
+                  })} 
+                  placeholder="Customer concentration&#10;Key-man dependency&#10;Lease expires 2026"
+                  rows={3}
+                />
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-muted-foreground text-xs uppercase tracking-wide mb-1 block">Competitive Position</label>
+                  <Textarea 
+                    value={editAdditional.competitive_position} 
+                    onChange={(e) => setEditAdditional({ ...editAdditional, competitive_position: e.target.value })} 
+                    placeholder="Market position, competitors..."
+                    rows={2}
+                  />
+                </div>
+                <div>
+                  <label className="text-muted-foreground text-xs uppercase tracking-wide mb-1 block">Technology / Systems</label>
+                  <Textarea 
+                    value={editAdditional.technology_systems} 
+                    onChange={(e) => setEditAdditional({ ...editAdditional, technology_systems: e.target.value })} 
+                    placeholder="Key software, systems..."
+                    rows={2}
+                  />
+                </div>
+                <div>
+                  <label className="text-muted-foreground text-xs uppercase tracking-wide mb-1 block">Real Estate</label>
+                  <Textarea 
+                    value={editAdditional.real_estate} 
+                    onChange={(e) => setEditAdditional({ ...editAdditional, real_estate: e.target.value })} 
+                    placeholder="Owned vs leased, terms..."
+                    rows={2}
+                  />
+                </div>
+                <div>
+                  <label className="text-muted-foreground text-xs uppercase tracking-wide mb-1 block">Growth Trajectory</label>
+                  <Textarea 
+                    value={editAdditional.growth_trajectory} 
+                    onChange={(e) => setEditAdditional({ ...editAdditional, growth_trajectory: e.target.value })} 
+                    placeholder="Historical growth, outlook..."
+                    rows={2}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-muted-foreground text-xs uppercase tracking-wide mb-1 block">Other Notes</label>
+                <Textarea 
+                  value={editAdditional.additional_info} 
+                  onChange={(e) => setEditAdditional({ ...editAdditional, additional_info: e.target.value })} 
+                  placeholder="Any other information..."
+                  rows={2}
+                />
+              </div>
+            </div>
           }
         >
-          <p className={deal.additional_info ? "text-sm" : "text-sm text-muted-foreground italic"}>{deal.additional_info || "No additional information"}</p>
+          <div className="space-y-4 text-sm">
+            {/* Key Risks */}
+            {deal.key_risks?.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertCircle className="w-4 h-4 text-amber-500" />
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">Key Risks</p>
+                </div>
+                <ul className="space-y-1">
+                  {deal.key_risks.map((risk: string, i: number) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="text-amber-500 mt-1">•</span>
+                      <span>{risk}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Competitive Position */}
+            {deal.competitive_position && (
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Target className="w-4 h-4 text-muted-foreground" />
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">Competitive Position</p>
+                </div>
+                <p>{deal.competitive_position}</p>
+              </div>
+            )}
+
+            {/* Technology */}
+            {deal.technology_systems && (
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Server className="w-4 h-4 text-muted-foreground" />
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">Technology / Systems</p>
+                </div>
+                <p>{deal.technology_systems}</p>
+              </div>
+            )}
+
+            {/* Real Estate */}
+            {deal.real_estate && (
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Home className="w-4 h-4 text-muted-foreground" />
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">Real Estate</p>
+                </div>
+                <p>{deal.real_estate}</p>
+              </div>
+            )}
+
+            {/* Growth */}
+            {deal.growth_trajectory && (
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <TrendingUp className="w-4 h-4 text-muted-foreground" />
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">Growth Trajectory</p>
+                </div>
+                <p>{deal.growth_trajectory}</p>
+              </div>
+            )}
+
+            {/* Other Notes */}
+            {deal.additional_info && (
+              <div>
+                <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Other Notes</p>
+                <p>{deal.additional_info}</p>
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!deal.key_risks?.length && !deal.competitive_position && !deal.technology_systems && !deal.real_estate && !deal.growth_trajectory && !deal.additional_info && (
+              <p className="text-muted-foreground italic">No additional information</p>
+            )}
+          </div>
         </EditableSection>
 
         {/* Deal History Section - Other Buyer Universes */}

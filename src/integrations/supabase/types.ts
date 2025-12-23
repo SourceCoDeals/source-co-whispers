@@ -710,11 +710,14 @@ export type Database = {
           company_id: string | null
           company_overview: string | null
           company_website: string | null
+          competitive_position: string | null
           contact_email: string | null
           contact_linkedin: string | null
           contact_name: string | null
           contact_phone: string | null
           created_at: string
+          customer_concentration: string | null
+          customer_geography: string | null
           deal_name: string
           ebitda_amount: number | null
           ebitda_confidence: string | null
@@ -722,16 +725,20 @@ export type Database = {
           ebitda_percentage: number | null
           ebitda_source_quote: string | null
           employee_count: number | null
+          end_market_customers: string | null
           financial_followup_questions: string[] | null
           financial_notes: string | null
           founded_year: number | null
           geography: string[] | null
+          growth_trajectory: string | null
           headquarters: string | null
           id: string
           industry_type: string | null
+          key_risks: string[] | null
           location_count: number | null
           owner_goals: string | null
           ownership_structure: string | null
+          real_estate: string | null
           revenue: number | null
           revenue_confidence: string | null
           revenue_is_inferred: boolean | null
@@ -739,6 +746,7 @@ export type Database = {
           service_mix: string | null
           special_requirements: string | null
           status: string | null
+          technology_systems: string | null
           tracker_id: string
           transcript_link: string | null
           updated_at: string
@@ -749,11 +757,14 @@ export type Database = {
           company_id?: string | null
           company_overview?: string | null
           company_website?: string | null
+          competitive_position?: string | null
           contact_email?: string | null
           contact_linkedin?: string | null
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
+          customer_concentration?: string | null
+          customer_geography?: string | null
           deal_name: string
           ebitda_amount?: number | null
           ebitda_confidence?: string | null
@@ -761,16 +772,20 @@ export type Database = {
           ebitda_percentage?: number | null
           ebitda_source_quote?: string | null
           employee_count?: number | null
+          end_market_customers?: string | null
           financial_followup_questions?: string[] | null
           financial_notes?: string | null
           founded_year?: number | null
           geography?: string[] | null
+          growth_trajectory?: string | null
           headquarters?: string | null
           id?: string
           industry_type?: string | null
+          key_risks?: string[] | null
           location_count?: number | null
           owner_goals?: string | null
           ownership_structure?: string | null
+          real_estate?: string | null
           revenue?: number | null
           revenue_confidence?: string | null
           revenue_is_inferred?: boolean | null
@@ -778,6 +793,7 @@ export type Database = {
           service_mix?: string | null
           special_requirements?: string | null
           status?: string | null
+          technology_systems?: string | null
           tracker_id: string
           transcript_link?: string | null
           updated_at?: string
@@ -788,11 +804,14 @@ export type Database = {
           company_id?: string | null
           company_overview?: string | null
           company_website?: string | null
+          competitive_position?: string | null
           contact_email?: string | null
           contact_linkedin?: string | null
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
+          customer_concentration?: string | null
+          customer_geography?: string | null
           deal_name?: string
           ebitda_amount?: number | null
           ebitda_confidence?: string | null
@@ -800,16 +819,20 @@ export type Database = {
           ebitda_percentage?: number | null
           ebitda_source_quote?: string | null
           employee_count?: number | null
+          end_market_customers?: string | null
           financial_followup_questions?: string[] | null
           financial_notes?: string | null
           founded_year?: number | null
           geography?: string[] | null
+          growth_trajectory?: string | null
           headquarters?: string | null
           id?: string
           industry_type?: string | null
+          key_risks?: string[] | null
           location_count?: number | null
           owner_goals?: string | null
           ownership_structure?: string | null
+          real_estate?: string | null
           revenue?: number | null
           revenue_confidence?: string | null
           revenue_is_inferred?: boolean | null
@@ -817,6 +840,7 @@ export type Database = {
           service_mix?: string | null
           special_requirements?: string | null
           status?: string | null
+          technology_systems?: string | null
           tracker_id?: string
           transcript_link?: string | null
           updated_at?: string
