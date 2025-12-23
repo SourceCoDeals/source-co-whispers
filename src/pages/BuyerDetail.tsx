@@ -742,9 +742,9 @@ export default function BuyerDetail() {
                 actions={<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingSection('company_info')}><Pencil className="w-3.5 h-3.5" /></Button>}
               >
                 <DataGrid columns={2}>
-                  <DataField label="Buyer Company Name" value={buyer.platform_company_name} />
+                  <DataField label="Platform Company Name" value={buyer.platform_company_name} />
                   <DataField label="PE / Parent Firm" value={buyer.pe_firm_name} />
-                  <DataField label="Buyer Website" value={buyer.platform_website} type="url" />
+                  <DataField label="Platform Website" value={buyer.platform_website} type="url" />
                   <DataField label="PE Firm Website" value={buyer.pe_firm_website} type="url" />
                   <DataField label="Buyer LinkedIn" value={buyer.buyer_linkedin} type="url" />
                   <DataField label="PE Firm LinkedIn" value={buyer.pe_firm_linkedin} type="url" />
