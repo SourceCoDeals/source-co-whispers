@@ -1049,6 +1049,8 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                                   <ExternalLink className="w-3.5 h-3.5" />
                                 </span>
                               )}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-1">
                               {isActuallyEnriched(buyer) && (
                                 <Badge variant="outline" className="text-xs px-1.5 py-0 bg-primary/10 text-primary border-primary/20">
                                   <Sparkles className="w-3 h-3 mr-1" />
