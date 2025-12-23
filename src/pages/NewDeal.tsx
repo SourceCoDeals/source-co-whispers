@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Sparkles } from "lucide-react";
+import { Loader2, ArrowLeft, Sparkles, Wand2 } from "lucide-react";
 import { normalizeGeography } from "@/lib/normalizeGeography";
 import { normalizeDomain } from "@/lib/normalizeDomain";
 import { useCompanyLookup } from "@/hooks/useCompanyLookup";
@@ -20,6 +20,8 @@ export default function NewDeal() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [generalNotes, setGeneralNotes] = useState("");
   const [tracker, setTracker] = useState<any>(null);
   const [form, setForm] = useState({
     deal_name: "",
@@ -58,6 +60,65 @@ export default function NewDeal() {
   const alreadyInThisTracker = dealHistory.some((d) => d.tracker_id === trackerId);
 
   const [extractionStatus, setExtractionStatus] = useState<string | null>(null);
+
+  const handleAnalyzeNotes = async () => {
+    if (!generalNotes.trim()) {
+      toast({ title: "No notes to analyze", description: "Please paste your notes first.", variant: "destructive" });
+      return;
+    }
+
+    setIsAnalyzing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-deal-notes', {
+        body: { notes: generalNotes }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Analysis failed');
+      }
+
+      const extracted = data.data;
+      console.log('Extracted data:', extracted);
+
+      // Update form with extracted data, preserving existing values if extraction didn't find anything
+      setForm(prev => ({
+        ...prev,
+        deal_name: extracted.deal_name || prev.deal_name,
+        company_website: extracted.company_website || prev.company_website,
+        geography: extracted.geography?.join(', ') || prev.geography,
+        revenue: extracted.revenue?.toString() || prev.revenue,
+        ebitda_percentage: extracted.ebitda_percentage?.toString() || prev.ebitda_percentage,
+        service_mix: extracted.service_mix || prev.service_mix,
+        owner_goals: extracted.owner_goals || prev.owner_goals,
+        additional_info: extracted.additional_info || prev.additional_info,
+        location_count: extracted.location_count?.toString() || prev.location_count,
+      }));
+
+      // Trigger website lookup if we got a website
+      if (extracted.company_website) {
+        debouncedLookup(extracted.company_website);
+      }
+
+      const fieldsFound = Object.values(extracted).filter(v => v !== null && v !== undefined && v !== '').length;
+      toast({ 
+        title: "Notes analyzed!", 
+        description: `Extracted ${fieldsFound} fields from your notes.` 
+      });
+    } catch (err) {
+      console.error('Analysis failed:', err);
+      toast({ 
+        title: "Analysis failed", 
+        description: err instanceof Error ? err.message : "Could not analyze notes.", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -215,6 +276,51 @@ export default function NewDeal() {
         <p className="text-muted-foreground mb-6">in {tracker?.industry_name || "..."}</p>
         
         <form onSubmit={handleSubmit} className="space-y-5 bg-card rounded-lg border p-6">
+          {/* General Notes Section */}
+          <div className="bg-muted/50 rounded-lg p-4 border border-dashed">
+            <Label className="flex items-center gap-2 text-base font-medium mb-2">
+              <Wand2 className="w-4 h-4 text-primary" />
+              Quick Fill from Notes
+            </Label>
+            <p className="text-sm text-muted-foreground mb-3">
+              Paste any notes, emails, or call summaries about this deal and AI will extract the relevant information.
+            </p>
+            <Textarea 
+              value={generalNotes}
+              onChange={(e) => setGeneralNotes(e.target.value)}
+              placeholder="Paste your notes here... e.g., 'Spoke with John from ABC Roofing in Atlanta, GA. They do about $5M in revenue with 20% margins. Has 3 locations across Georgia. Looking to retire in 2-3 years...'"
+              className="min-h-[120px] bg-background"
+            />
+            <Button 
+              type="button" 
+              variant="secondary" 
+              onClick={handleAnalyzeNotes}
+              disabled={isAnalyzing || !generalNotes.trim()}
+              className="mt-3"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Analyze & Fill Fields
+                </>
+              )}
+            </Button>
+          </div>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">Or fill manually</span>
+            </div>
+          </div>
+
           <div><Label>Deal Name *</Label><Input value={form.deal_name} onChange={(e) => setForm({ ...form, deal_name: e.target.value })} placeholder="e.g., Southeast Roofing Co." className="mt-1" /></div>
           
           <div>
