@@ -49,6 +49,7 @@ export default function TrackerDetail() {
   const [isBulkEnriching, setIsBulkEnriching] = useState(false);
   const [enrichingDeals, setEnrichingDeals] = useState<Set<string>>(new Set());
   const [isBulkEnrichingDeals, setIsBulkEnrichingDeals] = useState(false);
+  const [dealEnrichmentProgress, setDealEnrichmentProgress] = useState({ current: 0, total: 0 });
   const [dealBuyerCounts, setDealBuyerCounts] = useState<Record<string, { approved: number; interested: number; passed: number }>>({});
   const [isEditingFitCriteria, setIsEditingFitCriteria] = useState(false);
   const [editedSizeCriteria, setEditedSizeCriteria] = useState("");
@@ -513,15 +514,13 @@ export default function TrackerDetail() {
     }
 
     setIsBulkEnrichingDeals(true);
+    setDealEnrichmentProgress({ current: 0, total: enrichableDeals.length });
     let successCount = 0;
     let failCount = 0;
 
-    toast({
-      title: "Starting deal enrichment",
-      description: `Processing ${enrichableDeals.length} deals...`,
-    });
-
-    for (const deal of enrichableDeals) {
+    for (let i = 0; i < enrichableDeals.length; i++) {
+      const deal = enrichableDeals[i];
+      setDealEnrichmentProgress({ current: i + 1, total: enrichableDeals.length });
       setEnrichingDeals(prev => new Set(prev).add(deal.id));
       
       try {
@@ -578,11 +577,12 @@ export default function TrackerDetail() {
     }
 
     await loadData();
+    setDealEnrichmentProgress({ current: 0, total: 0 });
     setIsBulkEnrichingDeals(false);
 
     toast({ 
       title: "Deal enrichment complete", 
-      description: `${successCount} enriched${failCount > 0 ? `, ${failCount} failed` : ''}` 
+      description: `Successfully enriched ${successCount} of ${enrichableDeals.length} deals${failCount > 0 ? `. ${failCount} failed.` : '.'}` 
     });
   };
   
@@ -1353,7 +1353,7 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                 {isBulkEnrichingDeals ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Enriching...
+                    Enriching {dealEnrichmentProgress.current} of {dealEnrichmentProgress.total}...
                   </>
                 ) : (
                   <>
