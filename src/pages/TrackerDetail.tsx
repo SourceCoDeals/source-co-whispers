@@ -1055,6 +1055,12 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                                   Enriched
                                 </Badge>
                               )}
+                              {(buyer.has_fee_agreement || (buyer.fee_agreement_status && buyer.fee_agreement_status !== 'None')) && (
+                                <Badge variant="outline" className="text-xs px-1.5 py-0 bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                                  <DollarSign className="w-3 h-3 mr-1" />
+                                  Fee Agreed
+                                </Badge>
+                              )}
                             </div>
                             <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                               <MapPin className="w-3 h-3" />
