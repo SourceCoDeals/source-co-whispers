@@ -37,7 +37,7 @@ export function DealNotesSection({ dealId, existingExtractionSources, onNotesApp
   const [isApplying, setIsApplying] = useState(false);
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
   const [fieldsExtracted, setFieldsExtracted] = useState<string[]>([]);
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
 
   const analyzeNotes = async () => {
     if (!notes.trim()) {
