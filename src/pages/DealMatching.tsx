@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PassReasonDialog } from "@/components/PassReasonDialog";
+import { BuyerQueryChat } from "@/components/BuyerQueryChat";
 
 interface CategoryScore {
   score: number;
@@ -887,6 +888,14 @@ export default function DealMatching() {
           onConfirm={handleMarkAsPassed}
         />
       </div>
+      
+      {/* AI Query Chat */}
+      {deal && (
+        <BuyerQueryChat 
+          dealId={id!} 
+          dealName={deal.deal_name} 
+        />
+      )}
     </AppLayout>
   );
 }
