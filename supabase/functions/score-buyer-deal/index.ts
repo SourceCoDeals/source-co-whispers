@@ -239,7 +239,7 @@ interface BuyerScore {
   overallReasoning: string;
   isDisqualified: boolean;
   disqualificationReasons: string[];
-  dataCompleteness: 'high' | 'medium' | 'low';
+  dataCompleteness: 'High' | 'Medium' | 'Low';
   dealAttractiveness: number;
   engagementSignals: EngagementSignals;
 }
@@ -994,8 +994,8 @@ function calculateThesisBonus(buyer: Buyer): number {
   return Math.min(30, bonus); // Cap at 30
 }
 
-// Calculate data completeness
-function calculateDataCompleteness(buyer: Buyer, deal: Deal): 'high' | 'medium' | 'low' {
+// Calculate data completeness - returns capitalized values to match DB constraint
+function calculateDataCompleteness(buyer: Buyer, deal: Deal): 'High' | 'Medium' | 'Low' {
   let dataPoints = 0;
   let totalPoints = 0;
   
@@ -1019,9 +1019,9 @@ function calculateDataCompleteness(buyer: Buyer, deal: Deal): 'high' | 'medium' 
   if (deal.location_count) dataPoints += 1;
   
   const percent = (dataPoints / totalPoints) * 100;
-  if (percent >= 70) return 'high';
-  if (percent >= 40) return 'medium';
-  return 'low';
+  if (percent >= 70) return 'High';
+  if (percent >= 40) return 'Medium';
+  return 'Low';
 }
 
 serve(async (req) => {
