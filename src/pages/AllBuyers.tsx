@@ -276,11 +276,21 @@ function LegacyPEFirmRow({ group, trackers, isExpanded, onToggle, searchTerm }: 
               <div className="w-4" />
             )}
             <Building2 className="w-5 h-5 text-primary" />
-            <div>
+            <div className="flex items-center gap-2">
               <p className="font-medium">{group.peFirmName}</p>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span>{group.buyers.length} platform{group.buyers.length !== 1 ? "s" : ""}</span>
-              </div>
+              {firstBuyerId && (
+                <Link 
+                  to={`/buyers/${firstBuyerId}`}
+                  className="p-1 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                  title="View buyer profile"
+                >
+                  <Eye className="w-4 h-4" />
+                </Link>
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>{group.buyers.length} platform{group.buyers.length !== 1 ? "s" : ""}</span>
             </div>
           </div>
         </CollapsibleTrigger>
@@ -307,16 +317,6 @@ function LegacyPEFirmRow({ group, trackers, isExpanded, onToggle, searchTerm }: 
               +{group.trackerIds.length - 3}
             </Badge>
           )}
-          {firstBuyerId && (
-            <Link 
-              to={`/buyers/${firstBuyerId}`}
-              className="ml-2 p-2 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
-              onClick={(e) => e.stopPropagation()}
-              title="View buyer profile"
-            >
-              <Eye className="w-4 h-4" />
-            </Link>
-          )}
         </div>
       </div>
 
@@ -332,7 +332,10 @@ function LegacyPEFirmRow({ group, trackers, isExpanded, onToggle, searchTerm }: 
               <div className="flex items-center gap-3">
                 <div className="w-2 h-2 rounded-full bg-primary/60" />
                 <div>
-                  <p className="font-medium text-sm">{buyer.platform_company_name || buyer.pe_firm_name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-sm">{buyer.platform_company_name || buyer.pe_firm_name}</p>
+                    <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {buyer.industry_vertical || "No industry specified"}
                     {buyer.thesis_summary && ` · ${buyer.thesis_summary.slice(0, 60)}...`}
@@ -412,7 +415,19 @@ function PEFirmRow({ firm, trackers, isExpanded, onToggle, searchTerm }: PEFirmR
             )}
             <Building2 className="w-5 h-5 text-primary" />
             <div>
-              <p className="font-medium">{firm.name}</p>
+              <div className="flex items-center gap-2">
+                <p className="font-medium">{firm.name}</p>
+                {firm.platforms.length > 0 && (
+                  <Link 
+                    to={`/platforms/${firm.platforms[0].id}`}
+                    className="p-1 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                    title="View platform profile"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </Link>
+                )}
+              </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <span>{firm.platforms.length} platform{firm.platforms.length !== 1 ? "s" : ""}</span>
                 {firm.website && (
@@ -472,7 +487,10 @@ function PEFirmRow({ firm, trackers, isExpanded, onToggle, searchTerm }: PEFirmR
               <div className="flex items-center gap-3">
                 <div className="w-2 h-2 rounded-full bg-primary/60" />
                 <div>
-                  <p className="font-medium text-sm">{platform.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-sm">{platform.name}</p>
+                    <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {platform.industry_vertical || "No industry specified"}
                     {platform.thesis_summary && ` · ${platform.thesis_summary.slice(0, 60)}...`}
