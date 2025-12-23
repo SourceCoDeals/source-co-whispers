@@ -73,16 +73,6 @@ export default function TrackerDetail() {
   const [dealSortColumn, setDealSortColumn] = useState<string>("deal_score");
   const [dealSortDirection, setDealSortDirection] = useState<"asc" | "desc">("desc");
   
-  // Deal filter state
-  const [dealFilters, setDealFilters] = useState({
-    deal_name: "",
-    geography: "",
-    status: "all",
-    minRevenue: "",
-    maxRevenue: "",
-    minScore: "",
-    maxScore: "",
-  });
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -496,20 +486,9 @@ export default function TrackerDetail() {
     }
   };
 
-  // Sorted and filtered deals
+  // Sorted deals
   const sortedAndFilteredDeals = useMemo(() => {
-    let filtered = deals.filter(deal => {
-      if (dealFilters.deal_name && !deal.deal_name.toLowerCase().includes(dealFilters.deal_name.toLowerCase())) return false;
-      if (dealFilters.geography && !deal.geography?.some((g: string) => g.toLowerCase().includes(dealFilters.geography.toLowerCase()))) return false;
-      if (dealFilters.status !== "all" && deal.status !== dealFilters.status) return false;
-      if (dealFilters.minRevenue && (deal.revenue || 0) < parseFloat(dealFilters.minRevenue)) return false;
-      if (dealFilters.maxRevenue && (deal.revenue || 0) > parseFloat(dealFilters.maxRevenue)) return false;
-      if (dealFilters.minScore && (deal.deal_score || 0) < parseInt(dealFilters.minScore)) return false;
-      if (dealFilters.maxScore && (deal.deal_score || 0) > parseInt(dealFilters.maxScore)) return false;
-      return true;
-    });
-
-    return filtered.sort((a, b) => {
+    return [...deals].sort((a, b) => {
       let aVal: any, bVal: any;
       
       switch (dealSortColumn) {
@@ -557,24 +536,7 @@ export default function TrackerDetail() {
       }
       return dealSortDirection === "asc" ? aVal - bVal : bVal - aVal;
     });
-  }, [deals, dealFilters, dealSortColumn, dealSortDirection, dealBuyerCounts]);
-
-  // Clear all filters
-  const clearDealFilters = () => {
-    setDealFilters({
-      deal_name: "",
-      geography: "",
-      status: "all",
-      minRevenue: "",
-      maxRevenue: "",
-      minScore: "",
-      maxScore: "",
-    });
-  };
-
-  const hasActiveFilters = Object.entries(dealFilters).some(([key, value]) => 
-    key === "status" ? value !== "all" : value !== ""
-  );
+  }, [deals, dealSortColumn, dealSortDirection, dealBuyerCounts]);
 
   // Sortable header component
   const SortableHeader = ({ column, children, className = "" }: { column: string; children: React.ReactNode; className?: string }) => (
@@ -1516,14 +1478,8 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
           <TabsContent value="deals" className="mt-4 space-y-4">
             <div className="flex justify-between items-center gap-2 mb-2">
               <div className="flex items-center gap-2">
-                {hasActiveFilters && (
-                  <Button variant="ghost" size="sm" onClick={clearDealFilters}>
-                    <X className="w-4 h-4 mr-1" />
-                    Clear Filters
-                  </Button>
-                )}
                 <span className="text-sm text-muted-foreground">
-                  {sortedAndFilteredDeals.length} of {deals.length} deals
+                  {deals.length} deals
                 </span>
               </div>
               <div className="flex gap-2">
@@ -1582,82 +1538,6 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                     <SortableHeader column="ebitda" className="w-[90px] text-right">EBITDA</SortableHeader>
                     <SortableHeader column="deal_score" className="w-[90px] text-center">Score</SortableHeader>
                     <TableHead className="w-[120px]">Actions</TableHead>
-                  </TableRow>
-                  {/* Filter row */}
-                  <TableRow className="bg-muted/30 hover:bg-muted/30">
-                    <TableHead className="py-2">
-                      <Input
-                        placeholder="Filter name..."
-                        value={dealFilters.deal_name}
-                        onChange={(e) => setDealFilters(prev => ({ ...prev, deal_name: e.target.value }))}
-                        className="h-7 text-xs"
-                      />
-                    </TableHead>
-                    <TableHead className="py-2">
-                      <Input
-                        placeholder="Filter states..."
-                        value={dealFilters.geography}
-                        onChange={(e) => setDealFilters(prev => ({ ...prev, geography: e.target.value }))}
-                        className="h-7 text-xs"
-                      />
-                    </TableHead>
-                    <TableHead className="py-2" />
-                    <TableHead className="py-2" />
-                    <TableHead className="py-2" />
-                    <TableHead className="py-2">
-                      <Select
-                        value={dealFilters.status}
-                        onValueChange={(value) => setDealFilters(prev => ({ ...prev, status: value }))}
-                      >
-                        <SelectTrigger className="h-7 text-xs">
-                          <SelectValue placeholder="Status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Status</SelectItem>
-                          <SelectItem value="Active">Active</SelectItem>
-                          <SelectItem value="Archived">Archived</SelectItem>
-                          <SelectItem value="Closed">Closed</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableHead>
-                    <TableHead className="py-2">
-                      <div className="flex gap-1">
-                        <Input
-                          placeholder="Min"
-                          value={dealFilters.minRevenue}
-                          onChange={(e) => setDealFilters(prev => ({ ...prev, minRevenue: e.target.value }))}
-                          className="h-7 text-xs w-12"
-                          type="number"
-                        />
-                        <Input
-                          placeholder="Max"
-                          value={dealFilters.maxRevenue}
-                          onChange={(e) => setDealFilters(prev => ({ ...prev, maxRevenue: e.target.value }))}
-                          className="h-7 text-xs w-12"
-                          type="number"
-                        />
-                      </div>
-                    </TableHead>
-                    <TableHead className="py-2" />
-                    <TableHead className="py-2">
-                      <div className="flex gap-1">
-                        <Input
-                          placeholder="Min"
-                          value={dealFilters.minScore}
-                          onChange={(e) => setDealFilters(prev => ({ ...prev, minScore: e.target.value }))}
-                          className="h-7 text-xs w-12"
-                          type="number"
-                        />
-                        <Input
-                          placeholder="Max"
-                          value={dealFilters.maxScore}
-                          onChange={(e) => setDealFilters(prev => ({ ...prev, maxScore: e.target.value }))}
-                          className="h-7 text-xs w-12"
-                          type="number"
-                        />
-                      </div>
-                    </TableHead>
-                    <TableHead className="py-2" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
