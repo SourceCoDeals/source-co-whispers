@@ -955,34 +955,50 @@ EXAMPLE OUTPUT:
 Website Content:
 ${geographyContent}
 
-WHAT TO DO: Identify where the company CURRENTLY has physical locations (shops, offices, facilities).
+WHAT TO DO: Extract ONLY the physical locations that are EXPLICITLY mentioned in the website content above.
+
+CRITICAL ANTI-HALLUCINATION RULES:
+1. ONLY include states that have SPECIFIC ADDRESSES or CITY NAMES mentioned in the content
+2. If you see "123 Main St, Reading, PA 19601" → extract PA
+3. If you see "Long Island City, NY" → extract NY
+4. If you see "Boston, Massachusetts" → extract MA
+5. DO NOT include states that are not explicitly mentioned with a city or address
+6. DO NOT guess or infer states based on regional descriptions
+7. If the content says "serving the Northeast" but only lists addresses in NY and PA, ONLY output NY and PA
+8. If no specific locations are mentioned, return an EMPTY array []
+
 Look for:
-- Where is the company headquartered? (city, state, country)
-- What locations or branches do they currently have? Look for lists of cities, states, or addresses
-- List EVERY state where they mention having a physical presence
-- This is about CURRENT locations, not where they want to expand
+- Physical addresses (street addresses with city, state, zip)
+- City, State mentions (e.g., "Houston, TX" or "Philadelphia, Pennsylvania")
+- Location lists or "Our Locations" sections
+- Contact information with addresses
 
 CRITICAL: geographic_footprint MUST contain ONLY 2-letter US state abbreviations.
 - ❌ WRONG: "Texas", "national", "USA", "41 states", "Southwest", "Nationwide"
-- ✅ RIGHT: "TX", "CA", "NY", "FL", "MS", "AL"
+- ✅ RIGHT: "TX", "CA", "NY"
 
-If they say "national" or "nationwide" or have locations in 30+ states, list all 50 state abbreviations.
-If you see a list of cities/states, extract EVERY state mentioned.
-
-EXAMPLE OUTPUT for a collision repair company:
-- hq_city: "Dallas"
-- hq_state: "TX"
+DO NOT use the example states below - they are ONLY for formatting reference:
+- hq_city: "City Name"
+- hq_state: "XX"
 - hq_country: "USA"
-- hq_region: "Southwest"
-- geographic_footprint: ["TX", "OK", "LA", "AR", "AZ", "CA", "CO", "FL", "GA", "IL", "IN"]
-- other_office_locations: ["Houston, TX", "Austin, TX", "San Antonio, TX", "Oklahoma City, OK", "Phoenix, AZ"]
-- service_regions: ["Southwest United States", "South Central United States"]
+- geographic_footprint: ["XX", "YY"] (ONLY states with explicit addresses/cities in content)
+- other_office_locations: ["City, ST", "City, ST"] (actual addresses from content)
+- service_regions: [] (leave empty - will be derived from geographic_footprint)
 
-Be THOROUGH - extract EVERY state where they have shops or offices, using 2-letter abbreviations ONLY.`;
+ONLY extract states that appear as explicit addresses or location names in the content above.`;
 
       const geography = await callAIWithTool(
         openaiApiKey,
-        'You are extracting CURRENT physical location information from a company website. Focus on where they have existing shops, offices, or facilities. Look carefully at any locations page content. Output 2-letter US state abbreviations ONLY for geographic_footprint. Be exhaustive - list every state mentioned.',
+        `You are extracting ONLY explicitly mentioned physical locations from website content. 
+
+CRITICAL RULES:
+- ONLY include states where you see a SPECIFIC ADDRESS or CITY NAME in the provided content
+- Example: "37-46 9th St, Long Island City, NY 11101" → extract NY
+- Example: "Reading, PA" → extract PA  
+- DO NOT hallucinate or guess states that are not explicitly mentioned
+- DO NOT include states just because they are in a region the company mentions serving
+- If you cannot find specific location mentions, return an EMPTY geographic_footprint array
+- Output 2-letter US state abbreviations ONLY`,
         geographyPrompt,
         extractGeographyFootprintTool
       );
