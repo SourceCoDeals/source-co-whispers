@@ -253,6 +253,7 @@ export type Database = {
           geographic_exclusions: string[] | null
           geographic_footprint: string[] | null
           go_to_market_strategy: string | null
+          has_fee_agreement: boolean | null
           hq_city: string | null
           hq_country: string | null
           hq_region: string | null
@@ -330,6 +331,7 @@ export type Database = {
           geographic_exclusions?: string[] | null
           geographic_footprint?: string[] | null
           go_to_market_strategy?: string | null
+          has_fee_agreement?: boolean | null
           hq_city?: string | null
           hq_country?: string | null
           hq_region?: string | null
@@ -407,6 +409,7 @@ export type Database = {
           geographic_exclusions?: string[] | null
           geographic_footprint?: string[] | null
           go_to_market_strategy?: string | null
+          has_fee_agreement?: boolean | null
           hq_city?: string | null
           hq_country?: string | null
           hq_region?: string | null

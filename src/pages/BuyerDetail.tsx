@@ -8,6 +8,7 @@ import { IntelligenceBadge } from "@/components/IntelligenceBadge";
 import { BuyerDataSection, DataField, DataListField, DataGrid } from "@/components/BuyerDataSection";
 import { BuyerSectionEditDialog } from "@/components/BuyerSectionEditDialog";
 import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2, Briefcase, DollarSign, TrendingUp, Linkedin, Sparkles, CheckCircle, Clock, ChevronDown, ChevronUp, Check, Pencil } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -348,6 +349,22 @@ export default function BuyerDetail() {
     });
   };
 
+  const toggleFeeAgreement = async () => {
+    const newValue = !buyer?.has_fee_agreement;
+    const { error } = await supabase
+      .from("buyers")
+      .update({ has_fee_agreement: newValue })
+      .eq("id", id);
+
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+
+    setBuyer({ ...buyer, has_fee_agreement: newValue });
+    toast({ title: newValue ? "Fee agreement marked" : "Fee agreement removed" });
+  };
+
   const enrichFromWebsite = async () => {
     setIsEnriching(true);
     try {
@@ -562,7 +579,15 @@ export default function BuyerDetail() {
               ) : null}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="fee-toggle" className="text-sm text-muted-foreground">Fee Agreement</Label>
+              <Switch
+                id="fee-toggle"
+                checked={buyer?.has_fee_agreement ?? false}
+                onCheckedChange={toggleFeeAgreement}
+              />
+            </div>
             <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline">
