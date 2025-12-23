@@ -54,7 +54,7 @@ export default function TrackerDetail() {
   const [isSavingFitCriteria, setIsSavingFitCriteria] = useState(false);
   const [isParsingCriteria, setIsParsingCriteria] = useState(false);
   const [isAnalyzingDocuments, setIsAnalyzingDocuments] = useState(false);
-  const [isCriteriaCollapsed, setIsCriteriaCollapsed] = useState(false);
+  const [isCriteriaCollapsed, setIsCriteriaCollapsed] = useState(true);
   const [isUploadingDocs, setIsUploadingDocs] = useState(false);
   const docFileInputRef = useRef<HTMLInputElement>(null);
 
