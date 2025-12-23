@@ -47,6 +47,9 @@ export default function TrackerDetail() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [enrichingBuyers, setEnrichingBuyers] = useState<Set<string>>(new Set());
   const [isBulkEnriching, setIsBulkEnriching] = useState(false);
+  const [enrichingDeals, setEnrichingDeals] = useState<Set<string>>(new Set());
+  const [isBulkEnrichingDeals, setIsBulkEnrichingDeals] = useState(false);
+  const [dealBuyerCounts, setDealBuyerCounts] = useState<Record<string, { approved: number; interested: number; passed: number }>>({});
   const [isEditingFitCriteria, setIsEditingFitCriteria] = useState(false);
   const [editedSizeCriteria, setEditedSizeCriteria] = useState("");
   const [editedServiceCriteria, setEditedServiceCriteria] = useState("");
@@ -70,6 +73,29 @@ export default function TrackerDetail() {
     setTracker(trackerRes.data);
     setBuyers(buyersRes.data || []);
     setDeals(dealsRes.data || []);
+    
+    // Fetch buyer counts for each deal
+    if (dealsRes.data && dealsRes.data.length > 0) {
+      const dealIds = dealsRes.data.map(d => d.id);
+      const { data: scores } = await supabase
+        .from("buyer_deal_scores")
+        .select("deal_id, selected_for_outreach, interested, passed_on_deal")
+        .in("deal_id", dealIds);
+      
+      if (scores) {
+        const counts: Record<string, { approved: number; interested: number; passed: number }> = {};
+        dealIds.forEach(dealId => {
+          const dealScores = scores.filter(s => s.deal_id === dealId);
+          counts[dealId] = {
+            approved: dealScores.filter(s => s.selected_for_outreach).length,
+            interested: dealScores.filter(s => s.interested).length,
+            passed: dealScores.filter(s => s.passed_on_deal).length,
+          };
+        });
+        setDealBuyerCounts(counts);
+      }
+    }
+    
     setIsLoading(false);
   };
 
@@ -404,6 +430,161 @@ export default function TrackerDetail() {
   };
 
   const hasWebsite = (buyer: any) => buyer.platform_website || buyer.pe_firm_website;
+
+  const canEnrichDeal = (deal: any) => deal.transcript_link || deal.additional_info || deal.company_website;
+
+  const enrichDeal = async (dealId: string, dealName: string) => {
+    setEnrichingDeals(prev => new Set(prev).add(dealId));
+    
+    try {
+      const deal = deals.find(d => d.id === dealId);
+      if (!deal) return;
+
+      let enriched = false;
+
+      // 1. Try transcript first (highest priority)
+      if (deal.transcript_link) {
+        try {
+          const { error } = await supabase.functions.invoke('extract-deal-transcript', { 
+            body: { dealId } 
+          });
+          if (!error) enriched = true;
+        } catch (e) {
+          console.error('Transcript extraction failed:', e);
+        }
+      }
+
+      // 2. Try notes (medium priority)
+      if (deal.additional_info) {
+        try {
+          const { error } = await supabase.functions.invoke('analyze-deal-notes', { 
+            body: { dealId, notes: deal.additional_info } 
+          });
+          if (!error) enriched = true;
+        } catch (e) {
+          console.error('Notes analysis failed:', e);
+        }
+      }
+
+      // 3. Try website (fallback)
+      if (deal.company_website) {
+        try {
+          const { error } = await supabase.functions.invoke('enrich-deal', { 
+            body: { dealId, onlyFillEmpty: true } 
+          });
+          if (!error) enriched = true;
+        } catch (e) {
+          console.error('Website enrichment failed:', e);
+        }
+      }
+
+      if (enriched) {
+        toast({ title: "Deal enriched", description: dealName });
+      } else {
+        toast({ title: "Enrichment failed", description: "No data sources available", variant: "destructive" });
+      }
+      
+      await loadData();
+    } catch (err) {
+      toast({ 
+        title: "Enrichment failed", 
+        description: err instanceof Error ? err.message : "Unknown error", 
+        variant: "destructive" 
+      });
+    } finally {
+      setEnrichingDeals(prev => {
+        const next = new Set(prev);
+        next.delete(dealId);
+        return next;
+      });
+    }
+  };
+
+  const enrichAllDeals = async () => {
+    const enrichableDeals = deals.filter(canEnrichDeal);
+
+    if (enrichableDeals.length === 0) {
+      toast({
+        title: "No deals to enrich",
+        description: "Add transcripts, notes, or websites to deals first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsBulkEnrichingDeals(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    toast({
+      title: "Starting deal enrichment",
+      description: `Processing ${enrichableDeals.length} deals...`,
+    });
+
+    for (const deal of enrichableDeals) {
+      setEnrichingDeals(prev => new Set(prev).add(deal.id));
+      
+      try {
+        let enriched = false;
+
+        if (deal.transcript_link) {
+          try {
+            const { error } = await supabase.functions.invoke('extract-deal-transcript', { 
+              body: { dealId: deal.id } 
+            });
+            if (!error) enriched = true;
+          } catch (e) {
+            console.error('Transcript extraction failed:', e);
+          }
+        }
+
+        if (deal.additional_info) {
+          try {
+            const { error } = await supabase.functions.invoke('analyze-deal-notes', { 
+              body: { dealId: deal.id, notes: deal.additional_info } 
+            });
+            if (!error) enriched = true;
+          } catch (e) {
+            console.error('Notes analysis failed:', e);
+          }
+        }
+
+        if (deal.company_website) {
+          try {
+            const { error } = await supabase.functions.invoke('enrich-deal', { 
+              body: { dealId: deal.id, onlyFillEmpty: true } 
+            });
+            if (!error) enriched = true;
+          } catch (e) {
+            console.error('Website enrichment failed:', e);
+          }
+        }
+
+        if (enriched) successCount++;
+        else failCount++;
+      } catch (err) {
+        failCount++;
+        console.error('Error enriching deal:', deal.deal_name, err);
+      }
+
+      setEnrichingDeals(prev => {
+        const next = new Set(prev);
+        next.delete(deal.id);
+        return next;
+      });
+
+      // Small delay between deals
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    await loadData();
+    setIsBulkEnrichingDeals(false);
+
+    toast({ 
+      title: "Deal enrichment complete", 
+      description: `${successCount} enriched${failCount > 0 ? `, ${failCount} failed` : ''}` 
+    });
+  };
   
 
   const startEditingFitCriteria = () => {
@@ -1163,69 +1344,147 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
           </TabsContent>
 
           <TabsContent value="deals" className="mt-4 space-y-4">
-            <div className="flex justify-end mb-2">
+            <div className="flex justify-end gap-2 mb-2">
+              <Button 
+                variant="outline" 
+                onClick={enrichAllDeals}
+                disabled={isBulkEnrichingDeals || deals.length === 0}
+              >
+                {isBulkEnrichingDeals ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Enriching...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Enrich All Deals
+                  </>
+                )}
+              </Button>
               <DealCSVImport trackerId={id!} onComplete={loadData} />
             </div>
             <div className="bg-card rounded-lg border divide-y">
               {deals.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">No deals yet. List a deal to match it with buyers.</div>
-              ) : deals.map((deal) => (
-                <div key={deal.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
-                  <Link to={`/deals/${deal.id}`} className="flex-1">
-                    <p className="font-medium">{deal.deal_name}</p>
-                    <p className="text-sm text-muted-foreground">{deal.geography?.join(", ")} · ${deal.revenue}M · {deal.ebitda_percentage}% EBITDA</p>
-                  </Link>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
+              ) : deals.map((deal) => {
+                const counts = dealBuyerCounts[deal.id] || { approved: 0, interested: 0, passed: 0 };
+                const hasFinancials = deal.revenue || deal.ebitda_percentage;
+                const hasCounts = counts.approved > 0 || counts.interested > 0 || counts.passed > 0;
+                
+                return (
+                  <div key={deal.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+                    <Link to={`/deals/${deal.id}`} className="flex-1">
+                      <p className="font-medium">{deal.deal_name}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {hasFinancials && (
+                          <span className="text-sm text-muted-foreground">
+                            {deal.revenue && `$${deal.revenue}M`}
+                            {deal.revenue && deal.ebitda_percentage && ' · '}
+                            {deal.ebitda_percentage && `${deal.ebitda_percentage}% EBITDA`}
+                          </span>
+                        )}
+                        {hasCounts && (
+                          <div className="flex items-center gap-1">
+                            {counts.approved > 0 && (
+                              <Badge variant="outline" className="text-xs bg-primary/10 text-primary">
+                                <Check className="w-3 h-3 mr-1" />
+                                {counts.approved}
+                              </Badge>
+                            )}
+                            {counts.interested > 0 && (
+                              <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600">
+                                <Users className="w-3 h-3 mr-1" />
+                                {counts.interested}
+                              </Badge>
+                            )}
+                            {counts.passed > 0 && (
+                              <Badge variant="outline" className="text-xs bg-destructive/10 text-destructive">
+                                <X className="w-3 h-3 mr-1" />
+                                {counts.passed}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                        {!hasFinancials && !hasCounts && (
+                          <span className="text-sm text-muted-foreground">No data yet</span>
+                        )}
+                      </div>
+                    </Link>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-muted-foreground hover:text-primary"
+                              onClick={() => enrichDeal(deal.id, deal.deal_name)}
+                              disabled={enrichingDeals.has(deal.id) || !canEnrichDeal(deal)}
+                            >
+                              {enrichingDeals.has(deal.id) ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Sparkles className="w-4 h-4" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{canEnrichDeal(deal) ? "Enrich deal" : "No data sources to enrich from"}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-muted-foreground hover:text-primary"
+                              onClick={() => archiveDeal(deal.id, deal.deal_name)}
+                              disabled={deal.status === "Archived"}
+                            >
+                              <Archive className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{deal.status === "Archived" ? "Already archived" : "Archive deal"}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
                           <Button 
                             variant="ghost" 
                             size="icon" 
-                            className="h-8 w-8 text-muted-foreground hover:text-primary"
-                            onClick={() => archiveDeal(deal.id, deal.deal_name)}
-                            disabled={deal.status === "Archived"}
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
                           >
-                            <Archive className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" />
                           </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{deal.status === "Archived" ? "Already archived" : "Archive deal"}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Deal?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This will permanently delete "{deal.deal_name}" and all related data. This action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => deleteDeal(deal.id, deal.deal_name)}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          >
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Deal?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will permanently delete "{deal.deal_name}" and all related data. This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteDeal(deal.id, deal.deal_name)}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </TabsContent>
         </Tabs>
