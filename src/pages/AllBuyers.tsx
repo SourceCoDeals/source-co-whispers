@@ -5,7 +5,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Users, Search, ChevronDown, ChevronRight, Building2, Globe } from "lucide-react";
+import { Loader2, Users, Search, ChevronDown, ChevronRight, Building2, Globe, Eye } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { usePEFirmsHierarchy, PEFirmWithPlatforms } from "@/hooks/usePEFirmsHierarchy";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
@@ -237,11 +237,14 @@ function LegacyPEFirmRow({ group, trackers, isExpanded, onToggle, searchTerm }: 
       )
     : group.buyers;
 
+  // Get the first buyer ID for direct navigation when there's only 1 platform
+  const firstBuyerId = group.buyers[0]?.id;
+
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggle}>
-      <CollapsibleTrigger asChild>
-        <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer">
-          <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+        <CollapsibleTrigger asChild>
+          <div className="flex items-center gap-3 flex-1 cursor-pointer">
             {hasMultipleBuyers ? (
               isExpanded ? (
                 <ChevronDown className="w-4 h-4 text-muted-foreground" />
@@ -259,20 +262,31 @@ function LegacyPEFirmRow({ group, trackers, isExpanded, onToggle, searchTerm }: 
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {universeNames.map((name, i) => (
-              <Badge key={i} variant="secondary" className="text-xs">
-                {name}
-              </Badge>
-            ))}
-            {group.trackerIds.length > 3 && (
-              <Badge variant="outline" className="text-xs">
-                +{group.trackerIds.length - 3}
-              </Badge>
-            )}
-          </div>
+        </CollapsibleTrigger>
+        <div className="flex items-center gap-2">
+          {universeNames.map((name, i) => (
+            <Badge key={i} variant="secondary" className="text-xs">
+              {name}
+            </Badge>
+          ))}
+          {group.trackerIds.length > 3 && (
+            <Badge variant="outline" className="text-xs">
+              +{group.trackerIds.length - 3}
+            </Badge>
+          )}
+          {/* Direct link to buyer profile */}
+          {firstBuyerId && (
+            <Link 
+              to={`/buyers/${firstBuyerId}`}
+              className="ml-2 p-2 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+              onClick={(e) => e.stopPropagation()}
+              title="View buyer profile"
+            >
+              <Eye className="w-4 h-4" />
+            </Link>
+          )}
         </div>
-      </CollapsibleTrigger>
+      </div>
 
       <CollapsibleContent>
         <div className="border-t bg-muted/30">
