@@ -298,8 +298,10 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
           tracker_id: trackerId,
           deal_name: deal.deal_name,
           company_website: deal.company_website || null,
+          company_overview: deal.company_overview || null,
           transcript_link: deal.transcript_link || null,
           additional_info: deal.additional_info || null,
+          company_address: deal.company_address || null,
           contact_name: [deal.contact_first_name, deal.contact_last_name]
             .filter(Boolean).join(' ') || null,
           contact_title: deal.contact_title || null,
@@ -323,10 +325,16 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
         return;
       }
 
-      // Insert new deals
+      // Insert new deals and get their IDs
+      let insertedDeals: { id: string; additional_info: string | null }[] = [];
       if (dealsToInsert.length > 0) {
-        const { error: insertError } = await supabase.from('deals').insert(dealsToInsert);
+        const { error: insertError, data: insertedData } = await supabase
+          .from('deals')
+          .insert(dealsToInsert)
+          .select('id, additional_info');
+        
         if (insertError) throw insertError;
+        insertedDeals = insertedData || [];
       }
 
       // Update merged deals
@@ -355,6 +363,49 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
           .eq('id', id);
         
         if (updateError) throw updateError;
+      }
+
+      // Analyze notes for all deals that have additional_info
+      const dealsWithNotes = insertedDeals.filter(d => d.additional_info && d.additional_info.trim().length > 10);
+      
+      if (dealsWithNotes.length > 0) {
+        toast.info(`Analyzing ${dealsWithNotes.length} deal notes for structured data...`);
+        
+        // Process notes analysis in parallel (batch of 5 at a time to avoid overwhelming)
+        const { data: session } = await supabase.auth.getSession();
+        const batchSize = 5;
+        
+        for (let i = 0; i < dealsWithNotes.length; i += batchSize) {
+          const batch = dealsWithNotes.slice(i, i + batchSize);
+          
+          await Promise.all(batch.map(async (deal) => {
+            try {
+              const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-deal-notes`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${session?.session?.access_token}`,
+                },
+                body: JSON.stringify({
+                  dealId: deal.id,
+                  notes: deal.additional_info,
+                  applyToRecord: true, // Tell the function to apply extracted data
+                }),
+              });
+              
+              if (!response.ok) {
+                console.error(`Failed to analyze notes for deal ${deal.id}:`, await response.text());
+              } else {
+                const result = await response.json();
+                console.log(`Notes analyzed for deal ${deal.id}:`, result.fieldsExtracted);
+              }
+            } catch (err) {
+              console.error(`Error analyzing notes for deal ${deal.id}:`, err);
+            }
+          }));
+        }
+        
+        toast.success(`Notes analysis complete`);
       }
 
       const totalProcessed = dealsToInsert.length + dealsToUpdate.length;
