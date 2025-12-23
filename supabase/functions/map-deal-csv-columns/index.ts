@@ -10,6 +10,7 @@ const corsHeaders = {
 const DEAL_FIELDS = [
   { key: 'deal_name', label: 'Company Name', description: 'The company or deal name' },
   { key: 'company_website', label: 'Website', description: 'Company website URL' },
+  { key: 'company_address', label: 'Address', description: 'Company street address or location' },
   { key: 'transcript_link', label: 'Fireflies Link', description: 'Link to Fireflies transcript or call recording' },
   { key: 'additional_info', label: 'General Notes', description: 'Any additional notes or information about the deal' },
   { key: 'contact_first_name', label: 'Owner First Name', description: 'Owner/contact first name' },
@@ -66,6 +67,7 @@ ${sampleRows.slice(0, 3).map((row: string[]) => row.join(' | ')).join('\n')}
 MAPPING RULES:
 - "Company", "Name", "Deal", "Target", "Business" → deal_name
 - "Website", "URL", "Site", "Web" → company_website
+- "Address", "Location", "Street", "City", "HQ", "Headquarters" → company_address
 - "Fireflies", "Transcript", "Recording", "Call Link", "Meeting Link" → transcript_link
 - "Notes", "Comments", "Info", "Description", "Details", "Additional" → additional_info
 - "First Name", "First", "Given Name", "Owner First" → contact_first_name
@@ -131,6 +133,8 @@ IMPORTANT: Only return the JSON object, nothing else.`;
           mapping[header] = 'deal_name';
         } else if (lower.includes('website') || lower.includes('url') || lower.includes('site')) {
           mapping[header] = 'company_website';
+        } else if (lower.includes('address') || lower.includes('location') || lower.includes('street') || lower.includes('hq') || lower.includes('headquarters')) {
+          mapping[header] = 'company_address';
         } else if (lower.includes('fireflies') || lower.includes('transcript') || lower.includes('recording') || lower.includes('call')) {
           mapping[header] = 'transcript_link';
         } else if (lower.includes('note') || lower.includes('comment') || lower.includes('info') || lower.includes('description')) {
