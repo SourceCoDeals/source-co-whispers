@@ -434,6 +434,17 @@ export default function TrackerDetail() {
 
   const canEnrichDeal = (deal: any) => deal.transcript_link || deal.additional_info || deal.company_website;
 
+  const isDealEnriched = (deal: any) => {
+    return (
+      isMeaningfulText(deal.company_overview) ||
+      isMeaningfulText(deal.service_mix) ||
+      isMeaningfulText(deal.business_model) ||
+      (deal.revenue && deal.revenue > 0) ||
+      (deal.ebitda_percentage && deal.ebitda_percentage > 0) ||
+      (Array.isArray(deal.geography) && deal.geography.length > 0)
+    );
+  };
+
   const enrichDeal = async (dealId: string, dealName: string) => {
     setEnrichingDeals(prev => new Set(prev).add(dealId));
     
@@ -1375,7 +1386,15 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                 return (
                   <div key={deal.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
                     <Link to={`/deals/${deal.id}`} className="flex-1">
-                      <p className="font-medium">{deal.deal_name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{deal.deal_name}</p>
+                        {isDealEnriched(deal) && (
+                          <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-200">
+                            <Sparkles className="w-3 h-3 mr-1" />
+                            Enriched
+                          </Badge>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         {hasFinancials && (
                           <span className="text-sm text-muted-foreground">
