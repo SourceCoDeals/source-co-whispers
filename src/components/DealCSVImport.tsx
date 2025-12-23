@@ -146,6 +146,12 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
         company_website: deal.company_website || null,
         transcript_link: deal.transcript_link || null,
         additional_info: deal.additional_info || null,
+        // Combine first + last name into contact_name
+        contact_name: [deal.contact_first_name, deal.contact_last_name]
+          .filter(Boolean).join(' ') || null,
+        contact_title: deal.contact_title || null,
+        contact_email: deal.contact_email || null,
+        contact_phone: deal.contact_phone || null,
         status: 'Active',
       }));
 
@@ -229,7 +235,7 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
                 <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-lg font-medium mb-2">Upload your spreadsheet</p>
                 <p className="text-sm text-muted-foreground mb-4">
-                  CSV files supported. We'll map: Company Name, Website, Fireflies Link, and Notes.
+                  CSV files supported. We'll map: Company Name, Website, Fireflies Link, Notes, and Owner contact info.
                 </p>
                 <label className="cursor-pointer">
                   <input
@@ -314,17 +320,23 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
                 <TableRow>
                   <TableHead>Company Name</TableHead>
                   <TableHead>Website</TableHead>
-                  <TableHead>Fireflies Link</TableHead>
-                  <TableHead>Notes</TableHead>
+                  <TableHead>Owner Name</TableHead>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Phone</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {previewDeals.map((deal, index) => (
                   <TableRow key={index}>
                     <TableCell className="font-medium">{deal.deal_name || '-'}</TableCell>
-                    <TableCell className="truncate max-w-[150px]">{deal.company_website || '-'}</TableCell>
-                    <TableCell className="truncate max-w-[150px]">{deal.transcript_link || '-'}</TableCell>
-                    <TableCell className="truncate max-w-[200px]">{deal.additional_info || '-'}</TableCell>
+                    <TableCell className="truncate max-w-[120px]">{deal.company_website || '-'}</TableCell>
+                    <TableCell className="truncate max-w-[120px]">
+                      {[deal.contact_first_name, deal.contact_last_name].filter(Boolean).join(' ') || '-'}
+                    </TableCell>
+                    <TableCell className="truncate max-w-[100px]">{deal.contact_title || '-'}</TableCell>
+                    <TableCell className="truncate max-w-[150px]">{deal.contact_email || '-'}</TableCell>
+                    <TableCell className="truncate max-w-[100px]">{deal.contact_phone || '-'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

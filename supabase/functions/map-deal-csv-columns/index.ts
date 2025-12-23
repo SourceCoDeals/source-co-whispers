@@ -12,6 +12,11 @@ const DEAL_FIELDS = [
   { key: 'company_website', label: 'Website', description: 'Company website URL' },
   { key: 'transcript_link', label: 'Fireflies Link', description: 'Link to Fireflies transcript or call recording' },
   { key: 'additional_info', label: 'General Notes', description: 'Any additional notes or information about the deal' },
+  { key: 'contact_first_name', label: 'Owner First Name', description: 'Owner/contact first name' },
+  { key: 'contact_last_name', label: 'Owner Last Name', description: 'Owner/contact last name' },
+  { key: 'contact_title', label: 'Owner Title', description: 'Owner/contact job title or position' },
+  { key: 'contact_email', label: 'Owner Email', description: 'Owner/contact email address' },
+  { key: 'contact_phone', label: 'Owner Cell Phone', description: 'Owner/contact phone or cell number' },
   { key: 'skip', label: 'Skip (Do Not Import)', description: 'Do not import this column' },
 ];
 
@@ -63,7 +68,12 @@ MAPPING RULES:
 - "Website", "URL", "Site", "Web" → company_website
 - "Fireflies", "Transcript", "Recording", "Call Link", "Meeting Link" → transcript_link
 - "Notes", "Comments", "Info", "Description", "Details", "Additional" → additional_info
-- EVERYTHING ELSE → skip (we only want these 4 fields)
+- "First Name", "First", "Given Name", "Owner First" → contact_first_name
+- "Last Name", "Last", "Surname", "Family Name", "Owner Last" → contact_last_name
+- "Title", "Position", "Role", "Job Title" → contact_title
+- "Email", "E-mail", "Contact Email", "Owner Email" → contact_email
+- "Phone", "Cell", "Mobile", "Telephone", "Cell Phone" → contact_phone
+- EVERYTHING ELSE → skip
 
 Return a JSON object where keys are the CSV column headers and values are the matching field keys.
 Example: {"Company Name": "deal_name", "Website URL": "company_website", "Random Column": "skip"}
@@ -107,7 +117,17 @@ IMPORTANT: Only return the JSON object, nothing else.`;
       mapping = {};
       for (const header of headers) {
         const lower = header.toLowerCase();
-        if (lower.includes('company') || lower.includes('name') || lower.includes('deal') || lower.includes('target')) {
+        if ((lower.includes('first') && lower.includes('name')) || lower === 'first') {
+          mapping[header] = 'contact_first_name';
+        } else if ((lower.includes('last') && lower.includes('name')) || lower === 'last' || lower.includes('surname')) {
+          mapping[header] = 'contact_last_name';
+        } else if (lower.includes('title') || lower.includes('position') || lower.includes('role')) {
+          mapping[header] = 'contact_title';
+        } else if (lower.includes('email') || lower.includes('e-mail')) {
+          mapping[header] = 'contact_email';
+        } else if (lower.includes('phone') || lower.includes('cell') || lower.includes('mobile') || lower.includes('telephone')) {
+          mapping[header] = 'contact_phone';
+        } else if (lower.includes('company') || lower.includes('deal') || lower.includes('target') || lower.includes('business')) {
           mapping[header] = 'deal_name';
         } else if (lower.includes('website') || lower.includes('url') || lower.includes('site')) {
           mapping[header] = 'company_website';
