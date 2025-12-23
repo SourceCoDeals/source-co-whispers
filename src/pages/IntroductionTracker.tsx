@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Mail, Linkedin, Plus, Building2, FileCheck, UserPlus, ExternalLink, MapPin, DollarSign, AlertTriangle, Target, User, Calendar, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { BuyerActivitySection } from "@/components/BuyerActivitySection";
 
 const employeeOptions = ["Unassigned", "John Smith", "Sarah Johnson", "Mike Williams", "Emily Davis", "Chris Brown"];
 
@@ -177,6 +178,9 @@ Best regards`);
             <p className="text-2xl font-bold">{stats.assigned}</p>
           </div>
         </div>
+
+        {/* Buyer History Section */}
+        <BuyerActivitySection dealId={id!} />
 
         {approvedBuyers.length === 0 ? (
           <div className="bg-card rounded-lg border p-8 text-center">
