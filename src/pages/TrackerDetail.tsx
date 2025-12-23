@@ -1376,137 +1376,162 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
               </Button>
               <DealCSVImport trackerId={id!} onComplete={loadData} />
             </div>
-            <div className="bg-card rounded-lg border divide-y">
-              {deals.length === 0 ? (
-                <div className="p-8 text-center text-muted-foreground">No deals yet. List a deal to match it with buyers.</div>
-              ) : [...deals].sort((a, b) => (b.deal_score || 0) - (a.deal_score || 0)).map((deal) => {
-                const counts = dealBuyerCounts[deal.id] || { approved: 0, interested: 0, passed: 0 };
-                const hasFinancials = deal.revenue || deal.ebitda_percentage;
-                const hasCounts = counts.approved > 0 || counts.interested > 0 || counts.passed > 0;
-                
-                return (
-                  <div key={deal.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
-                    <Link to={`/deals/${deal.id}`} className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium">{deal.deal_name}</p>
-                        {deal.deal_score && <DealScoreBadge score={deal.deal_score} size="sm" />}
-                        {isDealEnriched(deal) && (
-                          <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-200">
-                            <Sparkles className="w-3 h-3 mr-1" />
-                            Enriched
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {hasFinancials && (
-                          <span className="text-sm text-muted-foreground">
-                            {deal.revenue && `$${deal.revenue}M`}
-                            {deal.revenue && deal.ebitda_percentage && ' · '}
-                            {deal.ebitda_percentage && `${deal.ebitda_percentage}% EBITDA`}
-                          </span>
-                        )}
-                        {hasCounts && (
+            {deals.length === 0 ? (
+              <div className="bg-card rounded-lg border p-8 text-center text-muted-foreground">
+                No deals yet. List a deal to match it with buyers.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[200px]">Deal Name</TableHead>
+                    <TableHead className="w-[150px]">Service Area</TableHead>
+                    <TableHead className="w-[80px] text-center">Approved</TableHead>
+                    <TableHead className="w-[80px] text-center">Interested</TableHead>
+                    <TableHead className="w-[80px] text-center">Passed</TableHead>
+                    <TableHead className="w-[100px]">Date Added</TableHead>
+                    <TableHead className="w-[90px] text-right">Revenue</TableHead>
+                    <TableHead className="w-[90px] text-right">EBITDA</TableHead>
+                    <TableHead className="w-[90px] text-center">Score</TableHead>
+                    <TableHead className="w-[120px]">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...deals].sort((a, b) => (b.deal_score || 0) - (a.deal_score || 0)).map((deal) => {
+                    const counts = dealBuyerCounts[deal.id] || { approved: 0, interested: 0, passed: 0 };
+                    const geographyStr = deal.geography?.join(", ") || "—";
+                    const dateAdded = new Date(deal.created_at).toLocaleDateString("en-US", { 
+                      month: "short", 
+                      day: "numeric", 
+                      year: "numeric" 
+                    });
+                    
+                    return (
+                      <TableRow key={deal.id} className="hover:bg-muted/50">
+                        <TableCell>
+                          <Link to={`/deals/${deal.id}`} className="flex items-center gap-2 hover:underline">
+                            <span className="font-medium">{deal.deal_name}</span>
+                            {isDealEnriched(deal) && (
+                              <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-200">
+                                <Sparkles className="w-3 h-3 mr-1" />
+                                Enriched
+                              </Badge>
+                            )}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{geographyStr}</TableCell>
+                        <TableCell className="text-center">
+                          {counts.approved > 0 ? (
+                            <Badge variant="outline" className="text-xs bg-primary/10 text-primary">
+                              {counts.approved}
+                            </Badge>
+                          ) : "—"}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {counts.interested > 0 ? (
+                            <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600">
+                              {counts.interested}
+                            </Badge>
+                          ) : "—"}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {counts.passed > 0 ? (
+                            <Badge variant="outline" className="text-xs bg-destructive/10 text-destructive">
+                              {counts.passed}
+                            </Badge>
+                          ) : "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{dateAdded}</TableCell>
+                        <TableCell className="text-right text-sm">
+                          {deal.revenue ? `$${deal.revenue}M` : "—"}
+                        </TableCell>
+                        <TableCell className="text-right text-sm">
+                          {deal.ebitda_amount ? `$${deal.ebitda_amount.toFixed(1)}M` : deal.ebitda_percentage ? `${deal.ebitda_percentage}%` : "—"}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {deal.deal_score ? <DealScoreBadge score={deal.deal_score} size="sm" /> : "—"}
+                        </TableCell>
+                        <TableCell>
                           <div className="flex items-center gap-1">
-                            {counts.approved > 0 && (
-                              <Badge variant="outline" className="text-xs bg-primary/10 text-primary">
-                                <Check className="w-3 h-3 mr-1" />
-                                {counts.approved}
-                              </Badge>
-                            )}
-                            {counts.interested > 0 && (
-                              <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600">
-                                <Users className="w-3 h-3 mr-1" />
-                                {counts.interested}
-                              </Badge>
-                            )}
-                            {counts.passed > 0 && (
-                              <Badge variant="outline" className="text-xs bg-destructive/10 text-destructive">
-                                <X className="w-3 h-3 mr-1" />
-                                {counts.passed}
-                              </Badge>
-                            )}
+                            <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"} className="mr-1">
+                              {deal.status}
+                            </Badge>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                    onClick={() => enrichDeal(deal.id, deal.deal_name)}
+                                    disabled={enrichingDeals.has(deal.id) || !canEnrichDeal(deal)}
+                                  >
+                                    {enrichingDeals.has(deal.id) ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <Sparkles className="w-4 h-4" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{canEnrichDeal(deal) ? "Enrich deal" : "No data sources to enrich from"}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                    onClick={() => archiveDeal(deal.id, deal.deal_name)}
+                                    disabled={deal.status === "Archived"}
+                                  >
+                                    <Archive className="w-4 h-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{deal.status === "Archived" ? "Already archived" : "Archive deal"}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Deal?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This will permanently delete "{deal.deal_name}" and all related data. This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => deleteDeal(deal.id, deal.deal_name)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
-                        )}
-                        {!hasFinancials && !hasCounts && (
-                          <span className="text-sm text-muted-foreground">No data yet</span>
-                        )}
-                      </div>
-                    </Link>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-8 w-8 text-muted-foreground hover:text-primary"
-                              onClick={() => enrichDeal(deal.id, deal.deal_name)}
-                              disabled={enrichingDeals.has(deal.id) || !canEnrichDeal(deal)}
-                            >
-                              {enrichingDeals.has(deal.id) ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Sparkles className="w-4 h-4" />
-                              )}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{canEnrichDeal(deal) ? "Enrich deal" : "No data sources to enrich from"}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-8 w-8 text-muted-foreground hover:text-primary"
-                              onClick={() => archiveDeal(deal.id, deal.deal_name)}
-                              disabled={deal.status === "Archived"}
-                            >
-                              <Archive className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{deal.status === "Archived" ? "Already archived" : "Archive deal"}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Deal?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently delete "{deal.deal_name}" and all related data. This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => deleteDeal(deal.id, deal.deal_name)}
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
           </TabsContent>
         </Tabs>
       </div>
