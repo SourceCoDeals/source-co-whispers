@@ -18,6 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
+import { DealScoreBadge } from "@/components/DealScoreBadge";
 import { deleteBuyerWithRelated, deleteDealWithRelated } from "@/lib/cascadeDelete";
 import {
   Table,
@@ -1378,7 +1379,7 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
             <div className="bg-card rounded-lg border divide-y">
               {deals.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">No deals yet. List a deal to match it with buyers.</div>
-              ) : deals.map((deal) => {
+              ) : [...deals].sort((a, b) => (b.deal_score || 0) - (a.deal_score || 0)).map((deal) => {
                 const counts = dealBuyerCounts[deal.id] || { approved: 0, interested: 0, passed: 0 };
                 const hasFinancials = deal.revenue || deal.ebitda_percentage;
                 const hasCounts = counts.approved > 0 || counts.interested > 0 || counts.passed > 0;
@@ -1388,6 +1389,7 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                     <Link to={`/deals/${deal.id}`} className="flex-1">
                       <div className="flex items-center gap-2">
                         <p className="font-medium">{deal.deal_name}</p>
+                        {deal.deal_score && <DealScoreBadge score={deal.deal_score} size="sm" />}
                         {isDealEnriched(deal) && (
                           <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-200">
                             <Sparkles className="w-3 h-3 mr-1" />

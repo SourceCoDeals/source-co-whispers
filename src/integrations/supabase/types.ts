@@ -724,6 +724,7 @@ export type Database = {
           customer_concentration: string | null
           customer_geography: string | null
           deal_name: string
+          deal_score: number | null
           ebitda_amount: number | null
           ebitda_confidence: string | null
           ebitda_is_inferred: boolean | null
@@ -774,6 +775,7 @@ export type Database = {
           customer_concentration?: string | null
           customer_geography?: string | null
           deal_name: string
+          deal_score?: number | null
           ebitda_amount?: number | null
           ebitda_confidence?: string | null
           ebitda_is_inferred?: boolean | null
@@ -824,6 +826,7 @@ export type Database = {
           customer_concentration?: string | null
           customer_geography?: string | null
           deal_name?: string
+          deal_score?: number | null
           ebitda_amount?: number | null
           ebitda_confidence?: string | null
           ebitda_is_inferred?: boolean | null

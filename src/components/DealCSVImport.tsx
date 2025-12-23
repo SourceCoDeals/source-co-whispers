@@ -418,6 +418,30 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
         toast.success(`Notes analysis complete`);
       }
 
+      // Score all imported/updated deals
+      const allDealIds = [
+        ...insertedDeals.map(d => d.id),
+        ...dealsToUpdate.map(u => u.id)
+      ];
+      
+      if (allDealIds.length > 0) {
+        toast.info(`Scoring ${allDealIds.length} deals...`);
+        const scoreBatchSize = 5;
+        
+        for (let i = 0; i < allDealIds.length; i += scoreBatchSize) {
+          const batch = allDealIds.slice(i, i + scoreBatchSize);
+          await Promise.all(batch.map(async (dealId) => {
+            try {
+              await supabase.functions.invoke('score-deal', { body: { dealId } });
+            } catch (err) {
+              console.error(`Error scoring deal ${dealId}:`, err);
+            }
+          }));
+        }
+        
+        toast.success(`Deal scoring complete`);
+      }
+
       const totalProcessed = dealsToInsert.length + dealsToUpdate.length;
       toast.success(`Successfully processed ${totalProcessed} deals (${dealsToInsert.length} new, ${dealsToUpdate.length} merged)`);
       resetAndClose();

@@ -158,6 +158,13 @@ CRITICAL: Extract owner goals:
         .filter((g: string) => g.length === 2);
     }
 
+    // Calculate ebitda_amount from percentage if not explicitly provided
+    if (extractedData.revenue && extractedData.ebitda_percentage && !extractedData.ebitda_amount) {
+      // revenue is in millions, percentage is whole number (e.g., 30 for 30%)
+      extractedData.ebitda_amount = extractedData.revenue * (extractedData.ebitda_percentage / 100);
+      console.log('[analyze-deal-notes] Calculated ebitda_amount:', extractedData.ebitda_amount, 'from revenue:', extractedData.revenue, 'and margin:', extractedData.ebitda_percentage, '%');
+    }
+
     // Build list of fields that were extracted
     const fieldsExtracted: string[] = [];
     if (extractedData.deal_name) fieldsExtracted.push('deal_name');
@@ -270,6 +277,25 @@ CRITICAL: Extract owner goals:
             console.error('[analyze-deal-notes] Failed to update deal:', updateError);
           } else {
             console.log('[analyze-deal-notes] Successfully updated deal with notes data');
+            
+            // Trigger deal scoring after successful update
+            try {
+              const scoreResponse = await fetch(`${supabaseUrl}/functions/v1/score-deal`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${supabaseKey}`
+                },
+                body: JSON.stringify({ dealId })
+              });
+              if (scoreResponse.ok) {
+                console.log('[analyze-deal-notes] Triggered deal scoring successfully');
+              } else {
+                console.error('[analyze-deal-notes] Failed to trigger scoring:', await scoreResponse.text());
+              }
+            } catch (scoreErr) {
+              console.error('[analyze-deal-notes] Failed to trigger scoring:', scoreErr);
+            }
           }
         } else {
           console.log('[analyze-deal-notes] Could not access deal to update:', accessError?.message);
