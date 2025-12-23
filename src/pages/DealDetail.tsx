@@ -33,6 +33,8 @@ export default function DealDetail() {
   const [isLoading, setIsLoading] = useState(true);
   const [isExtracting, setIsExtracting] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
+  const [isAutoEnriching, setIsAutoEnriching] = useState(false);
+  const [hasAutoEnriched, setHasAutoEnriched] = useState(false);
 
   // Section-specific edit states
   const [editCompany, setEditCompany] = useState<any>({});
@@ -46,7 +48,81 @@ export default function DealDetail() {
   const [editAttachments, setEditAttachments] = useState<any>({});
   const [editEndMarket, setEditEndMarket] = useState<any>({});
 
-  useEffect(() => { loadData(); }, [id]);
+  useEffect(() => { 
+    setHasAutoEnriched(false); // Reset when deal changes
+    loadData(); 
+  }, [id]);
+
+  // Check if deal needs auto-enrichment
+  const needsEnrichment = (dealData: any) => {
+    // Don't auto-enrich if already has meaningful data
+    if (dealData.company_overview && dealData.company_overview.length > 50) return false;
+    // Has sources to enrich from?
+    return !!dealData.transcript_link || !!dealData.additional_info || !!dealData.company_website;
+  };
+
+  // Auto-enrich when deal is loaded
+  useEffect(() => {
+    if (deal && !hasAutoEnriched && !isLoading && needsEnrichment(deal)) {
+      setHasAutoEnriched(true);
+      autoEnrichDeal(deal);
+    }
+  }, [deal, hasAutoEnriched, isLoading]);
+
+  const autoEnrichDeal = async (dealData: any) => {
+    setIsAutoEnriching(true);
+    let enriched = false;
+    
+    try {
+      // Priority 1: Transcript
+      if (dealData.transcript_link) {
+        try {
+          const { error } = await supabase.functions.invoke('extract-deal-transcript', { 
+            body: { dealId: dealData.id } 
+          });
+          if (!error) enriched = true;
+        } catch (e) {
+          console.error('Transcript extraction failed:', e);
+        }
+      }
+
+      // Priority 2: Notes
+      if (dealData.additional_info) {
+        try {
+          const { error } = await supabase.functions.invoke('analyze-deal-notes', { 
+            body: { dealId: dealData.id, notes: dealData.additional_info } 
+          });
+          if (!error) enriched = true;
+        } catch (e) {
+          console.error('Notes analysis failed:', e);
+        }
+      }
+
+      // Priority 3: Website
+      if (dealData.company_website) {
+        try {
+          const { error } = await supabase.functions.invoke('enrich-deal', { 
+            body: { dealId: dealData.id, onlyFillEmpty: true } 
+          });
+          if (!error) enriched = true;
+        } catch (e) {
+          console.error('Website enrichment failed:', e);
+        }
+      }
+
+      if (enriched) {
+        await loadData();
+        toast({ 
+          title: "Deal auto-enriched", 
+          description: "Data has been extracted from available sources" 
+        });
+      }
+    } catch (err) {
+      console.error('Auto-enrichment failed:', err);
+    } finally {
+      setIsAutoEnriching(false);
+    }
+  };
 
   const loadData = async () => {
     const [dealRes, transcriptsRes] = await Promise.all([
@@ -224,6 +300,17 @@ export default function DealDetail() {
           </div>
           <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"} className="text-sm">{deal.status}</Badge>
         </div>
+
+        {/* Auto-enrichment in progress banner */}
+        {isAutoEnriching && (
+          <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg p-4 flex items-start gap-3">
+            <Loader2 className="w-5 h-5 text-blue-600 dark:text-blue-500 shrink-0 mt-0.5 animate-spin" />
+            <div>
+              <p className="font-medium text-blue-700 dark:text-blue-400">Auto-enriching deal data...</p>
+              <p className="text-sm text-blue-600 dark:text-blue-500">Extracting information from transcripts, notes, and website.</p>
+            </div>
+          </div>
+        )}
 
         {/* Low Confidence Warning Banner */}
         {hasLowConfidenceData && (
