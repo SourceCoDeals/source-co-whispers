@@ -107,7 +107,7 @@ export default function DealDetail() {
       if (dealData.additional_info) {
         try {
           const { error } = await supabase.functions.invoke('analyze-deal-notes', { 
-            body: { dealId: dealData.id, notes: dealData.additional_info } 
+            body: { dealId: dealData.id, notes: dealData.additional_info, applyToRecord: true } 
           });
           if (!error) enriched = true;
         } catch (e) {
