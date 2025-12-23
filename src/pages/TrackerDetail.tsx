@@ -591,7 +591,7 @@ export default function TrackerDetail() {
       if (deal.additional_info) {
         try {
           const { error } = await supabase.functions.invoke('analyze-deal-notes', { 
-            body: { dealId, notes: deal.additional_info } 
+            body: { dealId, notes: deal.additional_info, applyToRecord: true } 
           });
           if (!error) enriched = true;
         } catch (e) {
@@ -672,7 +672,7 @@ export default function TrackerDetail() {
         if (deal.additional_info) {
           try {
             const { error } = await supabase.functions.invoke('analyze-deal-notes', { 
-              body: { dealId: deal.id, notes: deal.additional_info } 
+              body: { dealId: deal.id, notes: deal.additional_info, applyToRecord: true } 
             });
             if (!error) enriched = true;
           } catch (e) {
