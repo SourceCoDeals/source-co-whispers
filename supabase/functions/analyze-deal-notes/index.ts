@@ -224,14 +224,18 @@ CRITICAL: Extract owner goals:
           // If applyToRecord is true, apply extracted data to empty fields
           // Notes have priority 80 (below transcript at 100), so only fill empty fields
           if (applyToRecord) {
-            const isEmptyOrPlaceholder = (value: any): boolean => {
+            // Universal placeholder check - treats location_count=1 as a placeholder
+            // since that's the database default value
+            const isEmptyOrPlaceholder = (value: any, fieldName?: string): boolean => {
               if (value === null || value === undefined) return true;
               if (typeof value === 'string') {
                 const trimmed = value.trim().toLowerCase();
                 return trimmed === '' || trimmed === 'n/a' || trimmed === 'na' || trimmed === '-' || trimmed === 'none' || trimmed === 'unknown';
               }
               if (Array.isArray(value)) return value.length === 0;
-              if (typeof value === 'number') return false; // Numbers are considered filled
+              // Special case: location_count of 1 is the database default, treat as empty
+              if (fieldName === 'location_count' && value === 1) return true;
+              if (typeof value === 'number') return false; // Other numbers are considered filled
               return false;
             };
             
@@ -254,7 +258,8 @@ CRITICAL: Extract owner goals:
             if (extractedData.owner_goals && isEmptyOrPlaceholder(userDeal.owner_goals)) {
               updateData.owner_goals = extractedData.owner_goals;
             }
-            if (extractedData.location_count && isEmptyOrPlaceholder(userDeal.location_count)) {
+            // Use fieldName parameter to treat location_count=1 as a placeholder
+            if (extractedData.location_count && isEmptyOrPlaceholder(userDeal.location_count, 'location_count')) {
               updateData.location_count = extractedData.location_count;
             }
             // Handle employee_count from additional_info

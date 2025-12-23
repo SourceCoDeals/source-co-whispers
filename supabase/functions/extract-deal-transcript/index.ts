@@ -271,7 +271,7 @@ const extractDealInfoTool = {
         },
         location_count: {
           type: "number",
-          description: "Number of physical locations, stores, shops, branches, or offices the company operates"
+          description: "CRITICAL: Count ALL physical locations, stores, shops, branches, offices, or sites the company operates. Look for phrases like 'X locations', 'X shops', 'X branches', 'X offices', 'sites across', 'operate out of X', 'facilities in'. Count individual location mentions if total not stated. Single location = 1."
         },
         ownership_structure: {
           type: "string",
