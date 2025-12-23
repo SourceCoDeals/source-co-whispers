@@ -19,36 +19,40 @@ const extractDealInfoTool = {
         },
         company_website: {
           type: "string",
-          description: "Company website URL if mentioned"
+          description: "Company website URL if mentioned (include https://)"
         },
         geography: {
           type: "array",
           items: { type: "string" },
-          description: "US states where the company operates. Use 2-letter state abbreviations (e.g., TX, FL, CA)"
+          description: "US states where the company operates. Use 2-letter state abbreviations (e.g., TX, FL, CA). Extract from city/state mentions, headquarters, service areas."
         },
         revenue: {
           type: "number",
-          description: "Annual revenue in millions (e.g., 6.5 for $6.5M)"
+          description: "Annual revenue in MILLIONS. Convert to millions: $5M = 5, $500K = 0.5, $10 million = 10. If given as a range, use the midpoint."
         },
         ebitda_percentage: {
+          type: "number", 
+          description: "EBITDA or profit margin as a PERCENTAGE (not decimal). 20% = 20, 15% margins = 15. Also extract from 'profit margins', 'margins', 'profitability' mentions."
+        },
+        ebitda_amount: {
           type: "number",
-          description: "EBITDA margin as percentage (e.g., 23 for 23%)"
+          description: "EBITDA dollar amount in MILLIONS if mentioned (e.g., $1M EBITDA = 1)"
         },
         service_mix: {
           type: "string",
-          description: "Description of services or products offered"
+          description: "Description of services or products offered by the company"
         },
         owner_goals: {
           type: "string",
-          description: "What the owner wants from the sale - timeline, involvement post-sale, financial goals"
+          description: "What the owner wants from the sale - timeline, involvement post-sale, retirement plans, financial goals"
         },
         location_count: {
           type: "number",
-          description: "Number of physical locations the company operates"
+          description: "Number of physical locations, stores, shops, or offices the company operates"
         },
         additional_info: {
           type: "string",
-          description: "Any other relevant details not captured in other fields"
+          description: "Any other relevant details not captured in other fields - employee count, years in business, certifications, unique aspects"
         }
       },
       required: []
@@ -91,23 +95,25 @@ serve(async (req) => {
             role: "system",
             content: `You are an M&A analyst assistant. Extract structured deal information from unstructured notes about a business opportunity.
 
-Your job is to identify and extract:
-- Company name
-- Website (if mentioned)
-- Geographic presence (US states - use 2-letter abbreviations)
-- Revenue (in millions, e.g., 6.5 for $6.5M)
-- EBITDA margin percentage (e.g., 23 for 23%)
-- Services/products offered
-- Owner's goals for the sale
-- Number of locations
-- Any additional relevant information
+CRITICAL: Extract ALL financial information mentioned:
+- Revenue: Convert to millions (e.g., "$5 million" = 5, "$500K" = 0.5, "5M revenue" = 5)
+- EBITDA/Margins: Extract as percentage (e.g., "20% margins" = 20, "15% EBITDA" = 15, "margins around 18%" = 18)
+- Look for variations: "profit margins", "profitability", "bottom line", "cash flow margins"
 
-Be conservative - only extract information that is clearly stated. Do not make assumptions.
-For revenue and EBITDA, convert to the correct units (millions for revenue, percentage for EBITDA margin).`
+CRITICAL: Extract geographic information:
+- Convert city/state mentions to state abbreviations (e.g., "Houston, Texas" = TX, "based in Atlanta" = GA)
+- Extract from headquarters, service areas, locations mentioned
+
+CRITICAL: Extract owner goals:
+- Timeline ("looking to exit in 2 years", "retire soon")
+- Post-sale involvement ("wants to stay on", "clean exit")
+- Financial expectations
+
+Extract everything that is clearly stated. Convert all values to the correct units.`
           },
           {
             role: "user",
-            content: `Extract deal information from these notes:\n\n${notes}`
+            content: `Extract ALL deal information from these notes. Pay special attention to any revenue, EBITDA, margin, or profitability figures mentioned:\n\n${notes}`
           }
         ],
         tools: [extractDealInfoTool],
