@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import { XCircle } from "lucide-react";
 
 interface PassReasonDialogProps {
@@ -26,19 +26,29 @@ const PASS_CATEGORIES = [
 ];
 
 export function PassReasonDialog({ open, onOpenChange, buyerName, dealName, onConfirm }: PassReasonDialogProps) {
-  const [category, setCategory] = useState("");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const selectedCategory = PASS_CATEGORIES.find(c => c.value === category);
-  const reason = selectedCategory?.description || "";
+  const toggleCategory = (value: string) => {
+    setSelectedCategories(prev => 
+      prev.includes(value) 
+        ? prev.filter(v => v !== value)
+        : [...prev, value]
+    );
+  };
+
+  const selectedReasons = selectedCategories
+    .map(cat => PASS_CATEGORIES.find(c => c.value === cat)?.description)
+    .filter(Boolean)
+    .join("; ");
 
   const handleSubmit = async () => {
-    if (!category) return;
+    if (selectedCategories.length === 0) return;
     setIsSubmitting(true);
     try {
-      await onConfirm(category, reason, notes);
-      setCategory("");
+      await onConfirm(selectedCategories.join(","), selectedReasons, notes);
+      setSelectedCategories([]);
       setNotes("");
       onOpenChange(false);
     } finally {
@@ -65,18 +75,25 @@ export function PassReasonDialog({ open, onOpenChange, buyerName, dealName, onCo
           </div>
 
           <div className="space-y-2">
-            <Label>Why did they pass?</Label>
-            <RadioGroup value={category} onValueChange={setCategory} className="grid gap-2">
+            <Label>Why did they pass? (select all that apply)</Label>
+            <div className="grid gap-2">
               {PASS_CATEGORIES.map((cat) => (
-                <div key={cat.value} className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted/50">
-                  <RadioGroupItem value={cat.value} id={cat.value} />
-                  <Label htmlFor={cat.value} className="flex-1 cursor-pointer">
+                <div 
+                  key={cat.value} 
+                  className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted/50 cursor-pointer"
+                  onClick={() => toggleCategory(cat.value)}
+                >
+                  <Checkbox 
+                    checked={selectedCategories.includes(cat.value)}
+                    onCheckedChange={() => toggleCategory(cat.value)}
+                  />
+                  <Label className="flex-1 cursor-pointer">
                     <span className="font-medium">{cat.label}</span>
                     <span className="text-xs text-muted-foreground ml-2">{cat.description}</span>
                   </Label>
                 </div>
               ))}
-            </RadioGroup>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -98,7 +115,7 @@ export function PassReasonDialog({ open, onOpenChange, buyerName, dealName, onCo
           <Button 
             variant="destructive" 
             onClick={handleSubmit} 
-            disabled={!category || isSubmitting}
+            disabled={selectedCategories.length === 0 || isSubmitting}
           >
             {isSubmitting ? "Saving..." : "Mark as Passed"}
           </Button>

@@ -8,9 +8,28 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Users, Search, ChevronDown, ChevronRight, Building2, Globe } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { usePEFirmsHierarchy, PEFirmWithPlatforms } from "@/hooks/usePEFirmsHierarchy";
+import { ConfidenceBadge } from "@/components/ConfidenceBadge";
+
+interface LegacyBuyer {
+  id: string;
+  pe_firm_name: string;
+  platform_company_name: string | null;
+  platform_website: string | null;
+  thesis_summary: string | null;
+  thesis_confidence: string | null;
+  industry_vertical: string | null;
+  tracker_id: string;
+}
+
+interface GroupedBuyers {
+  peFirmName: string;
+  buyers: LegacyBuyer[];
+  trackerIds: string[];
+}
 
 export default function AllBuyers() {
   const { peFirms, isLoading: isLoadingNew } = usePEFirmsHierarchy();
+  const [legacyBuyers, setLegacyBuyers] = useState<LegacyBuyer[]>([]);
   const [trackers, setTrackers] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -21,15 +40,40 @@ export default function AllBuyers() {
   }, []);
 
   const loadData = async () => {
-    const trackersRes = await supabase.from("industry_trackers").select("id, industry_name");
+    const [trackersRes, buyersRes] = await Promise.all([
+      supabase.from("industry_trackers").select("id, industry_name"),
+      supabase.from("buyers").select("id, pe_firm_name, platform_company_name, platform_website, thesis_summary, thesis_confidence, industry_vertical, tracker_id").order("pe_firm_name")
+    ]);
 
     const trackerMap: Record<string, string> = {};
     (trackersRes.data || []).forEach((t) => { 
       trackerMap[t.id] = t.industry_name; 
     });
     setTrackers(trackerMap);
+    setLegacyBuyers(buyersRes.data || []);
     setIsLoading(false);
   };
+  
+  // Group legacy buyers by PE firm name
+  const groupedLegacyBuyers: GroupedBuyers[] = legacyBuyers.reduce((acc, buyer) => {
+    const existing = acc.find(g => g.peFirmName === buyer.pe_firm_name);
+    if (existing) {
+      existing.buyers.push(buyer);
+      if (!existing.trackerIds.includes(buyer.tracker_id)) {
+        existing.trackerIds.push(buyer.tracker_id);
+      }
+    } else {
+      acc.push({
+        peFirmName: buyer.pe_firm_name,
+        buyers: [buyer],
+        trackerIds: [buyer.tracker_id]
+      });
+    }
+    return acc;
+  }, [] as GroupedBuyers[]);
+
+  // Determine if we should use legacy buyers (when pe_firms table is empty)
+  const useLegacyBuyers = peFirms.length === 0 && legacyBuyers.length > 0;
 
   const toggleFirm = (firmId: string) => {
     setExpandedFirms(prev => {
@@ -43,26 +87,40 @@ export default function AllBuyers() {
     });
   };
 
+  // Filter PE firms and their platforms (new hierarchy)
+  const filteredFirms = peFirms.filter((firm) => {
+    const searchLower = search.toLowerCase();
+    if (firm.name.toLowerCase().includes(searchLower)) return true;
+    if (firm.platforms.some(p => p.name.toLowerCase().includes(searchLower))) return true;
+    return false;
+  });
+
+  // Filter legacy buyers
+  const filteredLegacyGroups = groupedLegacyBuyers.filter((group) => {
+    const searchLower = search.toLowerCase();
+    if (group.peFirmName.toLowerCase().includes(searchLower)) return true;
+    if (group.buyers.some(b => (b.platform_company_name || '').toLowerCase().includes(searchLower))) return true;
+    return false;
+  });
+
+  // Get total counts
+  const totalPlatforms = useLegacyBuyers 
+    ? legacyBuyers.length 
+    : peFirms.reduce((acc, firm) => acc + firm.platforms.length, 0);
+  const totalFirms = useLegacyBuyers ? groupedLegacyBuyers.length : peFirms.length;
+  const displayedItems = useLegacyBuyers ? filteredLegacyGroups : filteredFirms;
+
   const expandAll = () => {
-    setExpandedFirms(new Set(filteredFirms.map(f => f.id)));
+    if (useLegacyBuyers) {
+      setExpandedFirms(new Set(filteredLegacyGroups.map(f => f.peFirmName)));
+    } else {
+      setExpandedFirms(new Set(filteredFirms.map(f => f.id)));
+    }
   };
 
   const collapseAll = () => {
     setExpandedFirms(new Set());
   };
-
-  // Filter PE firms and their platforms
-  const filteredFirms = peFirms.filter((firm) => {
-    const searchLower = search.toLowerCase();
-    // Match PE firm name
-    if (firm.name.toLowerCase().includes(searchLower)) return true;
-    // Match any platform name
-    if (firm.platforms.some(p => p.name.toLowerCase().includes(searchLower))) return true;
-    return false;
-  });
-
-  // Get total platform count
-  const totalPlatforms = peFirms.reduce((acc, firm) => acc + firm.platforms.length, 0);
 
   if (isLoading || isLoadingNew) {
     return (
@@ -81,7 +139,7 @@ export default function AllBuyers() {
           <div>
             <h1 className="text-2xl font-display font-bold">All Buyers</h1>
             <p className="text-muted-foreground">
-              {peFirms.length} PE firm{peFirms.length !== 1 ? "s" : ""} · {totalPlatforms} platform{totalPlatforms !== 1 ? "s" : ""}
+              {totalFirms} PE firm{totalFirms !== 1 ? "s" : ""} · {totalPlatforms} platform{totalPlatforms !== 1 ? "s" : ""}
             </p>
           </div>
         </div>
@@ -96,7 +154,7 @@ export default function AllBuyers() {
               className="pl-10" 
             />
           </div>
-          {filteredFirms.length > 0 && (
+          {displayedItems.length > 0 && (
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={expandAll}>
                 Expand All
@@ -108,7 +166,7 @@ export default function AllBuyers() {
           )}
         </div>
 
-        {filteredFirms.length === 0 ? (
+        {displayedItems.length === 0 ? (
           <div className="bg-card rounded-lg border p-12 text-center">
             <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="font-semibold mb-2">
@@ -120,6 +178,19 @@ export default function AllBuyers() {
                 : "Add buyers to a universe to get started."
               }
             </p>
+          </div>
+        ) : useLegacyBuyers ? (
+          <div className="bg-card rounded-lg border divide-y">
+            {filteredLegacyGroups.map((group) => (
+              <LegacyPEFirmRow 
+                key={group.peFirmName} 
+                group={group} 
+                trackers={trackers}
+                isExpanded={expandedFirms.has(group.peFirmName)}
+                onToggle={() => toggleFirm(group.peFirmName)}
+                searchTerm={search}
+              />
+            ))}
           </div>
         ) : (
           <div className="bg-card rounded-lg border divide-y">
@@ -140,6 +211,106 @@ export default function AllBuyers() {
   );
 }
 
+// Legacy buyer row component (for buyers table fallback)
+interface LegacyPEFirmRowProps {
+  group: GroupedBuyers;
+  trackers: Record<string, string>;
+  isExpanded: boolean;
+  onToggle: () => void;
+  searchTerm: string;
+}
+
+function LegacyPEFirmRow({ group, trackers, isExpanded, onToggle, searchTerm }: LegacyPEFirmRowProps) {
+  const universeNames = group.trackerIds
+    .map(id => trackers[id])
+    .filter(Boolean)
+    .slice(0, 3);
+
+  const hasMultipleBuyers = group.buyers.length > 1;
+  const searchLower = searchTerm.toLowerCase();
+
+  // Filter buyers if searching
+  const visibleBuyers = searchTerm 
+    ? group.buyers.filter(b => 
+        (b.platform_company_name || '').toLowerCase().includes(searchLower) || 
+        group.peFirmName.toLowerCase().includes(searchLower)
+      )
+    : group.buyers;
+
+  return (
+    <Collapsible open={isExpanded} onOpenChange={onToggle}>
+      <CollapsibleTrigger asChild>
+        <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer">
+          <div className="flex items-center gap-3">
+            {hasMultipleBuyers ? (
+              isExpanded ? (
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              )
+            ) : (
+              <div className="w-4" />
+            )}
+            <Building2 className="w-5 h-5 text-primary" />
+            <div>
+              <p className="font-medium">{group.peFirmName}</p>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>{group.buyers.length} platform{group.buyers.length !== 1 ? "s" : ""}</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {universeNames.map((name, i) => (
+              <Badge key={i} variant="secondary" className="text-xs">
+                {name}
+              </Badge>
+            ))}
+            {group.trackerIds.length > 3 && (
+              <Badge variant="outline" className="text-xs">
+                +{group.trackerIds.length - 3}
+              </Badge>
+            )}
+          </div>
+        </div>
+      </CollapsibleTrigger>
+
+      <CollapsibleContent>
+        <div className="border-t bg-muted/30">
+          {visibleBuyers.map((buyer) => (
+            <Link 
+              key={buyer.id} 
+              to={`/buyers/${buyer.id}`}
+              className="flex items-center justify-between px-4 py-3 pl-12 hover:bg-muted/50 transition-colors border-t first:border-t-0"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-primary/60" />
+                <div>
+                  <p className="font-medium text-sm">{buyer.platform_company_name || buyer.pe_firm_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {buyer.industry_vertical || "No industry specified"}
+                    {buyer.thesis_summary && ` · ${buyer.thesis_summary.slice(0, 60)}...`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {buyer.thesis_confidence && (
+                  <Badge 
+                    variant={buyer.thesis_confidence === "high" ? "default" : "secondary"}
+                    className="text-xs"
+                  >
+                    {buyer.thesis_confidence}
+                  </Badge>
+                )}
+              </div>
+            </Link>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// PE Firm Row for new hierarchy
 interface PEFirmRowProps {
   firm: PEFirmWithPlatforms;
   trackers: Record<string, string>;
