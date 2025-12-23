@@ -57,6 +57,28 @@ const PLATFORM_ROLE_PRIORITIES: Record<string, { priority: number; category: Con
   'business development': { priority: 2, category: 'corp_dev' },
 };
 
+// Keywords for scoring team page URLs
+const POSITIVE_KEYWORDS = ['team', 'leadership', 'executive', 'management', 'people', 'board', 'officers', 'directors', 'staff', 'who-we-are', 'about-us'];
+const NEGATIVE_KEYWORDS = ['careers', 'jobs', 'job', 'hiring', 'news', 'blog', 'press', 'contact', 'locations', 'services', 'products', 'case-study', 'testimonial', 'faq', 'privacy', 'terms', 'login', 'signin', 'cart', 'checkout'];
+
+function scoreUrl(url: string): number {
+  const path = url.toLowerCase();
+  let score = 0;
+  
+  for (const kw of POSITIVE_KEYWORDS) {
+    if (path.includes(kw)) score += 10;
+  }
+  for (const kw of NEGATIVE_KEYWORDS) {
+    if (path.includes(kw)) score -= 20;
+  }
+  
+  // Bonus for shorter paths (more likely to be main team pages)
+  const pathParts = new URL(url).pathname.split('/').filter(Boolean);
+  if (pathParts.length <= 2) score += 5;
+  
+  return score;
+}
+
 async function scrapeUrl(url: string, apiKey: string): Promise<string | null> {
   try {
     const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
@@ -85,7 +107,7 @@ async function scrapeUrl(url: string, apiKey: string): Promise<string | null> {
   }
 }
 
-async function findBestUrl(baseUrl: string, paths: string[], apiKey: string): Promise<{ url: string; content: string } | null> {
+async function discoverTeamPages(baseUrl: string, apiKey: string): Promise<string[]> {
   // Normalize base URL
   let normalizedBase = baseUrl.trim();
   if (!normalizedBase.startsWith('http://') && !normalizedBase.startsWith('https://')) {
@@ -93,13 +115,91 @@ async function findBestUrl(baseUrl: string, paths: string[], apiKey: string): Pr
   }
   normalizedBase = normalizedBase.replace(/\/$/, '');
 
-  for (const path of paths) {
-    const fullUrl = `${normalizedBase}${path}`;
-    console.log(`Trying URL: ${fullUrl}`);
-    const content = await scrapeUrl(fullUrl, apiKey);
-    if (content && content.length > 200) {
-      console.log(`Found content at ${fullUrl} (${content.length} chars)`);
-      return { url: fullUrl, content };
+  try {
+    console.log(`Mapping site: ${normalizedBase}`);
+    
+    // Use Firecrawl Map to discover all URLs with team-related search
+    const response = await fetch('https://api.firecrawl.dev/v1/map', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url: normalizedBase,
+        search: 'team leadership executive management board directors people staff officers cfo ceo',
+        limit: 50,
+        includeSubdomains: false,
+      }),
+    });
+
+    if (!response.ok) {
+      console.log(`Map API failed for ${normalizedBase}: ${response.status}`);
+      return [];
+    }
+
+    const data = await response.json();
+    const links = data.links || [];
+    
+    console.log(`Map found ${links.length} URLs for ${normalizedBase}`);
+    
+    if (links.length === 0) {
+      return [];
+    }
+
+    // Score and sort URLs by relevance
+    const scoredUrls = links
+      .map((url: string) => ({ url, score: scoreUrl(url) }))
+      .filter((item: { url: string; score: number }) => item.score > -10) // Filter out clearly irrelevant pages
+      .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+
+    console.log(`Top scored URLs:`, scoredUrls.slice(0, 5).map((u: { url: string; score: number }) => `${u.url} (${u.score})`));
+
+    // Return top 3 URLs for scraping
+    return scoredUrls.slice(0, 3).map((item: { url: string }) => item.url);
+  } catch (error) {
+    console.error(`Error mapping ${normalizedBase}:`, error);
+    return [];
+  }
+}
+
+async function findBestTeamPage(baseUrl: string, apiKey: string): Promise<{ url: string; content: string } | null> {
+  // First try the smart discovery approach
+  const discoveredUrls = await discoverTeamPages(baseUrl, apiKey);
+  
+  // Try each discovered URL
+  for (const url of discoveredUrls) {
+    console.log(`Scraping discovered URL: ${url}`);
+    const content = await scrapeUrl(url, apiKey);
+    if (content && content.length > 300) {
+      console.log(`Found content at ${url} (${content.length} chars)`);
+      return { url, content };
+    }
+  }
+  
+  // Fallback: try common paths if map didn't find good results
+  if (discoveredUrls.length === 0) {
+    console.log(`Map returned no results for ${baseUrl}, trying fallback paths`);
+    
+    let normalizedBase = baseUrl.trim();
+    if (!normalizedBase.startsWith('http://') && !normalizedBase.startsWith('https://')) {
+      normalizedBase = `https://${normalizedBase}`;
+    }
+    normalizedBase = normalizedBase.replace(/\/$/, '');
+    
+    const fallbackPaths = [
+      '/team', '/leadership', '/about', '/about-us', '/our-team',
+      '/executive-team', '/our-executive-team', '/leadership-team',
+      '/management', '/executives', '/people', '/who-we-are'
+    ];
+    
+    for (const path of fallbackPaths) {
+      const fullUrl = `${normalizedBase}${path}`;
+      const content = await scrapeUrl(fullUrl, apiKey);
+      if (content && content.length > 300) {
+        console.log(`Fallback found content at ${fullUrl} (${content.length} chars)`);
+        return { url: fullUrl, content };
+      }
     }
   }
   
@@ -265,22 +365,9 @@ Deno.serve(async (req) => {
     const allContacts: Array<Contact & { company_type: string; source_url: string }> = [];
     let dealTeamFound = false;
 
-    // PE Firm contact discovery
+    // PE Firm contact discovery using smart page discovery
     if (buyer.pe_firm_website) {
-      // Prioritize team/people pages for contact discovery
-      const pePaths = [
-        '/people',
-        '/team',
-        '/our-team',
-        '/leadership',
-        '/about',
-        '/about-us',
-        '/portfolio',
-        '/investments',
-        '/companies',
-      ];
-
-      const peResult = await findBestUrl(buyer.pe_firm_website, pePaths, firecrawlKey);
+      const peResult = await findBestTeamPage(buyer.pe_firm_website, firecrawlKey);
       
       if (peResult) {
         console.log(`Extracting PE contacts from: ${peResult.url}`);
@@ -303,24 +390,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Platform company contact discovery
+    // Platform company contact discovery using smart page discovery
     if (buyer.platform_website) {
-      const platformPaths = [
-        '/our-executive-team',
-        '/executive-team',
-        '/leadership-team',
-        '/team',
-        '/leadership',
-        '/about',
-        '/about-us',
-        '/our-team',
-        '/management',
-        '/executives',
-        '/meet-the-team',
-        '/who-we-are',
-      ];
-
-      const platformResult = await findBestUrl(buyer.platform_website, platformPaths, firecrawlKey);
+      const platformResult = await findBestTeamPage(buyer.platform_website, firecrawlKey);
       
       if (platformResult) {
         console.log(`Extracting platform contacts from: ${platformResult.url}`);
