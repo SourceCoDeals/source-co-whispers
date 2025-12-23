@@ -248,7 +248,7 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
     try {
       const duplicateRowIndices = new Set(duplicates.map(d => d.rowIndex));
       const dealsToInsert: any[] = [];
-      const dealsToUpdate: { id: string; data: Record<string, any> }[] = [];
+      const dealsToMerge: { id: string; csvData: Record<string, string> }[] = [];
 
       rows.forEach((row, rowIndex) => {
         const deal: Record<string, string> = {};
@@ -276,23 +276,11 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
           if (action === 'skip') {
             return; // Skip this row
           } else if (action === 'merge' && dupInfo) {
-            // Prepare update for existing deal
-            const updateData: Record<string, any> = {};
-            
-            if (deal.company_website) updateData.company_website = deal.company_website;
-            if (deal.transcript_link) updateData.transcript_link = deal.transcript_link;
-            if (deal.additional_info) updateData.additional_info = deal.additional_info;
-            
-            const contactName = [deal.contact_first_name, deal.contact_last_name]
-              .filter(Boolean).join(' ');
-            if (contactName) updateData.contact_name = contactName;
-            if (deal.contact_title) updateData.contact_title = deal.contact_title;
-            if (deal.contact_email) updateData.contact_email = deal.contact_email;
-            if (deal.contact_phone) updateData.contact_phone = deal.contact_phone;
-
-            if (Object.keys(updateData).length > 0) {
-              dealsToUpdate.push({ id: dupInfo.existingDealId, data: updateData });
-            }
+            // Prepare for merge with priority checking
+            dealsToMerge.push({ 
+              id: dupInfo.existingDealId, 
+              csvData: deal
+            });
             return;
           }
           // action === 'create' falls through to insert
@@ -324,7 +312,7 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
       });
 
       // Validate we have something to import
-      if (dealsToInsert.length === 0 && dealsToUpdate.length === 0) {
+      if (dealsToInsert.length === 0 && dealsToMerge.length === 0) {
         toast.error('No deals to import after applying duplicate rules.');
         setIsLoading(false);
         return;
@@ -342,40 +330,100 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
         insertedDeals = insertedData || [];
       }
 
-      // Update merged deals
-      for (const { id, data } of dealsToUpdate) {
-        // Add csv source tracking for merged fields
+      // Merge deals with source priority checking
+      // CSV priority = 40, so it should NOT overwrite transcript (100) or notes (80)
+      const SOURCE_PRIORITY: Record<string, number> = {
+        transcript: 100,
+        notes: 80,
+        website: 60,
+        csv: 40,
+        manual: 20,
+      };
+      
+      const mergedDealsInfo: { id: string; additional_info: string | null }[] = [];
+      
+      for (const { id, csvData } of dealsToMerge) {
+        // Fetch existing deal's extraction_sources
         const { data: existingDeal } = await supabase
           .from('deals')
-          .select('extraction_sources')
+          .select('extraction_sources, additional_info')
           .eq('id', id)
           .single();
         
         const existingSources = (existingDeal?.extraction_sources as any[]) || [];
-        const newSource = {
-          source: 'csv',
-          timestamp: new Date().toISOString(),
-          fields: Object.keys(data),
+        
+        // Helper to check if a field is protected by higher-priority source
+        const isFieldProtected = (fieldName: string): boolean => {
+          const sourcesWithField = existingSources.filter((s: any) => s.fields?.includes(fieldName));
+          if (sourcesWithField.length === 0) return false;
+          
+          // Get highest priority source for this field
+          const maxPriority = Math.max(...sourcesWithField.map((s: any) => SOURCE_PRIORITY[s.source] || 0));
+          return maxPriority > SOURCE_PRIORITY.csv;
         };
         
-        const { error: updateError } = await supabase
-          .from('deals')
-          .update({ 
-            ...data, 
-            extraction_sources: [...existingSources, newSource],
-            updated_at: new Date().toISOString() 
-          })
-          .eq('id', id);
+        // Build update data, respecting priority
+        const updateData: Record<string, any> = {};
+        const updatedFields: string[] = [];
         
-        if (updateError) throw updateError;
+        // Map CSV fields to deal fields
+        const fieldMappings: Record<string, string> = {
+          company_website: 'company_website',
+          transcript_link: 'transcript_link',
+          additional_info: 'additional_info',
+          contact_title: 'contact_title',
+          contact_email: 'contact_email',
+          contact_phone: 'contact_phone',
+          company_overview: 'company_overview',
+          company_address: 'company_address',
+        };
+        
+        for (const [csvField, dealField] of Object.entries(fieldMappings)) {
+          if (csvData[csvField] && !isFieldProtected(dealField)) {
+            updateData[dealField] = csvData[csvField];
+            updatedFields.push(dealField);
+          }
+        }
+        
+        // Handle contact_name separately (combined from first/last)
+        const contactName = [csvData.contact_first_name, csvData.contact_last_name]
+          .filter(Boolean).join(' ');
+        if (contactName && !isFieldProtected('contact_name')) {
+          updateData.contact_name = contactName;
+          updatedFields.push('contact_name');
+        }
+        
+        if (Object.keys(updateData).length > 0) {
+          const newSource = {
+            source: 'csv',
+            timestamp: new Date().toISOString(),
+            fields: updatedFields,
+          };
+          
+          const { error: updateError } = await supabase
+            .from('deals')
+            .update({ 
+              ...updateData, 
+              extraction_sources: [...existingSources, newSource],
+              updated_at: new Date().toISOString() 
+            })
+            .eq('id', id);
+          
+          if (updateError) throw updateError;
+          
+          // Track for notes analysis
+          if (updateData.additional_info) {
+            mergedDealsInfo.push({ id, additional_info: updateData.additional_info });
+          }
+        }
       }
 
       // Analyze notes for all deals that have additional_info (both new inserts AND merged deals)
       const allDealsWithNotes: { id: string; additional_info: string }[] = [
         ...insertedDeals.filter(d => d.additional_info && d.additional_info.trim().length > 10)
           .map(d => ({ id: d.id, additional_info: d.additional_info! })),
-        ...dealsToUpdate.filter(u => u.data.additional_info && u.data.additional_info.trim().length > 10)
-          .map(u => ({ id: u.id, additional_info: u.data.additional_info as string }))
+        ...mergedDealsInfo.filter(d => d.additional_info && d.additional_info.trim().length > 10)
+          .map(d => ({ id: d.id, additional_info: d.additional_info! }))
       ];
       
       if (allDealsWithNotes.length > 0) {
@@ -421,7 +469,7 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
       // Score all imported/updated deals
       const allDealIds = [
         ...insertedDeals.map(d => d.id),
-        ...dealsToUpdate.map(u => u.id)
+        ...dealsToMerge.map(m => m.id)
       ];
       
       if (allDealIds.length > 0) {
@@ -442,8 +490,8 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
         toast.success(`Deal scoring complete`);
       }
 
-      const totalProcessed = dealsToInsert.length + dealsToUpdate.length;
-      toast.success(`Successfully processed ${totalProcessed} deals (${dealsToInsert.length} new, ${dealsToUpdate.length} merged)`);
+      const totalProcessed = dealsToInsert.length + dealsToMerge.length;
+      toast.success(`Successfully processed ${totalProcessed} deals (${dealsToInsert.length} new, ${dealsToMerge.length} merged)`);
       resetAndClose();
       onComplete();
     } catch (error) {

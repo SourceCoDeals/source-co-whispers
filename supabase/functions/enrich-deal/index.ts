@@ -473,8 +473,8 @@ Deno.serve(async (req) => {
         if (typeof currentValue === 'string' && currentValue.trim() === '') return true;
         // Treat placeholder values as empty
         if (isPlaceholder(currentValue)) return true;
-        // Treat default location_count of 1 as empty
-        if (field === 'location_count' && currentValue === 1) return true;
+        // Treat default location_count and employee_count of 1 as empty (database defaults)
+        if ((field === 'location_count' || field === 'employee_count') && currentValue === 1) return true;
         return false;
       }
 
