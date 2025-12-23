@@ -5,6 +5,48 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Source priority: transcript (100) > notes (80) > website (60) > csv (40) > manual (20)
+const SOURCE_PRIORITY: Record<string, number> = {
+  transcript: 100,
+  notes: 80,
+  website: 60,
+  csv: 40,
+  manual: 20,
+};
+
+interface ExtractionSource {
+  source: string;
+  timestamp: string;
+  fields: string[];
+}
+
+function getFieldSource(
+  extractionSources: ExtractionSource[] | null | undefined,
+  fieldName: string
+): ExtractionSource | null {
+  if (!extractionSources || !Array.isArray(extractionSources)) return null;
+  
+  const sourcesWithField = extractionSources
+    .filter(s => s.fields?.includes(fieldName))
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  
+  return sourcesWithField[0] || null;
+}
+
+function canOverwriteField(
+  existingSources: ExtractionSource[] | null | undefined,
+  fieldName: string,
+  newSourceType: string
+): boolean {
+  const existingSource = getFieldSource(existingSources, fieldName);
+  if (!existingSource) return true;
+  
+  const existingPriority = SOURCE_PRIORITY[existingSource.source] || 0;
+  const newPriority = SOURCE_PRIORITY[newSourceType] || 0;
+  
+  return newPriority >= existingPriority;
+}
+
 async function authenticateUser(req: Request): Promise<{ user: any; error: Response | null }> {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) {
@@ -34,7 +76,7 @@ async function authenticateUser(req: Request): Promise<{ user: any; error: Respo
     };
   }
 
-  console.log('Authenticated user:', user.id);
+  console.log('[enrich-deal] Authenticated user:', user.id);
   return { user, error: null };
 }
 
@@ -116,6 +158,16 @@ function normalizeGeography(items: string[] | null | undefined): string[] | null
   
   const unique = [...new Set(normalized)];
   return unique.length > 0 ? unique.sort() : null;
+}
+
+/**
+ * Merge geography arrays - union existing with new values
+ */
+function mergeGeography(existing: string[] | null, newValues: string[] | null): string[] | null {
+  const existingSet = new Set(existing || []);
+  const newSet = new Set(newValues || []);
+  const merged = new Set([...existingSet, ...newSet]);
+  return merged.size > 0 ? Array.from(merged).sort() : null;
 }
 
 // Tool for extracting company info from website
@@ -373,97 +425,103 @@ Deno.serve(async (req) => {
     const extracted = await extractWebsiteInfo(openaiApiKey, websiteContent, deal.deal_name);
 
     // Build update object - respect data priority: Transcript > Notes > Website
-    // Website enrichment should NEVER overwrite transcript or notes data
     const updateData: Record<string, any> = {};
     const updatedFields: string[] = [];
-
-    // Fields that should be protected if sourced from transcripts or notes
-    const protectedFields = [
-      'revenue', 'ebitda_percentage', 'ebitda_amount', 'geography', 'owner_goals', 
-      'service_mix', 'employee_count', 'location_count', 'headquarters', 'company_overview',
-      'business_model', 'founded_year', 'industry_type'
-    ];
+    const skippedFields: string[] = [];
 
     // Check existing extraction sources
-    const existingSources = deal.extraction_sources || [];
-    const hasTranscriptSource = existingSources.some((s: any) => s.source === 'transcript');
-    const hasNotesSource = existingSources.some((s: any) => s.source === 'notes');
-    const hasHigherPrioritySource = hasTranscriptSource || hasNotesSource;
+    const existingSources: ExtractionSource[] = (deal.extraction_sources as ExtractionSource[]) || [];
 
-    const shouldUpdate = (field: string, currentValue: any) => {
-      // If this field has data from a higher-priority source (transcript or notes), don't overwrite
-      if (hasHigherPrioritySource && protectedFields.includes(field)) {
-        // Check if field was explicitly extracted from transcript/notes
-        const fieldSource = existingSources.find((s: any) => s.fields?.includes(field));
-        if (fieldSource && (fieldSource.source === 'transcript' || fieldSource.source === 'notes')) {
-          console.log(`[enrich-deal] Skipping ${field}: protected by ${fieldSource.source} source`);
-          return false;
-        }
+    // Helper to check if we should update a field
+    const shouldUpdate = (field: string, extractedValue: any, currentValue: any): boolean => {
+      // Check if extracted value is valid
+      if (extractedValue === null || extractedValue === undefined) return false;
+      if (Array.isArray(extractedValue) && extractedValue.length === 0) return false;
+      if (typeof extractedValue === 'string' && extractedValue.trim() === '') return false;
+
+      // Check source priority - website should NOT overwrite transcript or notes
+      if (!canOverwriteField(existingSources, field, 'website')) {
+        console.log(`[enrich-deal] Skipping ${field}: protected by higher-priority source`);
+        skippedFields.push(field);
+        return false;
       }
 
-      if (!onlyFillEmpty) return true;
-      if (currentValue === null || currentValue === undefined) return true;
-      if (Array.isArray(currentValue) && currentValue.length === 0) return true;
-      if (typeof currentValue === 'string' && currentValue.trim() === '') return true;
-      // Treat default location_count of 1 as empty (allows enrichment to update it)
-      if (field === 'location_count' && currentValue === 1) return true;
-      return false;
+      // If onlyFillEmpty is true, only update empty fields
+      if (onlyFillEmpty) {
+        if (currentValue === null || currentValue === undefined) return true;
+        if (Array.isArray(currentValue) && currentValue.length === 0) return true;
+        if (typeof currentValue === 'string' && currentValue.trim() === '') return true;
+        // Treat default location_count of 1 as empty
+        if (field === 'location_count' && currentValue === 1) return true;
+        return false;
+      }
+
+      return true;
     };
 
-    // Geography - normalize extracted values
+    // Geography - normalize and merge
     if (extracted.geography && Array.isArray(extracted.geography) && extracted.geography.length > 0) {
       const normalizedGeo = normalizeGeography(extracted.geography);
-      if (normalizedGeo && normalizedGeo.length > 0 && shouldUpdate('geography', deal.geography)) {
-        updateData.geography = normalizedGeo;
-        updatedFields.push('geography');
-        console.log(`[enrich-deal] Setting geography to: ${normalizedGeo.join(', ')}`);
+      if (normalizedGeo && normalizedGeo.length > 0) {
+        if (canOverwriteField(existingSources, 'geography', 'website')) {
+          // Merge with existing geography instead of replacing
+          const mergedGeo = mergeGeography(deal.geography, normalizedGeo);
+          if (mergedGeo && mergedGeo.length > 0) {
+            updateData.geography = mergedGeo;
+            updatedFields.push('geography');
+            console.log(`[enrich-deal] Merged geography: ${mergedGeo.join(', ')}`);
+          }
+        } else {
+          console.log(`[enrich-deal] Skipping geography: protected by higher-priority source`);
+          skippedFields.push('geography');
+        }
       }
     }
 
     // Company overview
-    if (extracted.company_overview && shouldUpdate('company_overview', deal.company_overview)) {
+    if (shouldUpdate('company_overview', extracted.company_overview, deal.company_overview)) {
       updateData.company_overview = extracted.company_overview;
       updatedFields.push('company_overview');
     }
 
     // Service mix
-    if (extracted.service_mix && shouldUpdate('service_mix', deal.service_mix)) {
+    if (shouldUpdate('service_mix', extracted.service_mix, deal.service_mix)) {
       updateData.service_mix = extracted.service_mix;
       updatedFields.push('service_mix');
     }
 
     // Headquarters
-    if (extracted.headquarters && shouldUpdate('headquarters', deal.headquarters)) {
+    if (shouldUpdate('headquarters', extracted.headquarters, deal.headquarters)) {
       updateData.headquarters = extracted.headquarters;
       updatedFields.push('headquarters');
     }
 
     // Employee count
-    if (extracted.employee_count && shouldUpdate('employee_count', deal.employee_count)) {
+    if (shouldUpdate('employee_count', extracted.employee_count, deal.employee_count)) {
       updateData.employee_count = extracted.employee_count;
       updatedFields.push('employee_count');
     }
 
     // Founded year
-    if (extracted.founded_year && shouldUpdate('founded_year', deal.founded_year)) {
+    if (shouldUpdate('founded_year', extracted.founded_year, deal.founded_year)) {
       updateData.founded_year = extracted.founded_year;
       updatedFields.push('founded_year');
     }
 
     // Location count
-    if (extracted.location_count && shouldUpdate('location_count', deal.location_count)) {
+    if (shouldUpdate('location_count', extracted.location_count, deal.location_count)) {
       updateData.location_count = extracted.location_count;
       updatedFields.push('location_count');
     }
 
     // Business model
-    if (extracted.business_model && shouldUpdate('business_model', deal.business_model)) {
+    if (shouldUpdate('business_model', extracted.business_model, deal.business_model)) {
       updateData.business_model = extracted.business_model;
       updatedFields.push('business_model');
     }
 
     // Industry type
-    if (extracted.industry_type && shouldUpdate('industry_type', deal.industry_type)) {
+    if (shouldUpdate('industry_type', extracted.industry_type, deal.industry_type)) {
       updateData.industry_type = extracted.industry_type;
       updatedFields.push('industry_type');
     }
@@ -472,14 +530,13 @@ Deno.serve(async (req) => {
     if (Object.keys(updateData).length > 0) {
       updateData.updated_at = new Date().toISOString();
       
-      // Add website source tracking if we're updating fields
+      // Add website source tracking for updated fields
       if (updatedFields.length > 0) {
-        const newSource = {
+        const newSource: ExtractionSource = {
           source: 'website',
           timestamp: new Date().toISOString(),
           fields: updatedFields
         };
-        // Append to existing sources
         const updatedSources = [...existingSources, newSource];
         updateData.extraction_sources = updatedSources;
       }
@@ -498,14 +555,18 @@ Deno.serve(async (req) => {
       }
 
       console.log(`[enrich-deal] Updated ${updatedFields.length} fields: ${updatedFields.join(', ')}`);
+      if (skippedFields.length > 0) {
+        console.log(`[enrich-deal] Skipped ${skippedFields.length} protected fields: ${skippedFields.join(', ')}`);
+      }
     } else {
-      console.log('[enrich-deal] No new fields to update (all already populated)');
+      console.log('[enrich-deal] No new fields to update (all already populated or protected)');
     }
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         updatedFields,
+        skippedFields,
         extracted: {
           geography: extracted.geography,
           headquarters: extracted.headquarters,

@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -66,7 +67,7 @@ serve(async (req) => {
   }
 
   try {
-    const { notes } = await req.json();
+    const { notes, dealId } = await req.json();
     
     if (!notes || typeof notes !== 'string' || notes.trim().length === 0) {
       return new Response(
@@ -80,7 +81,7 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    console.log('Analyzing notes, length:', notes.length);
+    console.log('[analyze-deal-notes] Analyzing notes, length:', notes.length, 'dealId:', dealId);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -107,9 +108,7 @@ CRITICAL: Extract geographic information:
 CRITICAL: Extract owner goals:
 - Timeline ("looking to exit in 2 years", "retire soon")
 - Post-sale involvement ("wants to stay on", "clean exit")
-- Financial expectations
-
-Extract everything that is clearly stated. Convert all values to the correct units.`
+- Financial expectations`
           },
           {
             role: "user",
@@ -123,7 +122,7 @@ Extract everything that is clearly stated. Convert all values to the correct uni
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('AI gateway error:', response.status, errorText);
+      console.error('[analyze-deal-notes] AI gateway error:', response.status, errorText);
       
       if (response.status === 429) {
         return new Response(
@@ -142,7 +141,7 @@ Extract everything that is clearly stated. Convert all values to the correct uni
     }
 
     const data = await response.json();
-    console.log('AI response received');
+    console.log('[analyze-deal-notes] AI response received');
 
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall || toolCall.function.name !== 'extract_deal_info') {
@@ -150,7 +149,7 @@ Extract everything that is clearly stated. Convert all values to the correct uni
     }
 
     const extractedData = JSON.parse(toolCall.function.arguments);
-    console.log('Extracted data:', extractedData);
+    console.log('[analyze-deal-notes] Extracted data:', extractedData);
 
     // Normalize geography to uppercase state abbreviations
     if (extractedData.geography && Array.isArray(extractedData.geography)) {
@@ -172,12 +171,68 @@ Extract everything that is clearly stated. Convert all values to the correct uni
     if (extractedData.location_count) fieldsExtracted.push('location_count');
     if (extractedData.additional_info) fieldsExtracted.push('additional_info');
 
+    // If dealId is provided, update extraction_sources to track that this data came from notes
+    if (dealId && fieldsExtracted.length > 0) {
+      console.log('[analyze-deal-notes] Updating extraction_sources for deal:', dealId);
+      
+      const authHeader = req.headers.get('Authorization');
+      if (authHeader) {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        
+        // First verify access with user client
+        const userClient = createClient(
+          supabaseUrl,
+          Deno.env.get('SUPABASE_ANON_KEY')!,
+          { global: { headers: { Authorization: authHeader } } }
+        );
+        
+        const { data: userDeal, error: accessError } = await userClient
+          .from('deals')
+          .select('id, extraction_sources')
+          .eq('id', dealId)
+          .single();
+        
+        if (!accessError && userDeal) {
+          // Use service role to update extraction_sources
+          const serviceClient = createClient(supabaseUrl, supabaseKey);
+          
+          const existingSources = (userDeal.extraction_sources as any[]) || [];
+          
+          // Create new source entry for notes
+          const newSource = {
+            source: 'notes',
+            timestamp: new Date().toISOString(),
+            fields: fieldsExtracted
+          };
+          
+          const updatedSources = [...existingSources, newSource];
+          
+          const { error: updateError } = await serviceClient
+            .from('deals')
+            .update({ 
+              extraction_sources: updatedSources,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', dealId);
+          
+          if (updateError) {
+            console.error('[analyze-deal-notes] Failed to update extraction_sources:', updateError);
+          } else {
+            console.log('[analyze-deal-notes] Successfully updated extraction_sources with notes source');
+          }
+        } else {
+          console.log('[analyze-deal-notes] Could not access deal to update sources:', accessError?.message);
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({ success: true, data: extractedData, fieldsExtracted }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error('Error analyzing notes:', error);
+    console.error('[analyze-deal-notes] Error analyzing notes:', error);
     return new Response(
       JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
