@@ -15,7 +15,7 @@ import { EditableSection } from "@/components/EditableSection";
 import { ContactCard } from "@/components/ContactCard";
 import { DealTranscriptsSection } from "@/components/DealTranscriptsSection";
 import { DealHistorySection } from "@/components/DealHistorySection";
-import { BuyerActivitySection } from "@/components/BuyerActivitySection";
+
 import {
   Collapsible,
   CollapsibleContent,
@@ -236,9 +236,6 @@ export default function DealDetail() {
             onDataChange={loadData}
           />
         </div>
-
-        {/* Buyer Activity Section */}
-        <BuyerActivitySection dealId={id!} />
 
         {/* Website & Actions */}
         <EditableSection

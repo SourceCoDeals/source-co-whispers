@@ -83,7 +83,7 @@ export function BuyerActivitySection({ dealId }: BuyerActivitySectionProps) {
       <div className="bg-card border rounded-lg p-4">
         <div className="flex items-center gap-2">
           <Loader2 className="w-4 h-4 animate-spin" />
-          <span className="text-sm text-muted-foreground">Loading buyer activity...</span>
+          <span className="text-sm text-muted-foreground">Loading buyer history...</span>
         </div>
       </div>
     );
@@ -92,11 +92,11 @@ export function BuyerActivitySection({ dealId }: BuyerActivitySectionProps) {
   if (approved.length === 0 && interested.length === 0 && passed.length === 0) {
     return (
       <div className="bg-card border rounded-lg p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Users className="w-5 h-5 text-muted-foreground" />
-          <h3 className="font-semibold">Buyer Activity</h3>
-        </div>
-        <p className="text-sm text-muted-foreground">No buyer activity recorded yet. View buyer matches to start outreach.</p>
+      <div className="flex items-center gap-2 mb-2">
+        <Users className="w-5 h-5 text-muted-foreground" />
+        <h3 className="font-semibold">Buyer History</h3>
+      </div>
+      <p className="text-sm text-muted-foreground">No buyer history recorded yet. View buyer matches to start outreach.</p>
       </div>
     );
   }
@@ -152,7 +152,7 @@ export function BuyerActivitySection({ dealId }: BuyerActivitySectionProps) {
     <div className="bg-card border rounded-lg p-4 space-y-4">
       <div className="flex items-center gap-2">
         <Users className="w-5 h-5 text-muted-foreground" />
-        <h3 className="font-semibold">Buyer Activity</h3>
+        <h3 className="font-semibold">Buyer History</h3>
       </div>
 
       {/* Approved for Outreach */}
