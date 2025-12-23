@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { CSVImport } from "@/components/CSVImport";
 import { DealCSVImport } from "@/components/DealCSVImport";
 import { StructuredCriteriaPanel } from "@/components/StructuredCriteriaPanel";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload, TrendingUp, ArrowUp, ArrowDown, Filter } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -63,6 +64,25 @@ export default function TrackerDetail() {
   const [isCriteriaCollapsed, setIsCriteriaCollapsed] = useState(true);
   const [isUploadingDocs, setIsUploadingDocs] = useState(false);
   const docFileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Deal scoring state
+  const [isScoringAll, setIsScoringAll] = useState(false);
+  const [scoringProgress, setScoringProgress] = useState({ current: 0, total: 0 });
+  
+  // Deal sorting state
+  const [dealSortColumn, setDealSortColumn] = useState<string>("deal_score");
+  const [dealSortDirection, setDealSortDirection] = useState<"asc" | "desc">("desc");
+  
+  // Deal filter state
+  const [dealFilters, setDealFilters] = useState({
+    deal_name: "",
+    geography: "",
+    status: "all",
+    minRevenue: "",
+    maxRevenue: "",
+    minScore: "",
+    maxScore: "",
+  });
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -434,6 +454,144 @@ export default function TrackerDetail() {
   const hasWebsite = (buyer: any) => buyer.platform_website || buyer.pe_firm_website;
 
   const canEnrichDeal = (deal: any) => deal.transcript_link || deal.additional_info || deal.company_website;
+
+  // Score all deals function
+  const scoreAllDeals = async () => {
+    if (deals.length === 0) return;
+    
+    setIsScoringAll(true);
+    setScoringProgress({ current: 0, total: deals.length });
+    
+    let scored = 0;
+    let failed = 0;
+    
+    for (const deal of deals) {
+      try {
+        await supabase.functions.invoke('score-deal', { body: { dealId: deal.id } });
+        scored++;
+      } catch (err) {
+        console.error(`Failed to score ${deal.deal_name}:`, err);
+        failed++;
+      }
+      setScoringProgress({ current: scored + failed, total: deals.length });
+    }
+    
+    await loadData();
+    
+    toast({
+      title: "Scoring complete",
+      description: `${scored} deals scored${failed > 0 ? `, ${failed} failed` : ""}`,
+    });
+    
+    setIsScoringAll(false);
+  };
+
+  // Deal sorting handler
+  const handleDealSort = (column: string) => {
+    if (dealSortColumn === column) {
+      setDealSortDirection(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setDealSortColumn(column);
+      setDealSortDirection("desc");
+    }
+  };
+
+  // Sorted and filtered deals
+  const sortedAndFilteredDeals = useMemo(() => {
+    let filtered = deals.filter(deal => {
+      if (dealFilters.deal_name && !deal.deal_name.toLowerCase().includes(dealFilters.deal_name.toLowerCase())) return false;
+      if (dealFilters.geography && !deal.geography?.some((g: string) => g.toLowerCase().includes(dealFilters.geography.toLowerCase()))) return false;
+      if (dealFilters.status !== "all" && deal.status !== dealFilters.status) return false;
+      if (dealFilters.minRevenue && (deal.revenue || 0) < parseFloat(dealFilters.minRevenue)) return false;
+      if (dealFilters.maxRevenue && (deal.revenue || 0) > parseFloat(dealFilters.maxRevenue)) return false;
+      if (dealFilters.minScore && (deal.deal_score || 0) < parseInt(dealFilters.minScore)) return false;
+      if (dealFilters.maxScore && (deal.deal_score || 0) > parseInt(dealFilters.maxScore)) return false;
+      return true;
+    });
+
+    return filtered.sort((a, b) => {
+      let aVal: any, bVal: any;
+      
+      switch (dealSortColumn) {
+        case "deal_name":
+          aVal = a.deal_name?.toLowerCase() || "";
+          bVal = b.deal_name?.toLowerCase() || "";
+          break;
+        case "geography":
+          aVal = a.geography?.join(", ")?.toLowerCase() || "";
+          bVal = b.geography?.join(", ")?.toLowerCase() || "";
+          break;
+        case "approved":
+          aVal = dealBuyerCounts[a.id]?.approved || 0;
+          bVal = dealBuyerCounts[b.id]?.approved || 0;
+          break;
+        case "interested":
+          aVal = dealBuyerCounts[a.id]?.interested || 0;
+          bVal = dealBuyerCounts[b.id]?.interested || 0;
+          break;
+        case "passed":
+          aVal = dealBuyerCounts[a.id]?.passed || 0;
+          bVal = dealBuyerCounts[b.id]?.passed || 0;
+          break;
+        case "created_at":
+          aVal = new Date(a.created_at).getTime();
+          bVal = new Date(b.created_at).getTime();
+          break;
+        case "revenue":
+          aVal = a.revenue || 0;
+          bVal = b.revenue || 0;
+          break;
+        case "ebitda":
+          aVal = a.ebitda_amount || a.ebitda_percentage || 0;
+          bVal = b.ebitda_amount || b.ebitda_percentage || 0;
+          break;
+        case "deal_score":
+        default:
+          aVal = a.deal_score || 0;
+          bVal = b.deal_score || 0;
+          break;
+      }
+
+      if (typeof aVal === "string") {
+        return dealSortDirection === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+      return dealSortDirection === "asc" ? aVal - bVal : bVal - aVal;
+    });
+  }, [deals, dealFilters, dealSortColumn, dealSortDirection, dealBuyerCounts]);
+
+  // Clear all filters
+  const clearDealFilters = () => {
+    setDealFilters({
+      deal_name: "",
+      geography: "",
+      status: "all",
+      minRevenue: "",
+      maxRevenue: "",
+      minScore: "",
+      maxScore: "",
+    });
+  };
+
+  const hasActiveFilters = Object.entries(dealFilters).some(([key, value]) => 
+    key === "status" ? value !== "all" : value !== ""
+  );
+
+  // Sortable header component
+  const SortableHeader = ({ column, children, className = "" }: { column: string; children: React.ReactNode; className?: string }) => (
+    <TableHead 
+      className={`cursor-pointer hover:bg-muted/50 select-none ${className}`}
+      onClick={() => handleDealSort(column)}
+    >
+      <div className="flex items-center gap-1">
+        {children}
+        {dealSortColumn === column ? (
+          dealSortDirection === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+        ) : (
+          <ArrowUpDown className="w-3 h-3 opacity-30" />
+        )}
+      </div>
+    </TableHead>
+  );
 
   const isDealEnriched = (deal: any) => {
     return (
@@ -1356,25 +1514,55 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
           </TabsContent>
 
           <TabsContent value="deals" className="mt-4 space-y-4">
-            <div className="flex justify-end gap-2 mb-2">
-              <Button 
-                variant="outline" 
-                onClick={enrichAllDeals}
-                disabled={isBulkEnrichingDeals || deals.length === 0}
-              >
-                {isBulkEnrichingDeals ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Enriching {dealEnrichmentProgress.current} of {dealEnrichmentProgress.total}...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Enrich All Deals
-                  </>
+            <div className="flex justify-between items-center gap-2 mb-2">
+              <div className="flex items-center gap-2">
+                {hasActiveFilters && (
+                  <Button variant="ghost" size="sm" onClick={clearDealFilters}>
+                    <X className="w-4 h-4 mr-1" />
+                    Clear Filters
+                  </Button>
                 )}
-              </Button>
-              <DealCSVImport trackerId={id!} onComplete={loadData} />
+                <span className="text-sm text-muted-foreground">
+                  {sortedAndFilteredDeals.length} of {deals.length} deals
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={scoreAllDeals}
+                  disabled={isScoringAll || deals.length === 0}
+                >
+                  {isScoringAll ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Scoring {scoringProgress.current} of {scoringProgress.total}...
+                    </>
+                  ) : (
+                    <>
+                      <TrendingUp className="w-4 h-4 mr-2" />
+                      Score All Deals
+                    </>
+                  )}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={enrichAllDeals}
+                  disabled={isBulkEnrichingDeals || deals.length === 0}
+                >
+                  {isBulkEnrichingDeals ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Enriching {dealEnrichmentProgress.current} of {dealEnrichmentProgress.total}...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Enrich All Deals
+                    </>
+                  )}
+                </Button>
+                <DealCSVImport trackerId={id!} onComplete={loadData} />
+              </div>
             </div>
             {deals.length === 0 ? (
               <div className="bg-card rounded-lg border p-8 text-center text-muted-foreground">
@@ -1384,20 +1572,96 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[200px]">Deal Name</TableHead>
-                    <TableHead className="w-[150px]">Service Area</TableHead>
-                    <TableHead className="w-[80px] text-center">Approved</TableHead>
-                    <TableHead className="w-[80px] text-center">Interested</TableHead>
-                    <TableHead className="w-[80px] text-center">Passed</TableHead>
-                    <TableHead className="w-[100px]">Date Added</TableHead>
-                    <TableHead className="w-[90px] text-right">Revenue</TableHead>
-                    <TableHead className="w-[90px] text-right">EBITDA</TableHead>
-                    <TableHead className="w-[90px] text-center">Score</TableHead>
+                    <SortableHeader column="deal_name" className="w-[200px]">Deal Name</SortableHeader>
+                    <SortableHeader column="geography" className="w-[150px]">Service Area</SortableHeader>
+                    <SortableHeader column="approved" className="w-[80px] text-center">Approved</SortableHeader>
+                    <SortableHeader column="interested" className="w-[80px] text-center">Interested</SortableHeader>
+                    <SortableHeader column="passed" className="w-[80px] text-center">Passed</SortableHeader>
+                    <SortableHeader column="created_at" className="w-[100px]">Date Added</SortableHeader>
+                    <SortableHeader column="revenue" className="w-[90px] text-right">Revenue</SortableHeader>
+                    <SortableHeader column="ebitda" className="w-[90px] text-right">EBITDA</SortableHeader>
+                    <SortableHeader column="deal_score" className="w-[90px] text-center">Score</SortableHeader>
                     <TableHead className="w-[120px]">Actions</TableHead>
+                  </TableRow>
+                  {/* Filter row */}
+                  <TableRow className="bg-muted/30 hover:bg-muted/30">
+                    <TableHead className="py-2">
+                      <Input
+                        placeholder="Filter name..."
+                        value={dealFilters.deal_name}
+                        onChange={(e) => setDealFilters(prev => ({ ...prev, deal_name: e.target.value }))}
+                        className="h-7 text-xs"
+                      />
+                    </TableHead>
+                    <TableHead className="py-2">
+                      <Input
+                        placeholder="Filter states..."
+                        value={dealFilters.geography}
+                        onChange={(e) => setDealFilters(prev => ({ ...prev, geography: e.target.value }))}
+                        className="h-7 text-xs"
+                      />
+                    </TableHead>
+                    <TableHead className="py-2" />
+                    <TableHead className="py-2" />
+                    <TableHead className="py-2" />
+                    <TableHead className="py-2">
+                      <Select
+                        value={dealFilters.status}
+                        onValueChange={(value) => setDealFilters(prev => ({ ...prev, status: value }))}
+                      >
+                        <SelectTrigger className="h-7 text-xs">
+                          <SelectValue placeholder="Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Status</SelectItem>
+                          <SelectItem value="Active">Active</SelectItem>
+                          <SelectItem value="Archived">Archived</SelectItem>
+                          <SelectItem value="Closed">Closed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableHead>
+                    <TableHead className="py-2">
+                      <div className="flex gap-1">
+                        <Input
+                          placeholder="Min"
+                          value={dealFilters.minRevenue}
+                          onChange={(e) => setDealFilters(prev => ({ ...prev, minRevenue: e.target.value }))}
+                          className="h-7 text-xs w-12"
+                          type="number"
+                        />
+                        <Input
+                          placeholder="Max"
+                          value={dealFilters.maxRevenue}
+                          onChange={(e) => setDealFilters(prev => ({ ...prev, maxRevenue: e.target.value }))}
+                          className="h-7 text-xs w-12"
+                          type="number"
+                        />
+                      </div>
+                    </TableHead>
+                    <TableHead className="py-2" />
+                    <TableHead className="py-2">
+                      <div className="flex gap-1">
+                        <Input
+                          placeholder="Min"
+                          value={dealFilters.minScore}
+                          onChange={(e) => setDealFilters(prev => ({ ...prev, minScore: e.target.value }))}
+                          className="h-7 text-xs w-12"
+                          type="number"
+                        />
+                        <Input
+                          placeholder="Max"
+                          value={dealFilters.maxScore}
+                          onChange={(e) => setDealFilters(prev => ({ ...prev, maxScore: e.target.value }))}
+                          className="h-7 text-xs w-12"
+                          type="number"
+                        />
+                      </div>
+                    </TableHead>
+                    <TableHead className="py-2" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[...deals].sort((a, b) => (b.deal_score || 0) - (a.deal_score || 0)).map((deal) => {
+                  {sortedAndFilteredDeals.map((deal) => {
                     const counts = dealBuyerCounts[deal.id] || { approved: 0, interested: 0, passed: 0 };
                     const geographyStr = deal.geography?.join(", ") || "—";
                     const dateAdded = new Date(deal.created_at).toLocaleDateString("en-US", { 
