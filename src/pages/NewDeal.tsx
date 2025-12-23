@@ -260,7 +260,7 @@ export default function NewDeal() {
         toast({ title: "Deal listed!" });
       }
 
-      navigate(`/deals/${dealData.id}/matching`);
+      navigate(`/deals/${dealData.id}`);
     } catch (err) {
       console.error('Failed to create deal:', err);
       toast({ title: "Error", description: "Failed to create deal.", variant: "destructive" });
