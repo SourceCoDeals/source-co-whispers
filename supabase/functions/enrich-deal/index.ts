@@ -192,6 +192,10 @@ const extractWebsiteInfoTool = {
           type: "string",
           description: "City and state of headquarters or main office (e.g., 'Modesto, CA')"
         },
+        company_address: {
+          type: "string",
+          description: "Full street address including street number, suite/unit, city, state, and zip code (e.g., '123 Main Street, Suite 100, Modesto, CA 95355'). Look in contact pages, footer, about us sections."
+        },
         service_mix: {
           type: "string",
           description: "Description of services or products offered"
@@ -267,13 +271,20 @@ Your job is to find:
    - Footer addresses
    - Multiple location mentions
 
-2. **Company Overview**: A brief summary of what they do
+2. **Company Address**: The FULL street address of the company. Look for:
+   - Contact page addresses
+   - Footer addresses with street number
+   - "Visit us at" or "Located at" mentions
+   - About Us page with physical location
+   Format: "123 Main Street, Suite 100, City, ST 12345"
 
-3. **Service Mix**: What services/products they offer
+3. **Company Overview**: A brief summary of what they do
 
-4. **Other Details**: Headquarters, employee count, founding year, number of locations
+4. **Service Mix**: What services/products they offer
 
-Be thorough in finding geographic information - it's critical for buyer matching. Extract every state mentioned.`;
+5. **Other Details**: Headquarters (city, state only), employee count, founding year, number of locations
+
+Be thorough in finding geographic and address information - it's critical for buyer matching.`;
 
   const userPrompt = `Extract business information from this company website for "${companyName}".
 
@@ -524,6 +535,12 @@ Deno.serve(async (req) => {
     if (shouldUpdate('industry_type', extracted.industry_type, deal.industry_type)) {
       updateData.industry_type = extracted.industry_type;
       updatedFields.push('industry_type');
+    }
+
+    // Company address
+    if (shouldUpdate('company_address', extracted.company_address, deal.company_address)) {
+      updateData.company_address = extracted.company_address;
+      updatedFields.push('company_address');
     }
 
     // Update deal if we have any changes

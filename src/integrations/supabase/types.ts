@@ -710,6 +710,7 @@ export type Database = {
         Row: {
           additional_info: string | null
           business_model: string | null
+          company_address: string | null
           company_id: string | null
           company_overview: string | null
           company_website: string | null
@@ -759,6 +760,7 @@ export type Database = {
         Insert: {
           additional_info?: string | null
           business_model?: string | null
+          company_address?: string | null
           company_id?: string | null
           company_overview?: string | null
           company_website?: string | null
@@ -808,6 +810,7 @@ export type Database = {
         Update: {
           additional_info?: string | null
           business_model?: string | null
+          company_address?: string | null
           company_id?: string | null
           company_overview?: string | null
           company_website?: string | null

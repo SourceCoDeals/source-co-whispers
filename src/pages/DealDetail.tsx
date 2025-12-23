@@ -69,6 +69,7 @@ export default function DealDetail() {
   const resetEditStates = (dealData: any) => {
     setEditCompany({
       headquarters: dealData.headquarters || '',
+      company_address: dealData.company_address || '',
       founded_year: dealData.founded_year || '',
       employee_count: dealData.employee_count || '',
       industry_type: dealData.industry_type || '',
@@ -329,6 +330,7 @@ export default function DealDetail() {
             onSave={async () => {
               await saveSection({
                 headquarters: editCompany.headquarters || null,
+                company_address: editCompany.company_address || null,
                 founded_year: editCompany.founded_year ? parseInt(editCompany.founded_year) : null,
                 employee_count: editCompany.employee_count ? parseInt(editCompany.employee_count) : null,
                 industry_type: editCompany.industry_type || null,
@@ -342,6 +344,13 @@ export default function DealDetail() {
                   <div className="flex-1">
                     <label className="text-muted-foreground text-xs uppercase tracking-wide">Headquarters</label>
                     <Input value={editCompany.headquarters} onChange={(e) => setEditCompany({ ...editCompany, headquarters: e.target.value })} placeholder="City, State" className="mt-1" />
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Home className="w-4 h-4 text-muted-foreground mt-2.5" />
+                  <div className="flex-1">
+                    <label className="text-muted-foreground text-xs uppercase tracking-wide">Address</label>
+                    <Input value={editCompany.company_address} onChange={(e) => setEditCompany({ ...editCompany, company_address: e.target.value })} placeholder="123 Main St, Suite 100, City, ST 12345" className="mt-1" />
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
@@ -399,6 +408,13 @@ export default function DealDetail() {
                 <div className="flex-1">
                   <p className="text-muted-foreground text-xs uppercase tracking-wide">Headquarters</p>
                   <p className={deal.headquarters ? "font-medium" : "text-muted-foreground italic"}>{deal.headquarters || "Not specified"}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <Home className="w-4 h-4 text-muted-foreground mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide">Address</p>
+                  <p className={deal.company_address ? "font-medium" : "text-muted-foreground italic"}>{deal.company_address || "Not specified"}</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
