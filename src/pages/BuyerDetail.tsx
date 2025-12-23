@@ -580,14 +580,6 @@ export default function BuyerDetail() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="fee-toggle" className="text-sm text-muted-foreground">Fee Agreement</Label>
-              <Switch
-                id="fee-toggle"
-                checked={buyer?.has_fee_agreement ?? false}
-                onCheckedChange={toggleFeeAgreement}
-              />
-            </div>
             <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline">
@@ -741,15 +733,53 @@ export default function BuyerDetail() {
                 icon={<Building2 className="w-4 h-4 text-muted-foreground" />}
                 actions={<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingSection('company_info')}><Pencil className="w-3.5 h-3.5" /></Button>}
               >
-                <DataGrid columns={2}>
-                  <DataField label="Platform Company Name" value={buyer.platform_company_name} />
-                  <DataField label="PE / Parent Firm" value={buyer.pe_firm_name} />
-                  <DataField label="Platform Website" value={buyer.platform_website} type="url" />
-                  <DataField label="PE Firm Website" value={buyer.pe_firm_website} type="url" />
-                  <DataField label="Buyer LinkedIn" value={buyer.buyer_linkedin} type="url" />
-                  <DataField label="PE Firm LinkedIn" value={buyer.pe_firm_linkedin} type="url" />
-                  <DataField label="Fee Agreement" value={buyer.fee_agreement_status !== 'None' ? buyer.fee_agreement_status : null} />
-                </DataGrid>
+                <div className="space-y-6">
+                  {/* Platform Section */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Platform</h4>
+                    <DataGrid columns={2}>
+                      <DataField label="Company Name" value={buyer.platform_company_name} />
+                      <DataField label="Website" value={buyer.platform_website} type="url" />
+                      <DataField label="LinkedIn" value={buyer.buyer_linkedin} type="url" />
+                    </DataGrid>
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <span className="text-sm text-muted-foreground">Fee Agreement with Platform</span>
+                      <Switch
+                        checked={buyer?.has_fee_agreement ?? false}
+                        onCheckedChange={toggleFeeAgreement}
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* PE Firm Section */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">PE / Parent Firm</h4>
+                    <DataGrid columns={2}>
+                      <DataField label="Firm Name" value={buyer.pe_firm_name} />
+                      <DataField label="Website" value={buyer.pe_firm_website} type="url" />
+                      <DataField label="LinkedIn" value={buyer.pe_firm_linkedin} type="url" />
+                    </DataGrid>
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <span className="text-sm text-muted-foreground">Fee Agreement with PE Firm</span>
+                      <Switch
+                        checked={buyer?.fee_agreement_status === 'Signed'}
+                        onCheckedChange={async (checked) => {
+                          const newStatus = checked ? 'Signed' : 'None';
+                          const { error } = await supabase
+                            .from("buyers")
+                            .update({ fee_agreement_status: newStatus })
+                            .eq("id", id);
+                          if (error) {
+                            toast({ title: "Error", description: error.message, variant: "destructive" });
+                            return;
+                          }
+                          setBuyer({ ...buyer, fee_agreement_status: newStatus });
+                          toast({ title: checked ? "PE Firm fee agreement marked" : "PE Firm fee agreement removed" });
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
               </BuyerDataSection>
 
               {/* 2. Headquarter Address */}
