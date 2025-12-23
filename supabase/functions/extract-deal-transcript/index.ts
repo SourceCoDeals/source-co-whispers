@@ -556,6 +556,46 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Verify ownership via user client before using service role
+    const authHeader = req.headers.get('Authorization')!;
+    const userClient = createClient(
+      supabaseUrl!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    // Verify user has access to this transcript or deal via RLS
+    if (transcriptId) {
+      const { data: userTranscript, error: accessError } = await userClient
+        .from('deal_transcripts')
+        .select('id, deal_id')
+        .eq('id', transcriptId)
+        .single();
+
+      if (accessError || !userTranscript) {
+        console.error('Access denied for transcript:', transcriptId, accessError?.message);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Transcript not found or access denied' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    } else if (dealId) {
+      const { data: userDeal, error: accessError } = await userClient
+        .from('deals')
+        .select('id, tracker_id')
+        .eq('id', dealId)
+        .single();
+
+      if (accessError || !userDeal) {
+        console.error('Access denied for deal:', dealId, accessError?.message);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Deal not found or access denied' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // Now safe to use SERVICE_ROLE_KEY
     const supabase = createClient(supabaseUrl!, supabaseKey!);
 
     let deal: any;

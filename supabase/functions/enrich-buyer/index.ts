@@ -810,6 +810,30 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Verify ownership via user client before using service role
+    const authHeader = req.headers.get('Authorization')!;
+    const userClient = createClient(
+      supabaseUrl!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    // Verify user has access to this buyer via RLS
+    const { data: userBuyer, error: accessError } = await userClient
+      .from('buyers')
+      .select('id, tracker_id')
+      .eq('id', buyerId)
+      .single();
+
+    if (accessError || !userBuyer) {
+      console.error('Access denied for buyer:', buyerId, accessError?.message);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Buyer not found or access denied' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Now safe to use SERVICE_ROLE_KEY
     const supabase = createClient(supabaseUrl!, supabaseKey!);
 
     // Fetch buyer

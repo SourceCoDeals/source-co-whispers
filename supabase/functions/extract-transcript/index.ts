@@ -524,6 +524,30 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Verify ownership via user client before using service role
+    const authHeader = req.headers.get('Authorization')!;
+    const userClient = createClient(
+      supabaseUrl!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    // Verify user has access to this transcript via RLS
+    const { data: userTranscript, error: accessError } = await userClient
+      .from('buyer_transcripts')
+      .select('id, buyer_id')
+      .eq('id', transcriptId)
+      .single();
+
+    if (accessError || !userTranscript) {
+      console.error('Access denied for transcript:', transcriptId, accessError?.message);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Transcript not found or access denied' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Now safe to use SERVICE_ROLE_KEY
     const supabase = createClient(supabaseUrl!, supabaseKey!);
 
     // Fetch transcript
