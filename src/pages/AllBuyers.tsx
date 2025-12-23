@@ -5,7 +5,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Users, Search, ChevronDown, ChevronRight, Building2, Globe, Eye } from "lucide-react";
+import { Loader2, Users, Search, ChevronDown, ChevronRight, Building2, Globe, Eye, FileCheck } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { usePEFirmsHierarchy, PEFirmWithPlatforms } from "@/hooks/usePEFirmsHierarchy";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
@@ -388,6 +388,12 @@ function PEFirmRow({ firm, trackers, isExpanded, onToggle, searchTerm }: PEFirmR
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {firm.has_fee_agreement && (
+              <Badge variant="default" className="text-xs flex items-center gap-1">
+                <FileCheck className="w-3 h-3" />
+                Fee Agreement
+              </Badge>
+            )}
             {universeNames.map((name, i) => (
               <Badge key={i} variant="secondary" className="text-xs">
                 {name}
@@ -421,6 +427,12 @@ function PEFirmRow({ firm, trackers, isExpanded, onToggle, searchTerm }: PEFirmR
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {platform.has_fee_agreement && (
+                  <Badge variant="default" className="text-xs flex items-center gap-1">
+                    <FileCheck className="w-3 h-3" />
+                    Fee
+                  </Badge>
+                )}
                 {platform.thesis_confidence && (
                   <Badge 
                     variant={platform.thesis_confidence === "high" ? "default" : "secondary"}

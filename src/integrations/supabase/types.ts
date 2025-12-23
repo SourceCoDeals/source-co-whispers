@@ -1112,6 +1112,7 @@ export type Database = {
         Row: {
           created_at: string
           domain: string
+          has_fee_agreement: boolean | null
           hq_city: string | null
           hq_country: string | null
           hq_region: string | null
@@ -1128,6 +1129,7 @@ export type Database = {
         Insert: {
           created_at?: string
           domain: string
+          has_fee_agreement?: boolean | null
           hq_city?: string | null
           hq_country?: string | null
           hq_region?: string | null
@@ -1144,6 +1146,7 @@ export type Database = {
         Update: {
           created_at?: string
           domain?: string
+          has_fee_agreement?: boolean | null
           hq_city?: string | null
           hq_country?: string | null
           hq_region?: string | null
@@ -1185,6 +1188,7 @@ export type Database = {
           geographic_exclusions: string[] | null
           geographic_footprint: string[] | null
           go_to_market_strategy: string | null
+          has_fee_agreement: boolean | null
           hq_city: string | null
           hq_country: string | null
           hq_state: string | null
@@ -1256,6 +1260,7 @@ export type Database = {
           geographic_exclusions?: string[] | null
           geographic_footprint?: string[] | null
           go_to_market_strategy?: string | null
+          has_fee_agreement?: boolean | null
           hq_city?: string | null
           hq_country?: string | null
           hq_state?: string | null
@@ -1327,6 +1332,7 @@ export type Database = {
           geographic_exclusions?: string[] | null
           geographic_footprint?: string[] | null
           go_to_market_strategy?: string | null
+          has_fee_agreement?: boolean | null
           hq_city?: string | null
           hq_country?: string | null
           hq_state?: string | null

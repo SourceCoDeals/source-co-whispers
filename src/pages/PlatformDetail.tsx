@@ -5,7 +5,8 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BuyerDataSection, DataField, DataListField, DataGrid } from "@/components/BuyerDataSection";
-import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, BarChart3, Target, Globe, Linkedin, Sparkles, DollarSign, TrendingUp } from "lucide-react";
+import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, BarChart3, Target, Globe, Linkedin, Sparkles, DollarSign, TrendingUp, FileCheck } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -38,6 +39,7 @@ interface Platform {
   target_services: string[] | null;
   target_industries: string[] | null;
   deal_breakers: string[] | null;
+  has_fee_agreement: boolean | null;
   data_last_updated: string;
 }
 
@@ -49,6 +51,7 @@ interface PEFirm {
   hq_city: string | null;
   hq_state: string | null;
   hq_country: string | null;
+  has_fee_agreement: boolean | null;
 }
 
 export default function PlatformDetail() {
@@ -150,6 +153,36 @@ export default function PlatformDetail() {
     if (min) return `${format(min)}+`;
     if (max) return `Up to ${format(max)}`;
     return null;
+  };
+
+  const togglePeFirmFeeAgreement = async (checked: boolean) => {
+    if (!peFirm) return;
+    const { error } = await supabase
+      .from("pe_firms")
+      .update({ has_fee_agreement: checked })
+      .eq("id", peFirm.id);
+    
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+    setPeFirm({ ...peFirm, has_fee_agreement: checked });
+    toast({ title: checked ? "Fee agreement added" : "Fee agreement removed" });
+  };
+
+  const togglePlatformFeeAgreement = async (checked: boolean) => {
+    if (!platform) return;
+    const { error } = await supabase
+      .from("platforms")
+      .update({ has_fee_agreement: checked })
+      .eq("id", platform.id);
+    
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+    setPlatform({ ...platform, has_fee_agreement: checked });
+    toast({ title: checked ? "Fee agreement added" : "Fee agreement removed" });
   };
 
   if (isLoading) {
@@ -330,6 +363,38 @@ export default function PlatformDetail() {
             </Dialog>
           </div>
         </div>
+
+        {/* Fee Agreements */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <FileCheck className="w-4 h-4" />
+              Fee Agreements
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-sm">{peFirm?.name || "PE Firm"}</p>
+                <p className="text-xs text-muted-foreground">PE Firm level agreement</p>
+              </div>
+              <Switch 
+                checked={peFirm?.has_fee_agreement || false} 
+                onCheckedChange={togglePeFirmFeeAgreement}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-sm">{platform.name}</p>
+                <p className="text-xs text-muted-foreground">Platform level agreement</p>
+              </div>
+              <Switch 
+                checked={platform.has_fee_agreement || false} 
+                onCheckedChange={togglePlatformFeeAgreement}
+              />
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Quick Stats */}
         <div className="grid grid-cols-4 gap-4">
