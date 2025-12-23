@@ -482,8 +482,23 @@ Deno.serve(async (req) => {
     };
 
     // Geography - normalize and merge
+    // First try explicit geography, then fall back to deriving from headquarters
+    let extractedGeography: string[] = [];
+    
     if (extracted.geography && Array.isArray(extracted.geography) && extracted.geography.length > 0) {
-      const normalizedGeo = normalizeGeography(extracted.geography);
+      extractedGeography = extracted.geography;
+    } else if (extracted.headquarters && typeof extracted.headquarters === 'string') {
+      // Derive geography from headquarters (e.g., "North Hollywood, CA" -> ["CA"])
+      console.log(`[enrich-deal] No explicit geography, deriving from headquarters: ${extracted.headquarters}`);
+      extractedGeography = [extracted.headquarters];
+    } else if (extracted.company_address && typeof extracted.company_address === 'string') {
+      // Fall back to company address
+      console.log(`[enrich-deal] Deriving geography from company_address: ${extracted.company_address}`);
+      extractedGeography = [extracted.company_address];
+    }
+    
+    if (extractedGeography.length > 0) {
+      const normalizedGeo = normalizeGeography(extractedGeography);
       if (normalizedGeo && normalizedGeo.length > 0) {
         if (canOverwriteField(existingSources, 'geography', 'website')) {
           // Merge with existing geography instead of replacing
