@@ -150,7 +150,7 @@ const extractGeographyFootprintTool = {
         service_regions: {
           type: "array",
           items: { type: "string" },
-          description: "Broader regions where the company provides services (may extend beyond physical locations)"
+          description: "ONLY include US states where the company actively serves customers FROM their physical locations. Use 2-letter state abbreviations ONLY. If they have locations in AZ and CA, service_regions should ONLY be those states plus maybe 1-2 immediate neighboring states. DO NOT say 'national', 'nationwide', or 'USA' unless the company EXPLICITLY has customer contracts or operations in 30+ different states. A regional collision repair or service company is NOT national even if they say 'serving customers nationwide' - that's marketing speak. Be conservative."
         },
         other_office_locations: {
           type: "array",
@@ -518,7 +518,8 @@ const SKIP_PATTERNS = [
 ];
 
 // Normalize geographic footprint to 2-letter state abbreviations only
-function normalizeGeographicFootprint(footprint: string[] | null | undefined): string[] | null {
+// When isServiceRegions=true, we are MORE CONSERVATIVE about expanding "national"
+function normalizeGeographicFootprint(footprint: string[] | null | undefined, isServiceRegions: boolean = false): string[] | null {
   if (!footprint || !Array.isArray(footprint) || footprint.length === 0) {
     return null;
   }
@@ -577,25 +578,37 @@ function normalizeGeographicFootprint(footprint: string[] | null | undefined): s
       continue;
     }
     
-    // "national"/"nationwide"/"USA" -> all 50 states
+    // "national"/"nationwide"/"USA" handling
+    // For service_regions, we DO NOT auto-expand to all 50 states - we skip it entirely
+    // and let the cross-check logic handle it based on geographic_footprint
     if (['national', 'nationwide', 'usa', 'us', 'united states', 'all states'].includes(lower)) {
-      console.log(`Expanding "${item}" to all 50 states`);
-      normalized.push(...ALL_US_STATES);
-      continue;
+      if (isServiceRegions) {
+        console.log(`SKIPPING "${item}" for service_regions - will be validated against geographic_footprint`);
+        continue; // Skip - we'll use geographic_footprint as the basis instead
+      } else {
+        console.log(`Expanding "${item}" to all 50 states for geographic_footprint`);
+        normalized.push(...ALL_US_STATES);
+        continue;
+      }
     }
     
     // Handle "X states" pattern (e.g., "41 states", "50 states", "13 States")
     const statesMatch = lower.match(/^(\d+)\s*states?$/);
     if (statesMatch) {
       const count = parseInt(statesMatch[1], 10);
-      if (count >= 30) {  // 30+ states = treat as nationwide
+      if (isServiceRegions) {
+        // For service_regions, never expand "X states" - skip it
+        console.log(`SKIPPING "${item}" for service_regions - vague count, need specifics`);
+        continue;
+      } else if (count >= 30) {  // 30+ states = treat as nationwide for geographic_footprint only
         console.log(`Expanding "${item}" (${count} states) to all 50 states`);
         normalized.push(...ALL_US_STATES);
         continue;
+      } else {
+        // Less than 30 states - skip as we can't know which ones
+        console.log(`Skipping "${item}" - count too low to expand, need specific states`);
+        continue;
       }
-      // Less than 30 states - skip as we can't know which ones
-      console.log(`Skipping "${item}" - count too low to expand, need specific states`);
-      continue;
     }
     
     // Handle "City, State" format with full state name (e.g., "Jackson, Mississippi")
@@ -641,8 +654,122 @@ function normalizeGeographicFootprint(footprint: string[] | null | undefined): s
   
   // Remove duplicates and return
   const unique = [...new Set(normalized)];
-  console.log(`Normalized geographic_footprint: ${unique.length} states`);
+  console.log(`Normalized ${isServiceRegions ? 'service_regions' : 'geographic_footprint'}: ${unique.length} states`);
   return unique.length > 0 ? unique : null;
+}
+
+// Get adjacent states for expansion (used when deriving service_regions from geographic_footprint)
+const STATE_ADJACENCY: Record<string, string[]> = {
+  'AL': ['FL', 'GA', 'MS', 'TN'],
+  'AK': [],
+  'AZ': ['CA', 'CO', 'NM', 'NV', 'UT'],
+  'AR': ['LA', 'MO', 'MS', 'OK', 'TN', 'TX'],
+  'CA': ['AZ', 'NV', 'OR'],
+  'CO': ['AZ', 'KS', 'NE', 'NM', 'OK', 'UT', 'WY'],
+  'CT': ['MA', 'NY', 'RI'],
+  'DE': ['MD', 'NJ', 'PA'],
+  'FL': ['AL', 'GA'],
+  'GA': ['AL', 'FL', 'NC', 'SC', 'TN'],
+  'HI': [],
+  'ID': ['MT', 'NV', 'OR', 'UT', 'WA', 'WY'],
+  'IL': ['IA', 'IN', 'KY', 'MO', 'WI'],
+  'IN': ['IL', 'KY', 'MI', 'OH'],
+  'IA': ['IL', 'MN', 'MO', 'NE', 'SD', 'WI'],
+  'KS': ['CO', 'MO', 'NE', 'OK'],
+  'KY': ['IL', 'IN', 'MO', 'OH', 'TN', 'VA', 'WV'],
+  'LA': ['AR', 'MS', 'TX'],
+  'ME': ['NH'],
+  'MD': ['DE', 'PA', 'VA', 'WV', 'DC'],
+  'MA': ['CT', 'NH', 'NY', 'RI', 'VT'],
+  'MI': ['IN', 'OH', 'WI'],
+  'MN': ['IA', 'ND', 'SD', 'WI'],
+  'MS': ['AL', 'AR', 'LA', 'TN'],
+  'MO': ['AR', 'IA', 'IL', 'KS', 'KY', 'NE', 'OK', 'TN'],
+  'MT': ['ID', 'ND', 'SD', 'WY'],
+  'NE': ['CO', 'IA', 'KS', 'MO', 'SD', 'WY'],
+  'NV': ['AZ', 'CA', 'ID', 'OR', 'UT'],
+  'NH': ['MA', 'ME', 'VT'],
+  'NJ': ['DE', 'NY', 'PA'],
+  'NM': ['AZ', 'CO', 'OK', 'TX', 'UT'],
+  'NY': ['CT', 'MA', 'NJ', 'PA', 'VT'],
+  'NC': ['GA', 'SC', 'TN', 'VA'],
+  'ND': ['MN', 'MT', 'SD'],
+  'OH': ['IN', 'KY', 'MI', 'PA', 'WV'],
+  'OK': ['AR', 'CO', 'KS', 'MO', 'NM', 'TX'],
+  'OR': ['CA', 'ID', 'NV', 'WA'],
+  'PA': ['DE', 'MD', 'NJ', 'NY', 'OH', 'WV'],
+  'RI': ['CT', 'MA'],
+  'SC': ['GA', 'NC'],
+  'SD': ['IA', 'MN', 'MT', 'ND', 'NE', 'WY'],
+  'TN': ['AL', 'AR', 'GA', 'KY', 'MO', 'MS', 'NC', 'VA'],
+  'TX': ['AR', 'LA', 'NM', 'OK'],
+  'UT': ['AZ', 'CO', 'ID', 'NM', 'NV', 'WY'],
+  'VT': ['MA', 'NH', 'NY'],
+  'VA': ['KY', 'MD', 'NC', 'TN', 'WV', 'DC'],
+  'WA': ['ID', 'OR'],
+  'WV': ['KY', 'MD', 'OH', 'PA', 'VA'],
+  'WI': ['IA', 'IL', 'MI', 'MN'],
+  'WY': ['CO', 'ID', 'MT', 'NE', 'SD', 'UT'],
+  'DC': ['MD', 'VA']
+};
+
+// Expand geographic footprint to include adjacent states (for deriving service regions)
+function expandToAdjacentStates(states: string[]): string[] {
+  const expanded = new Set(states);
+  for (const state of states) {
+    const adjacent = STATE_ADJACENCY[state] || [];
+    for (const adj of adjacent) {
+      expanded.add(adj);
+    }
+  }
+  return [...expanded].sort();
+}
+
+// Cross-check and validate service_regions against geographic_footprint
+function validateServiceRegions(
+  serviceRegions: string[] | null, 
+  geographicFootprint: string[] | null
+): string[] | null {
+  // If no geographic footprint, we can't validate - return service_regions as-is but cap at 20 states
+  if (!geographicFootprint || geographicFootprint.length === 0) {
+    if (serviceRegions && serviceRegions.length > 20) {
+      console.log(`No geographic_footprint to validate against, but service_regions has ${serviceRegions.length} states - likely incorrect. Returning null.`);
+      return null;
+    }
+    return serviceRegions;
+  }
+
+  // If service_regions is empty/null, derive it from geographic_footprint + adjacent states
+  if (!serviceRegions || serviceRegions.length === 0) {
+    const derived = expandToAdjacentStates(geographicFootprint);
+    console.log(`Derived service_regions from geographic_footprint: ${derived.length} states (from ${geographicFootprint.length} locations + adjacent)`);
+    return derived;
+  }
+
+  // Cross-check: if service_regions >> geographic_footprint, it's likely wrong
+  // Rule: if geographic_footprint < 10 states and service_regions > 25 states, revert to derived
+  if (geographicFootprint.length < 10 && serviceRegions.length > 25) {
+    const derived = expandToAdjacentStates(geographicFootprint);
+    console.log(`VALIDATION FAILED: geographic_footprint has ${geographicFootprint.length} states but service_regions has ${serviceRegions.length}. Reverting to derived: ${derived.length} states`);
+    return derived;
+  }
+
+  // More aggressive check: if geographic_footprint < 5 states and service_regions > 15 states
+  if (geographicFootprint.length < 5 && serviceRegions.length > 15) {
+    const derived = expandToAdjacentStates(geographicFootprint);
+    console.log(`VALIDATION FAILED: geographic_footprint has ${geographicFootprint.length} states but service_regions has ${serviceRegions.length}. Reverting to derived: ${derived.length} states`);
+    return derived;
+  }
+
+  // Check if service_regions equals all 50 states but footprint is small
+  if (serviceRegions.length === 50 && geographicFootprint.length < 30) {
+    const derived = expandToAdjacentStates(geographicFootprint);
+    console.log(`VALIDATION FAILED: service_regions is all 50 states but geographic_footprint only has ${geographicFootprint.length}. Reverting to derived: ${derived.length} states`);
+    return derived;
+  }
+
+  console.log(`service_regions validation PASSED: ${serviceRegions.length} service states for ${geographicFootprint.length} location states`);
+  return serviceRegions;
 }
 
 Deno.serve(async (req) => {
@@ -865,16 +992,26 @@ Be THOROUGH - extract EVERY state where they have shops or offices, using 2-lett
       // Normalize geographic_footprint to ensure only valid 2-letter state abbreviations
       if (geography.geographic_footprint) {
         console.log('Raw geographic_footprint before normalization:', geography.geographic_footprint);
-        geography.geographic_footprint = normalizeGeographicFootprint(geography.geographic_footprint);
+        geography.geographic_footprint = normalizeGeographicFootprint(geography.geographic_footprint, false);
         console.log('Normalized geographic_footprint:', geography.geographic_footprint);
       } else {
         console.log('No geographic_footprint extracted from AI');
       }
       
-      // Also normalize service_regions (may contain "X states" or "City, State" patterns)
+      // Normalize service_regions with isServiceRegions=true (more conservative, no auto-expand to national)
       if (geography.service_regions) {
-        geography.service_regions = normalizeGeographicFootprint(geography.service_regions);
+        console.log('Raw service_regions before normalization:', geography.service_regions);
+        geography.service_regions = normalizeGeographicFootprint(geography.service_regions, true);
+        console.log('Normalized service_regions (before validation):', geography.service_regions);
       }
+      
+      // CRITICAL: Cross-validate service_regions against geographic_footprint
+      // This prevents false "national" classifications for regional businesses
+      geography.service_regions = validateServiceRegions(
+        geography.service_regions, 
+        geography.geographic_footprint
+      );
+      console.log('Final validated service_regions:', geography.service_regions);
       
       Object.assign(extractedData, geography);
 
