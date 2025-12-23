@@ -7,7 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
 import { BuyerDataSection, DataField, DataListField, DataGrid } from "@/components/BuyerDataSection";
 import { BuyerSectionEditDialog } from "@/components/BuyerSectionEditDialog";
-import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2, Briefcase, DollarSign, TrendingUp, Linkedin, Sparkles, CheckCircle, Clock, ChevronDown, ChevronUp, Check, Pencil } from "lucide-react";
+import { MainContactSection } from "@/components/MainContactSection";
+import { ContactCSVImport } from "@/components/ContactCSVImport";
+import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2, Briefcase, DollarSign, TrendingUp, Linkedin, Sparkles, CheckCircle, Clock, ChevronDown, ChevronUp, Check, Pencil, Star } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -725,6 +727,13 @@ export default function BuyerDetail() {
           
           {/* Overview Tab - Redesigned 8 Categories */}
           <TabsContent value="overview" className="space-y-4">
+            {/* Main Point of Contact - Prominent at top */}
+            <MainContactSection 
+              buyerId={id!} 
+              contacts={contacts} 
+              onContactUpdate={loadData} 
+            />
+            
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               
               {/* 1. Company & Firm Identification */}
@@ -1367,14 +1376,33 @@ export default function BuyerDetail() {
 
           {/* Contacts Tab */}
           <TabsContent value="contacts" className="space-y-4">
-            <BuyerDataSection title="Contacts" icon={<User className="w-4 h-4 text-muted-foreground" />} isEmpty={contacts.length === 0} emptyMessage="No contacts added yet.">
+            {/* Import Button Header */}
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Contacts</h3>
+              <ContactCSVImport buyerId={id!} onComplete={loadData} />
+            </div>
+            
+            <BuyerDataSection title="" icon={<User className="w-4 h-4 text-muted-foreground" />} isEmpty={contacts.length === 0} emptyMessage="No contacts added yet. Import contacts from a CSV file.">
               <div className="divide-y">
                 {contacts.map((c) => (
                   <div key={c.id} className="py-3 first:pt-0 last:pb-0">
                     <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-medium">{c.name}</p>
-                        <p className="text-sm text-muted-foreground">{c.title}</p>
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">{c.name}</p>
+                            {c.is_primary_contact && (
+                              <Badge variant="default" className="text-xs">
+                                <Star className="w-3 h-3 mr-1" />
+                                Primary
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground">{c.title}</p>
+                          {c.company_type && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{c.company_type}</p>
+                          )}
+                        </div>
                       </div>
                       {c.priority_level && <Badge variant="outline">Priority {c.priority_level}</Badge>}
                     </div>
