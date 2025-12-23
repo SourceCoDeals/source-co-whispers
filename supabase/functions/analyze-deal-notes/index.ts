@@ -67,7 +67,7 @@ serve(async (req) => {
   }
 
   try {
-    const { notes, dealId } = await req.json();
+    const { notes, dealId, applyToRecord } = await req.json();
     
     if (!notes || typeof notes !== 'string' || notes.trim().length === 0) {
       return new Response(
@@ -171,9 +171,9 @@ CRITICAL: Extract owner goals:
     if (extractedData.location_count) fieldsExtracted.push('location_count');
     if (extractedData.additional_info) fieldsExtracted.push('additional_info');
 
-    // If dealId is provided, update extraction_sources to track that this data came from notes
+    // If dealId is provided, update extraction_sources and optionally apply data
     if (dealId && fieldsExtracted.length > 0) {
-      console.log('[analyze-deal-notes] Updating extraction_sources for deal:', dealId);
+      console.log('[analyze-deal-notes] Updating deal:', dealId, 'applyToRecord:', applyToRecord);
       
       const authHeader = req.headers.get('Authorization');
       if (authHeader) {
@@ -189,12 +189,12 @@ CRITICAL: Extract owner goals:
         
         const { data: userDeal, error: accessError } = await userClient
           .from('deals')
-          .select('id, extraction_sources')
+          .select('id, extraction_sources, revenue, ebitda_percentage, ebitda_amount, geography, service_mix, owner_goals, location_count, employee_count')
           .eq('id', dealId)
           .single();
         
         if (!accessError && userDeal) {
-          // Use service role to update extraction_sources
+          // Use service role to update
           const serviceClient = createClient(supabaseUrl, supabaseKey);
           
           const existingSources = (userDeal.extraction_sources as any[]) || [];
@@ -208,21 +208,71 @@ CRITICAL: Extract owner goals:
           
           const updatedSources = [...existingSources, newSource];
           
+          // Build update object
+          const updateData: Record<string, any> = { 
+            extraction_sources: updatedSources,
+            updated_at: new Date().toISOString()
+          };
+          
+          // If applyToRecord is true, apply extracted data to empty fields
+          // Notes have priority 80 (below transcript at 100), so only fill empty fields
+          if (applyToRecord) {
+            const isEmptyOrPlaceholder = (value: any): boolean => {
+              if (value === null || value === undefined) return true;
+              if (typeof value === 'string') {
+                const trimmed = value.trim().toLowerCase();
+                return trimmed === '' || trimmed === 'n/a' || trimmed === 'na' || trimmed === '-' || trimmed === 'none' || trimmed === 'unknown';
+              }
+              if (Array.isArray(value)) return value.length === 0;
+              if (typeof value === 'number') return false; // Numbers are considered filled
+              return false;
+            };
+            
+            // Apply extracted fields only if current value is empty
+            if (extractedData.revenue && isEmptyOrPlaceholder(userDeal.revenue)) {
+              updateData.revenue = extractedData.revenue;
+            }
+            if (extractedData.ebitda_percentage && isEmptyOrPlaceholder(userDeal.ebitda_percentage)) {
+              updateData.ebitda_percentage = extractedData.ebitda_percentage;
+            }
+            if (extractedData.ebitda_amount && isEmptyOrPlaceholder(userDeal.ebitda_amount)) {
+              updateData.ebitda_amount = extractedData.ebitda_amount;
+            }
+            if (extractedData.geography?.length && isEmptyOrPlaceholder(userDeal.geography)) {
+              updateData.geography = extractedData.geography;
+            }
+            if (extractedData.service_mix && isEmptyOrPlaceholder(userDeal.service_mix)) {
+              updateData.service_mix = extractedData.service_mix;
+            }
+            if (extractedData.owner_goals && isEmptyOrPlaceholder(userDeal.owner_goals)) {
+              updateData.owner_goals = extractedData.owner_goals;
+            }
+            if (extractedData.location_count && isEmptyOrPlaceholder(userDeal.location_count)) {
+              updateData.location_count = extractedData.location_count;
+            }
+            // Handle employee_count from additional_info
+            if (extractedData.additional_info) {
+              const empMatch = extractedData.additional_info.match(/(\d+)\s*employees?/i);
+              if (empMatch && isEmptyOrPlaceholder(userDeal.employee_count)) {
+                updateData.employee_count = parseInt(empMatch[1], 10);
+              }
+            }
+            
+            console.log('[analyze-deal-notes] Applying data to deal:', Object.keys(updateData).filter(k => k !== 'extraction_sources' && k !== 'updated_at'));
+          }
+          
           const { error: updateError } = await serviceClient
             .from('deals')
-            .update({ 
-              extraction_sources: updatedSources,
-              updated_at: new Date().toISOString()
-            })
+            .update(updateData)
             .eq('id', dealId);
           
           if (updateError) {
-            console.error('[analyze-deal-notes] Failed to update extraction_sources:', updateError);
+            console.error('[analyze-deal-notes] Failed to update deal:', updateError);
           } else {
-            console.log('[analyze-deal-notes] Successfully updated extraction_sources with notes source');
+            console.log('[analyze-deal-notes] Successfully updated deal with notes data');
           }
         } else {
-          console.log('[analyze-deal-notes] Could not access deal to update sources:', accessError?.message);
+          console.log('[analyze-deal-notes] Could not access deal to update:', accessError?.message);
         }
       }
     }
