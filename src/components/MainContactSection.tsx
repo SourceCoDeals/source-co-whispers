@@ -5,7 +5,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { User, Mail, Phone, Linkedin, ExternalLink, Star } from "lucide-react";
+import { User, Mail, Phone, Linkedin, ExternalLink, Star, Plus } from "lucide-react";
+import { AddContactDialog } from "./AddContactDialog";
 
 interface Contact {
   id: string;
@@ -61,14 +62,27 @@ export function MainContactSection({ buyerId, contacts, onContactUpdate }: MainC
   if (contacts.length === 0) {
     return (
       <Card className="p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Star className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold">Main Point of Contact</h3>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Star className="w-5 h-5 text-primary" />
+            <h3 className="font-semibold">Main Point of Contact</h3>
+          </div>
+          <AddContactDialog 
+            buyerId={buyerId} 
+            onContactAdded={onContactUpdate}
+            existingContactsCount={0}
+            trigger={
+              <Button variant="outline" size="sm">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Contact
+              </Button>
+            }
+          />
         </div>
         <div className="text-center py-6 text-muted-foreground">
           <User className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p className="text-sm">No contacts available.</p>
-          <p className="text-xs mt-1">Add contacts in the Contacts tab first.</p>
+          <p className="text-xs mt-1">Click "Add Contact" to create your first contact.</p>
         </div>
       </Card>
     );
@@ -76,9 +90,22 @@ export function MainContactSection({ buyerId, contacts, onContactUpdate }: MainC
 
   return (
     <Card className="p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <Star className="w-5 h-5 text-primary" />
-        <h3 className="font-semibold">Main Point of Contact</h3>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Star className="w-5 h-5 text-primary" />
+          <h3 className="font-semibold">Main Point of Contact</h3>
+        </div>
+        <AddContactDialog 
+          buyerId={buyerId} 
+          onContactAdded={onContactUpdate}
+          existingContactsCount={contacts.length}
+          trigger={
+            <Button variant="outline" size="sm">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Contact
+            </Button>
+          }
+        />
       </div>
       
       <div className="space-y-4">

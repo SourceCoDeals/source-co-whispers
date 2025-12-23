@@ -9,6 +9,7 @@ import { BuyerDataSection, DataField, DataListField, DataGrid } from "@/componen
 import { BuyerSectionEditDialog } from "@/components/BuyerSectionEditDialog";
 import { MainContactSection } from "@/components/MainContactSection";
 import { ContactCSVImport } from "@/components/ContactCSVImport";
+import { AddContactDialog } from "@/components/AddContactDialog";
 import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2, Briefcase, DollarSign, TrendingUp, Linkedin, Sparkles, CheckCircle, Clock, ChevronDown, ChevronUp, Check, Pencil, Star } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1381,7 +1382,14 @@ export default function BuyerDetail() {
             {/* Import Button Header */}
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Contacts</h3>
-              <ContactCSVImport buyerId={id!} onComplete={loadData} />
+              <div className="flex items-center gap-2">
+                <AddContactDialog 
+                  buyerId={id!} 
+                  onContactAdded={loadData}
+                  existingContactsCount={contacts.length}
+                />
+                <ContactCSVImport buyerId={id!} onComplete={loadData} />
+              </div>
             </div>
             
             <BuyerDataSection title="" icon={<User className="w-4 h-4 text-muted-foreground" />} isEmpty={contacts.length === 0} emptyMessage="No contacts added yet. Import contacts from a CSV file.">
