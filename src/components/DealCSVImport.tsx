@@ -41,32 +41,64 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
   const [duplicateActions, setDuplicateActions] = useState<Record<number, 'skip' | 'merge' | 'create'>>({});
 
   const parseCSV = (text: string): { headers: string[]; rows: string[][] } => {
-    const lines = text.split('\n').filter(line => line.trim());
-    if (lines.length === 0) return { headers: [], rows: [] };
-
-    const parseCSVLine = (line: string): string[] => {
-      const result: string[] = [];
-      let current = '';
-      let inQuotes = false;
-
-      for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') {
-          inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-          result.push(current.trim());
-          current = '';
+    // Proper CSV parser that handles multi-line content inside quoted cells
+    const rows: string[][] = [];
+    let currentRow: string[] = [];
+    let currentCell = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+      
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          // Escaped quote ("") inside a quoted field
+          currentCell += '"';
+          i++; // Skip the next quote
         } else {
-          current += char;
+          // Toggle quote state
+          inQuotes = !inQuotes;
         }
+      } else if (char === ',' && !inQuotes) {
+        // End of cell
+        currentRow.push(currentCell.trim());
+        currentCell = '';
+      } else if ((char === '\n' || (char === '\r' && nextChar === '\n')) && !inQuotes) {
+        // End of row (only when not inside quotes)
+        if (char === '\r') i++; // Skip \n in \r\n
+        currentRow.push(currentCell.trim());
+        if (currentRow.some(cell => cell !== '')) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+        currentCell = '';
+      } else if (char === '\r' && !inQuotes) {
+        // Handle standalone \r as row separator
+        currentRow.push(currentCell.trim());
+        if (currentRow.some(cell => cell !== '')) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+        currentCell = '';
+      } else {
+        currentCell += char;
       }
-      result.push(current.trim());
-      return result;
-    };
-
-    const headers = parseCSVLine(lines[0]);
-    const rows = lines.slice(1).map(line => parseCSVLine(line));
-    return { headers, rows };
+    }
+    
+    // Don't forget the last cell/row
+    if (currentCell || currentRow.length > 0) {
+      currentRow.push(currentCell.trim());
+      if (currentRow.some(cell => cell !== '')) {
+        rows.push(currentRow);
+      }
+    }
+    
+    if (rows.length === 0) return { headers: [], rows: [] };
+    
+    const headers = rows[0];
+    const dataRows = rows.slice(1);
+    return { headers, rows: dataRows };
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
