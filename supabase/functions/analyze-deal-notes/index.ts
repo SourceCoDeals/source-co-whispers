@@ -204,21 +204,20 @@ CRITICAL: Extract owner goals:
           // Use service role to update
           const serviceClient = createClient(supabaseUrl, supabaseKey);
           
-          const existingSources = (userDeal.extraction_sources as any[]) || [];
+          // extraction_sources is stored as an object { field: { source, extractedAt } }
+          const existingSources = (userDeal.extraction_sources as Record<string, any>) || {};
           
-          // Create new source entry for notes
-          const newSource = {
-            source: 'notes',
-            timestamp: new Date().toISOString(),
-            fields: fieldsExtracted
-          };
-          
-          const updatedSources = [...existingSources, newSource];
+          // Update source entries for each extracted field
+          const updatedSources = { ...existingSources };
+          const now = new Date().toISOString();
+          for (const field of fieldsExtracted) {
+            updatedSources[field] = { source: 'notes', extractedAt: now };
+          }
           
           // Build update object
           const updateData: Record<string, any> = { 
             extraction_sources: updatedSources,
-            updated_at: new Date().toISOString()
+            updated_at: now
           };
           
           // If applyToRecord is true, apply extracted data to empty fields
