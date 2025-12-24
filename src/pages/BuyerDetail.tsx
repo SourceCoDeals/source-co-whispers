@@ -896,6 +896,8 @@ export default function BuyerDetail() {
                   onContactUpdate={loadData}
                   peFirmName={buyer.pe_firm_name}
                   platformCompanyName={buyer.platform_company_name || undefined}
+                  deal={deal}
+                  hasFeeAgreement={buyer?.has_fee_agreement || false}
                 />
               </div>
 

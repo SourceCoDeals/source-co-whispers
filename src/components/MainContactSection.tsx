@@ -25,9 +25,91 @@ interface MainContactSectionProps {
   onContactUpdate: () => void;
   peFirmName?: string;
   platformCompanyName?: string;
+  deal?: any;
+  hasFeeAgreement?: boolean;
 }
 
-export function MainContactSection({ buyerId, contacts, onContactUpdate, peFirmName, platformCompanyName }: MainContactSectionProps) {
+// Helper function to generate deal summary email
+function generateDealSummaryMailto(
+  contact: { name: string; email: string | null },
+  deal: any | null,
+  hasFeeAgreement: boolean
+): string {
+  if (!contact.email) return '';
+  if (!deal) return `mailto:${contact.email}`;
+  
+  const firstName = contact.name?.split(' ')[0] || '';
+  
+  // Format geography - if no fee agreement, only show state (last part of geography)
+  const formatGeography = () => {
+    if (!deal.geography || deal.geography.length === 0) return 'Geography available upon request';
+    
+    if (hasFeeAgreement) {
+      return deal.geography.join(', ');
+    } else {
+      // Extract just the state from geography entries
+      const states = deal.geography.map((g: string) => {
+        const parts = g.split(',').map((p: string) => p.trim());
+        return parts[parts.length - 1];
+      });
+      return [...new Set(states)].join(', ');
+    }
+  };
+  
+  const formatRevenue = () => {
+    if (!deal.revenue) return 'Revenue details available';
+    return `$${deal.revenue}M`;
+  };
+  
+  const formatEbitda = () => {
+    if (deal.ebitda_amount) return `$${deal.ebitda_amount}M`;
+    if (deal.ebitda_percentage && deal.revenue) {
+      return `~$${(deal.revenue * deal.ebitda_percentage / 100).toFixed(1)}M`;
+    }
+    return 'EBITDA details available';
+  };
+  
+  const formatLocations = () => {
+    const count = deal.location_count || 1;
+    return `${count} location${count !== 1 ? 's' : ''}`;
+  };
+  
+  const formatExpansionNote = () => {
+    if (deal.growth_trajectory) return deal.growth_trajectory;
+    return 'growth opportunity available';
+  };
+  
+  const formatCertifications = () => {
+    const parts: string[] = [];
+    if (deal.service_mix) parts.push(deal.service_mix);
+    return parts.length > 0 ? parts.join('; ') : 'certification details available';
+  };
+  
+  const subject = 'Off market collision deal';
+  
+  const body = `Hi ${firstName},
+
+I wanted to quickly share an off-market collision repair opportunity to see if it could be a fit.
+
+At a glance:
+
+• ${formatGeography()}
+
+• ${formatRevenue()} revenue / ${formatEbitda()} EBITDA
+
+• ${formatLocations()}, ${formatExpansionNote()}
+
+• Multiple DRPs; ${formatCertifications()}
+
+The owner is fully committed to a sale, has shared all diligence materials, and is ready to move forward. If this is directionally interesting, happy to share more detail or make an introduction.
+
+Best,
+Tomos Mughan`;
+
+  return `mailto:${contact.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+export function MainContactSection({ buyerId, contacts, onContactUpdate, peFirmName, platformCompanyName, deal, hasFeeAgreement = false }: MainContactSectionProps) {
   const { toast } = useToast();
   const [isUpdating, setIsUpdating] = useState(false);
   
@@ -170,7 +252,7 @@ export function MainContactSection({ buyerId, contacts, onContactUpdate, peFirmN
                     <div className="flex items-center gap-2 text-sm">
                       <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
                       <a 
-                        href={`mailto:${primaryContact.email}`} 
+                        href={generateDealSummaryMailto(primaryContact, deal, hasFeeAgreement)} 
                         className="text-primary hover:underline truncate"
                       >
                         {primaryContact.email}
@@ -210,7 +292,7 @@ export function MainContactSection({ buyerId, contacts, onContactUpdate, peFirmN
                 <div className="flex gap-2 mt-4">
                   {primaryContact.email && (
                     <Button size="sm" variant="outline" asChild>
-                      <a href={`mailto:${primaryContact.email}`}>
+                      <a href={generateDealSummaryMailto(primaryContact, deal, hasFeeAgreement)}>
                         <Mail className="w-4 h-4 mr-2" />
                         Email
                       </a>
