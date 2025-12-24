@@ -762,13 +762,12 @@ export default function DealMatching() {
                 {/* Remove from deal button */}
                 {showRemoveButton && (
                   <Button 
-                    variant="ghost" 
+                    variant="outline" 
                     size="sm" 
-                    className="h-7 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 mt-1"
+                    className="h-7 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/30 hover:bg-destructive/10 mt-1"
                     onClick={(e) => { e.stopPropagation(); handleRemoveFromDeal(buyer); }}
-                    title="Remove from this deal's match list"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    Not A Fit
                   </Button>
                 )}
               </div>
