@@ -584,6 +584,7 @@ export default function BuyerDetail() {
   if (!buyer) return <AppLayout><div className="text-center py-12">Buyer not found</div></AppLayout>;
 
   const recentAcqs = Array.isArray(buyer.recent_acquisitions) ? buyer.recent_acquisitions : [];
+  const dealForEmail = deal ?? (dealHistory?.[0]?.deals ?? null);
 
   return (
     <AppLayout>
@@ -896,7 +897,7 @@ export default function BuyerDetail() {
                   onContactUpdate={loadData}
                   peFirmName={buyer.pe_firm_name}
                   platformCompanyName={buyer.platform_company_name || undefined}
-                  deal={deal}
+                  deal={dealForEmail}
                   hasFeeAgreement={buyer?.has_fee_agreement || false}
                 />
               </div>
@@ -1516,7 +1517,7 @@ export default function BuyerDetail() {
                     <div className="flex items-center gap-4 mt-2 text-sm">
                       {c.email && (
                         <a 
-                          href={generateDealSummaryMailto(c, deal, buyer?.has_fee_agreement || false)} 
+                          href={generateDealSummaryMailto(c, dealForEmail, buyer?.has_fee_agreement || false)} 
                           className="text-primary hover:underline"
                         >
                           {c.email}
