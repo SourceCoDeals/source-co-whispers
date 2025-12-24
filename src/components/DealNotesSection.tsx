@@ -56,8 +56,9 @@ export function DealNotesSection({ dealId, existingExtractionSources, onNotesApp
 
       if (error) throw error;
 
-      if (data?.extractedData) {
-        setExtractedData(data.extractedData);
+      // Edge function returns { success, data, fieldsExtracted }
+      if (data?.data && data?.fieldsExtracted?.length > 0) {
+        setExtractedData(data.data);
         setFieldsExtracted(data.fieldsExtracted || []);
         toast.success(`Extracted ${data.fieldsExtracted?.length || 0} fields from notes`);
       } else {
