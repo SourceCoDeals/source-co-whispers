@@ -584,7 +584,7 @@ export default function BuyerDetail() {
   if (!buyer) return <AppLayout><div className="text-center py-12">Buyer not found</div></AppLayout>;
 
   const recentAcqs = Array.isArray(buyer.recent_acquisitions) ? buyer.recent_acquisitions : [];
-  const dealForEmail = deal ?? (dealHistory?.[0]?.deals ?? null);
+  const dealForEmail = deal;
 
   return (
     <AppLayout>
