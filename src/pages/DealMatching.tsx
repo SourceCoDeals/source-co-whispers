@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
-import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle, XCircle, ThumbsUp, ThumbsDown, Eye } from "lucide-react";
+import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle, XCircle, ThumbsUp, ThumbsDown, Eye, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -146,11 +146,13 @@ export default function DealMatching() {
     return (b.score?.composite_score || 0) - (a.score?.composite_score || 0);
   });
   
-  const qualifiedBuyers = sortedBuyers.filter(b => !b.isDisqualified);
-  const disqualifiedBuyers = sortedBuyers.filter(b => b.isDisqualified);
-  const displayBuyers = hideDisqualified ? qualifiedBuyers : sortedBuyers;
-  const approvedBuyers = sortedBuyers.filter(b => b.score?.selected_for_outreach && !b.score?.passed_on_deal);
-  const passedBuyers = sortedBuyers.filter(b => b.score?.passed_on_deal);
+  // Filter out hidden buyers from display
+  const visibleBuyers = sortedBuyers.filter(b => !b.score?.hidden_from_deal);
+  const qualifiedBuyers = visibleBuyers.filter(b => !b.isDisqualified);
+  const disqualifiedBuyers = visibleBuyers.filter(b => b.isDisqualified);
+  const displayBuyers = hideDisqualified ? qualifiedBuyers : visibleBuyers;
+  const approvedBuyers = visibleBuyers.filter(b => b.score?.selected_for_outreach && !b.score?.passed_on_deal);
+  const passedBuyers = visibleBuyers.filter(b => b.score?.passed_on_deal);
   const allBuyers = displayBuyers;
 
   const toggleSelect = (buyerId: string) => {
@@ -295,6 +297,42 @@ export default function DealMatching() {
     toast({ 
       title: interested ? "Marked as interested" : "Marked as not interested",
       description: buyer.platform_company_name || buyer.pe_firm_name
+    });
+  };
+
+  const handleRemoveFromDeal = async (buyer: any) => {
+    const { error } = await supabase
+      .from("buyer_deal_scores")
+      .upsert({
+        buyer_id: buyer.id,
+        deal_id: id,
+        hidden_from_deal: true,
+        scored_at: new Date().toISOString()
+      }, { onConflict: 'buyer_id,deal_id' });
+
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+
+    // Update local state
+    const existingIdx = scores.findIndex(s => s.buyer_id === buyer.id);
+    if (existingIdx >= 0) {
+      setScores(scores.map(s => 
+        s.buyer_id === buyer.id ? { ...s, hidden_from_deal: true } : s
+      ));
+    } else {
+      setScores([...scores, { buyer_id: buyer.id, deal_id: id, hidden_from_deal: true, scored_at: new Date().toISOString() }]);
+    }
+
+    // Remove from selected if selected
+    const newSelected = new Set(selected);
+    newSelected.delete(buyer.id);
+    setSelected(newSelected);
+
+    toast({ 
+      title: "Buyer removed from deal", 
+      description: `${buyer.platform_company_name || buyer.pe_firm_name} has been removed from this deal's match list` 
     });
   };
 
@@ -553,7 +591,7 @@ export default function DealMatching() {
     );
   };
 
-  const renderBuyerRow = (buyer: any, showCheckbox = true, showContacts = false, showPassButton = false) => {
+  const renderBuyerRow = (buyer: any, showCheckbox = true, showContacts = false, showPassButton = false, showRemoveButton = true) => {
     const score = buyer.score;
     const isExpanded = expanded.has(buyer.id);
     const isApproved = score?.selected_for_outreach && !score?.passed_on_deal;
@@ -720,6 +758,19 @@ export default function DealMatching() {
                     </Button>
                   </div>
                 )}
+                
+                {/* Remove from deal button */}
+                {showRemoveButton && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-7 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 mt-1"
+                    onClick={(e) => { e.stopPropagation(); handleRemoveFromDeal(buyer); }}
+                    title="Remove from this deal's match list"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                )}
               </div>
             </div>
             
@@ -873,7 +924,7 @@ export default function DealMatching() {
               {passedBuyers.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">No buyers have passed on this deal yet.</div>
               ) : (
-                passedBuyers.map((buyer) => renderBuyerRow(buyer, false, false, false))
+                passedBuyers.map((buyer) => renderBuyerRow(buyer, false, false, false, false))
               )}
             </div>
           </TabsContent>
