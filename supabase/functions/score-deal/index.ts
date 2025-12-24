@@ -7,131 +7,16 @@ const corsHeaders = {
 };
 
 /**
- * Comprehensive Deal Scoring Algorithm (0-100)
+ * Deal Scoring Algorithm v3.0 - Tracker Criteria Based
  * 
- * 1. SIZE & SCALE (35 points max):
- *    - Revenue Score (20 pts): Granular tiers from $10M+ to <$500K
- *    - Location Count Score (10 pts): Multi-location is a gating factor
- *    - Employee Count Score (5 pts): Workforce depth indicator
+ * This version scores deals AGAINST the tracker's specific criteria:
+ * - Size: Does deal fit tracker's min/max revenue/EBITDA?
+ * - Services: Does deal have tracker's required/preferred services? Penalize excluded?
+ * - Geography: Is deal in tracker's required/preferred regions?
+ * - Data Quality: How complete is the deal data?
  * 
- * 2. SERVICE MIX & CAPABILITIES (15 points max):
- *    - Matches against tracker's service_criteria (required/preferred)
- *    - Required services (DRP, OEM certs): up to 8 pts
- *    - Preferred services (ADAS, mechanical): up to 7 pts
- *    - Off-focus services (towing, rentals): 0 pts, potential penalty
- * 
- * 3. GEOGRAPHY & MSA PROXIMITY (15 points max):
- *    - Priority MSAs from tracker criteria: 15 pts
- *    - Top 15 MSAs: 12 pts
- *    - Top 50 MSAs: 8 pts
- *    - Secondary markets: 5 pts
- *    - Rural: 2 pts
- * 
- * 4. DATA QUALITY & COMPLETENESS (15 points max):
- *    - Key fields present: revenue, ebitda, owner_goals, geography, service_mix, etc.
- * 
- * 5. OWNER GOALS & TRANSACTION READINESS (10 points max):
- *    - Exit intent scoring (reduced weight)
- *    - Transaction structure flexibility
- * 
- * 6. BONUS/PENALTY FACTORS (10 points max):
- *    - Real estate ownership: +3
- *    - Growth trajectory: +2
- *    - Low customer concentration: +2
- *    - Modern facility (10,000+ sqft): +2
- *    - Certifications: +1
- *    - PENALTY: Single location when multi required: -5
- *    - PENALTY: Below minimum revenue: -3
+ * NO engagement signals - just objective fit against tracker criteria.
  */
-
-// ============= MSA REFERENCE DATA =============
-
-// Priority MSAs - commonly targeted by collision repair buyers
-const PRIORITY_MSAS = [
-  'new york', 'nyc', 'manhattan', 'brooklyn', 'bronx', 'queens',
-  'san francisco', 'sf', 'bay area', 'oakland', 'san jose',
-  'seattle', 'bellevue', 'tacoma',
-  'washington', 'dc', 'washington dc', 'arlington', 'alexandria', 'bethesda', 'montgomery county', 'fairfax',
-  'dallas', 'fort worth', 'dfw', 'plano', 'irving',
-  'denver', 'aurora', 'boulder', 'colorado springs'
-];
-
-// Top 15 MSAs by population
-const TIER_1_MSAS = [
-  'los angeles', 'la', 'orange county', 'long beach', 'pasadena',
-  'chicago', 'naperville', 'joliet', 'aurora',
-  'houston', 'the woodlands', 'sugar land', 'katy',
-  'phoenix', 'scottsdale', 'mesa', 'tempe', 'chandler',
-  'atlanta', 'marietta', 'sandy springs', 'alpharetta',
-  'boston', 'cambridge', 'worcester', 'providence',
-  'philadelphia', 'camden', 'wilmington', 'chester',
-  'miami', 'fort lauderdale', 'west palm beach', 'boca raton',
-  'minneapolis', 'st paul', 'bloomington',
-  'san diego', 'carlsbad', 'chula vista'
-];
-
-// Top 50 MSAs (secondary tier)
-const TIER_2_MSAS = [
-  'portland', 'beaverton', 'hillsboro',
-  'austin', 'round rock', 'georgetown',
-  'charlotte', 'concord', 'gastonia',
-  'tampa', 'st petersburg', 'clearwater',
-  'orlando', 'kissimmee', 'sanford',
-  'detroit', 'warren', 'dearborn', 'ann arbor',
-  'baltimore', 'columbia', 'towson',
-  'st louis', 'st. louis', 'chesterfield',
-  'sacramento', 'roseville', 'elk grove',
-  'pittsburgh', 'allegheny',
-  'cleveland', 'akron', 'canton',
-  'cincinnati', 'dayton',
-  'kansas city', 'overland park',
-  'columbus', 'dublin',
-  'indianapolis', 'carmel',
-  'nashville', 'murfreesboro',
-  'las vegas', 'henderson', 'north las vegas',
-  'san antonio', 'new braunfels',
-  'jacksonville',
-  'memphis',
-  'oklahoma city', 'okc', 'norman', 'edmond',
-  'louisville',
-  'richmond', 'virginia beach', 'norfolk',
-  'milwaukee', 'waukesha',
-  'raleigh', 'durham', 'cary',
-  'hartford', 'new haven', 'bridgeport',
-  'salt lake city', 'provo', 'ogden',
-  'birmingham',
-  'buffalo', 'rochester'
-];
-
-// ============= SERVICE KEYWORDS =============
-
-// Required/high-value services for collision repair
-const REQUIRED_SERVICE_KEYWORDS = [
-  'drp', 'direct repair', 'direct repair program',
-  'oem', 'oem certified', 'profirst', 'pro first',
-  'honda certified', 'toyota certified', 'acura certified',
-  'bmw certified', 'mercedes certified', 'tesla certified',
-  'aluminum certified', 'structural repair'
-];
-
-// Preferred/value-add services
-const PREFERRED_SERVICE_KEYWORDS = [
-  'adas', 'calibration', 'adas calibration', 'advanced driver',
-  'mechanical', 'mechanical repair', 'mechanical services',
-  'glass', 'glass repair', 'windshield',
-  'detailing', 'detail', 'reconditioning',
-  'pdr', 'paintless dent', 'dent repair',
-  'paint', 'refinish', 'refinishing', 'body shop',
-  'frame', 'frame repair', 'unibody'
-];
-
-// Off-focus services (not what collision buyers want)
-const OFF_FOCUS_SERVICE_KEYWORDS = [
-  'towing', 'tow truck', 'roadside', 'roadside assistance',
-  'rental', 'car rental', 'rental car', 'enterprise',
-  'storage', 'vehicle storage', 'impound', 'salvage',
-  'junk', 'junkyard', 'scrap', 'parts recycling'
-];
 
 // ============= INTERFACES =============
 
@@ -161,166 +46,198 @@ interface TrackerCriteria {
   size_criteria: any;
   service_criteria: any;
   geography_criteria: any;
+  geography_weight: number;
+  service_mix_weight: number;
+  size_weight: number;
+  owner_goals_weight: number;
 }
 
 interface ScoreBreakdown {
-  // Size & Scale (35 pts)
   sizeScore: number;
   sizeDetails: string;
-  revenueScore: number;
-  locationScore: number;
-  employeeScore: number;
-  
-  // Service Mix (15 pts)
   serviceScore: number;
   serviceDetails: string;
-  requiredServicesScore: number;
-  preferredServicesScore: number;
-  
-  // Geography (15 pts)
   geographyScore: number;
   geographyDetails: string;
-  msaTier: string;
-  
-  // Data Quality (15 pts)
   dataScore: number;
   dataDetails: string;
-  fieldsPresent: string[];
-  
-  // Owner Goals (10 pts)
-  ownerScore: number;
-  ownerDetails: string;
-  
-  // Bonus/Penalty (10 pts max, can go negative)
-  bonusScore: number;
-  bonusDetails: string;
-  penalties: string[];
-  
-  // Total
   totalScore: number;
   scoringVersion: string;
+  disqualified: boolean;
+  disqualificationReasons: string[];
 }
 
-// ============= SCORING FUNCTIONS =============
+// ============= HELPER FUNCTIONS =============
 
-/**
- * SIZE & SCALE SCORING (35 points max)
- * - Revenue: 20 pts
- * - Location Count: 10 pts
- * - Employee Count: 5 pts
- */
-function calculateSizeScore(deal: DealData, trackerCriteria: TrackerCriteria | null): { 
-  score: number; 
-  details: string; 
-  revenueScore: number;
-  locationScore: number;
-  employeeScore: number;
+function parseNumberFromString(str: string | null | undefined): number | null {
+  if (!str) return null;
+  // Extract numbers from strings like "$2M", "2000000", "2,000,000", "2-5M" (takes first number)
+  const cleaned = str.replace(/[$,M]/gi, '').trim();
+  const match = cleaned.match(/[\d.]+/);
+  if (!match) return null;
+  let num = parseFloat(match[0]);
+  // If original had M suffix, multiply
+  if (str.toLowerCase().includes('m') && num < 1000) {
+    num = num * 1000000;
+  }
+  return num;
+}
+
+function extractLocationRange(str: string | null | undefined): { min: number; max: number } {
+  if (!str) return { min: 1, max: 100 };
+  const match = str.match(/(\d+)\s*-\s*(\d+)/);
+  if (match) {
+    return { min: parseInt(match[1]), max: parseInt(match[2]) };
+  }
+  const singleMatch = str.match(/(\d+)\+?/);
+  if (singleMatch) {
+    return { min: parseInt(singleMatch[1]), max: 100 };
+  }
+  return { min: 1, max: 100 };
+}
+
+// ============= SIZE SCORING (25 points max) =============
+
+function calculateSizeScore(deal: DealData, criteria: TrackerCriteria | null): {
+  score: number;
+  details: string;
+  disqualified: boolean;
+  disqualificationReason: string | null;
 } {
-  let revenueScore = 0;
-  let locationScore = 0;
-  let employeeScore = 0;
   const parts: string[] = [];
+  let score = 0;
+  let disqualified = false;
+  let disqualificationReason: string | null = null;
   
-  // Revenue scoring (20 pts max) - granular tiers based on buyer minimums
-  const revenue = deal.revenue || 0;
-  if (revenue >= 10) {
-    revenueScore = 20;
-    parts.push(`$${revenue}M revenue = 20pts (platform-ready)`);
-  } else if (revenue >= 7) {
-    revenueScore = 17;
-    parts.push(`$${revenue}M revenue = 17pts (strong platform)`);
-  } else if (revenue >= 5) {
-    revenueScore = 14;
-    parts.push(`$${revenue}M revenue = 14pts (large add-on)`);
-  } else if (revenue >= 3) {
-    revenueScore = 11;
-    parts.push(`$${revenue}M revenue = 11pts (solid add-on)`);
-  } else if (revenue >= 2) {
-    revenueScore = 8;
-    parts.push(`$${revenue}M revenue = 8pts (meets minimum)`);
-  } else if (revenue >= 1) {
-    revenueScore = 5;
-    parts.push(`$${revenue}M revenue = 5pts (below minimum)`);
-  } else if (revenue >= 0.5) {
-    revenueScore = 3;
-    parts.push(`$${revenue}M revenue = 3pts (marginal)`);
-  } else if (revenue > 0) {
-    revenueScore = 1;
-    parts.push(`$${revenue}M revenue = 1pt (too small)`);
-  } else {
-    parts.push('No revenue data = 0pts');
+  const dealRevenue = deal.revenue || 0;
+  const dealEbitda = deal.ebitda_amount || 0;
+  const dealLocations = deal.location_count || 1;
+  
+  // Parse tracker size criteria
+  let minRevenue = 0;
+  let maxRevenue = 1000; // Default high max
+  let minEbitda = 0;
+  let maxEbitda = 1000;
+  let minLocations = 1;
+  let maxLocations = 100;
+  
+  if (criteria?.size_criteria) {
+    const sizeCriteria = typeof criteria.size_criteria === 'string' 
+      ? JSON.parse(criteria.size_criteria) 
+      : criteria.size_criteria;
+    
+    // Parse revenue (stored in dollars, deal.revenue is in millions)
+    if (sizeCriteria.min_revenue) {
+      minRevenue = sizeCriteria.min_revenue / 1000000; // Convert to millions
+    }
+    if (sizeCriteria.max_revenue) {
+      maxRevenue = sizeCriteria.max_revenue / 1000000;
+    }
+    if (sizeCriteria.min_ebitda) {
+      minEbitda = sizeCriteria.min_ebitda / 1000000;
+    }
+    if (sizeCriteria.max_ebitda) {
+      maxEbitda = sizeCriteria.max_ebitda / 1000000;
+    }
+    if (sizeCriteria.location_count) {
+      const locRange = extractLocationRange(sizeCriteria.location_count);
+      minLocations = locRange.min;
+      maxLocations = locRange.max;
+    }
+    
+    console.log(`[score-deal] Size criteria: Revenue $${minRevenue}M-$${maxRevenue}M, EBITDA $${minEbitda}M-$${maxEbitda}M, Locations ${minLocations}-${maxLocations}`);
   }
   
-  // Location count scoring (10 pts max) - multi-location is gating factor
-  const locations = deal.location_count || 0;
-  if (locations >= 5) {
-    locationScore = 10;
-    parts.push(`${locations} locations = 10pts (strong MSO)`);
-  } else if (locations >= 3) {
-    locationScore = 8;
-    parts.push(`${locations} locations = 8pts (meets target)`);
-  } else if (locations === 2) {
-    locationScore = 5;
-    parts.push(`${locations} locations = 5pts (starter multi-site)`);
-  } else if (locations === 1) {
-    locationScore = 2;
-    parts.push(`Single location = 2pts (deal-breaker for some)`);
+  // Score revenue fit (0-12 points)
+  if (dealRevenue > 0) {
+    if (dealRevenue >= minRevenue && dealRevenue <= maxRevenue) {
+      // Perfect fit - within range
+      score += 12;
+      parts.push(`Revenue $${dealRevenue}M in range ($${minRevenue}M-$${maxRevenue}M) = +12pts`);
+    } else if (dealRevenue > maxRevenue) {
+      // Over max - still acceptable but less ideal (might need bigger buyer)
+      const overBy = ((dealRevenue - maxRevenue) / maxRevenue * 100).toFixed(0);
+      if (dealRevenue > maxRevenue * 2) {
+        // Way over - mild penalty
+        score += 4;
+        parts.push(`Revenue $${dealRevenue}M exceeds max $${maxRevenue}M by ${overBy}% = +4pts (too large for typical buyer)`);
+      } else {
+        score += 8;
+        parts.push(`Revenue $${dealRevenue}M slightly over max $${maxRevenue}M = +8pts`);
+      }
+    } else if (dealRevenue < minRevenue) {
+      // Under min - problematic
+      const underBy = ((minRevenue - dealRevenue) / minRevenue * 100).toFixed(0);
+      if (dealRevenue < minRevenue * 0.5) {
+        // Significantly under - disqualify
+        disqualified = true;
+        disqualificationReason = `Revenue $${dealRevenue}M is ${underBy}% below minimum $${minRevenue}M`;
+        score = 0;
+        parts.push(`Revenue $${dealRevenue}M far below min $${minRevenue}M = DISQUALIFIED`);
+      } else {
+        score += 3;
+        parts.push(`Revenue $${dealRevenue}M below min $${minRevenue}M = +3pts (marginal)`);
+      }
+    }
   } else {
-    locationScore = 1;
-    parts.push('Unknown locations = 1pt');
+    parts.push('No revenue data = +0pts');
   }
   
-  // Employee count scoring (5 pts max)
-  const employees = deal.employee_count || 0;
-  if (employees >= 30) {
-    employeeScore = 5;
-    parts.push(`${employees} employees = 5pts`);
-  } else if (employees >= 15) {
-    employeeScore = 4;
-    parts.push(`${employees} employees = 4pts`);
-  } else if (employees >= 8) {
-    employeeScore = 3;
-    parts.push(`${employees} employees = 3pts`);
-  } else if (employees >= 4) {
-    employeeScore = 2;
-    parts.push(`${employees} employees = 2pts`);
-  } else if (employees >= 1) {
-    employeeScore = 1;
-    parts.push(`${employees} employees = 1pt`);
-  } else {
-    parts.push('No employee data = 0pts');
+  // Score EBITDA fit (0-8 points)
+  if (dealEbitda > 0 && (minEbitda > 0 || maxEbitda < 1000)) {
+    if (dealEbitda >= minEbitda && dealEbitda <= maxEbitda) {
+      score += 8;
+      parts.push(`EBITDA $${dealEbitda}M in range = +8pts`);
+    } else if (dealEbitda < minEbitda) {
+      score += 2;
+      parts.push(`EBITDA $${dealEbitda}M below min = +2pts`);
+    } else {
+      score += 5;
+      parts.push(`EBITDA $${dealEbitda}M above range = +5pts`);
+    }
+  } else if (dealEbitda > 0) {
+    // No EBITDA criteria but deal has EBITDA - base score
+    score += 4;
+    parts.push(`EBITDA $${dealEbitda}M present = +4pts`);
   }
   
-  const totalScore = revenueScore + locationScore + employeeScore;
+  // Score location count (0-5 points)
+  if (dealLocations >= minLocations && dealLocations <= maxLocations) {
+    score += 5;
+    parts.push(`${dealLocations} locations in range (${minLocations}-${maxLocations}) = +5pts`);
+  } else if (dealLocations < minLocations) {
+    if (minLocations > 1 && dealLocations === 1) {
+      score += 1;
+      parts.push(`Single location (need ${minLocations}+) = +1pt`);
+    } else {
+      score += 2;
+      parts.push(`${dealLocations} locations below min ${minLocations} = +2pts`);
+    }
+  } else {
+    score += 4;
+    parts.push(`${dealLocations} locations (above range) = +4pts`);
+  }
   
-  return { 
-    score: Math.min(totalScore, 35), 
+  return {
+    score: Math.min(score, 25),
     details: parts.join('; '),
-    revenueScore,
-    locationScore,
-    employeeScore
+    disqualified,
+    disqualificationReason
   };
 }
 
-/**
- * SERVICE MIX SCORING (15 points max)
- * Matches against tracker's service criteria, NOT generic diversification
- * - Required services (DRP, OEM): 8 pts max
- * - Preferred services (ADAS, mechanical): 7 pts max
- * - Off-focus services (towing, rentals): 0 pts, potential penalty
- */
-function calculateServiceScore(deal: DealData, trackerCriteria: TrackerCriteria | null): {
+// ============= SERVICE SCORING (25 points max) =============
+
+function calculateServiceScore(deal: DealData, criteria: TrackerCriteria | null): {
   score: number;
   details: string;
-  requiredScore: number;
-  preferredScore: number;
+  disqualified: boolean;
+  disqualificationReason: string | null;
 } {
-  let requiredScore = 0;
-  let preferredScore = 0;
   const parts: string[] = [];
-  const matchedRequired: string[] = [];
-  const matchedPreferred: string[] = [];
-  const offFocusFound: string[] = [];
+  let score = 0;
+  let disqualified = false;
+  let disqualificationReason: string | null = null;
   
   // Combine all text fields to search
   const allText = [
@@ -329,188 +246,280 @@ function calculateServiceScore(deal: DealData, trackerCriteria: TrackerCriteria 
     deal.company_overview || ''
   ].join(' ').toLowerCase();
   
-  // Check for required/high-value services
-  for (const keyword of REQUIRED_SERVICE_KEYWORDS) {
-    if (allText.includes(keyword.toLowerCase())) {
-      if (!matchedRequired.some(m => m.includes(keyword.split(' ')[0]))) {
-        matchedRequired.push(keyword);
+  if (!allText || allText.trim().length < 5) {
+    return { score: 5, details: 'No service data = +5pts (default)', disqualified: false, disqualificationReason: null };
+  }
+  
+  // Parse tracker service criteria
+  let requiredServices: string[] = [];
+  let preferredServices: string[] = [];
+  let excludedServices: string[] = [];
+  let businessModel: string | null = null;
+  
+  if (criteria?.service_criteria) {
+    const serviceCriteria = typeof criteria.service_criteria === 'string'
+      ? JSON.parse(criteria.service_criteria)
+      : criteria.service_criteria;
+    
+    requiredServices = (serviceCriteria.required_services || []).map((s: string) => s.toLowerCase());
+    preferredServices = (serviceCriteria.preferred_services || []).map((s: string) => s.toLowerCase());
+    excludedServices = (serviceCriteria.excluded_services || []).map((s: string) => s.toLowerCase());
+    businessModel = serviceCriteria.business_model?.toLowerCase() || null;
+    
+    console.log(`[score-deal] Service criteria: Required=${requiredServices.join(',')}, Excluded=${excludedServices.join(',')}, Model=${businessModel}`);
+  }
+  
+  // Check for EXCLUDED services first (deal breakers)
+  const foundExcluded: string[] = [];
+  for (const excluded of excludedServices) {
+    if (allText.includes(excluded.toLowerCase())) {
+      foundExcluded.push(excluded);
+    }
+  }
+  
+  // Check if excluded service is PRIMARY (mentioned frequently or first)
+  // Towing-specific: if "towing" appears before "collision" or more times, it's primary
+  const towingIndex = allText.indexOf('towing');
+  const collisionIndex = allText.indexOf('collision');
+  const towingCount = (allText.match(/towing/g) || []).length;
+  const collisionCount = (allText.match(/collision/g) || []).length;
+  
+  const towingIsPrimary = towingIndex >= 0 && (towingIndex < collisionIndex || collisionIndex === -1 || towingCount > collisionCount);
+  
+  if (foundExcluded.length > 0) {
+    if (foundExcluded.includes('towing') || foundExcluded.some(e => allText.includes(e))) {
+      // Check if it's a primary off-focus service
+      if (towingIsPrimary && foundExcluded.includes('towing')) {
+        // Towing is primary business - heavy penalty
+        score -= 10;
+        parts.push(`PRIMARY off-focus service (towing) = -10pts`);
+      } else {
+        // Has off-focus but it's secondary
+        score -= 3;
+        parts.push(`Off-focus services present (${foundExcluded.join(', ')}) = -3pts`);
       }
     }
   }
   
-  // Check for preferred services
-  for (const keyword of PREFERRED_SERVICE_KEYWORDS) {
-    if (allText.includes(keyword.toLowerCase())) {
-      if (!matchedPreferred.some(m => m.includes(keyword.split(' ')[0]))) {
-        matchedPreferred.push(keyword);
-      }
+  // Check for REQUIRED services (max 12 points)
+  let requiredFound = 0;
+  const matchedRequired: string[] = [];
+  for (const required of requiredServices) {
+    // Check for keywords and variations
+    const keywords = required.split(' ');
+    const matched = keywords.every(kw => allText.includes(kw.toLowerCase()));
+    if (matched || allText.includes(required.toLowerCase())) {
+      requiredFound++;
+      matchedRequired.push(required);
     }
   }
   
-  // Check for off-focus services
-  for (const keyword of OFF_FOCUS_SERVICE_KEYWORDS) {
-    if (allText.includes(keyword.toLowerCase())) {
-      if (!offFocusFound.some(m => m.includes(keyword.split(' ')[0]))) {
-        offFocusFound.push(keyword);
-      }
-    }
-  }
-  
-  // Score required services (max 8 pts)
-  // DRP = 4 pts, OEM cert = 4 pts
-  const hasDRP = matchedRequired.some(s => s.includes('drp') || s.includes('direct repair'));
-  const hasOEM = matchedRequired.some(s => 
-    s.includes('oem') || s.includes('certified') || s.includes('profirst')
-  );
-  
-  if (hasDRP) {
-    requiredScore += 4;
-    parts.push('DRP relationships = +4pts');
-  }
-  if (hasOEM) {
-    requiredScore += 4;
-    parts.push('OEM certifications = +4pts');
-  }
-  
-  // Score preferred services (max 7 pts) - 2 pts each, capped
-  let prefPts = 0;
-  const hasADAS = matchedPreferred.some(s => s.includes('adas') || s.includes('calibration'));
-  const hasMechanical = matchedPreferred.some(s => s.includes('mechanical'));
-  const hasGlass = matchedPreferred.some(s => s.includes('glass') || s.includes('windshield'));
-  const hasPDR = matchedPreferred.some(s => s.includes('pdr') || s.includes('paintless'));
-  const hasDetailBody = matchedPreferred.some(s => 
-    s.includes('detail') || s.includes('paint') || s.includes('refinish') || 
-    s.includes('body shop') || s.includes('frame')
-  );
-  
-  if (hasADAS) { prefPts += 2; parts.push('ADAS/calibration = +2pts'); }
-  if (hasMechanical) { prefPts += 2; parts.push('Mechanical = +2pts'); }
-  if (hasGlass) { prefPts += 2; parts.push('Glass services = +2pts'); }
-  if (hasPDR) { prefPts += 1; parts.push('PDR = +1pt'); }
-  if (hasDetailBody) { prefPts += 1; parts.push('Body/refinish = +1pt'); }
-  
-  preferredScore = Math.min(prefPts, 7);
-  
-  // Note off-focus but don't penalize unless primary
-  if (offFocusFound.length > 0) {
-    const isPrimaryOffFocus = offFocusFound.length > matchedPreferred.length + matchedRequired.length;
-    if (isPrimaryOffFocus) {
-      parts.push(`Primary off-focus services (${offFocusFound.join(', ')}) = no additional penalty`);
+  if (requiredServices.length > 0) {
+    const requiredRatio = requiredFound / requiredServices.length;
+    const requiredPts = Math.round(requiredRatio * 12);
+    score += requiredPts;
+    if (matchedRequired.length > 0) {
+      parts.push(`Required services (${matchedRequired.join(', ')}) = +${requiredPts}pts`);
     } else {
-      parts.push(`Off-focus services present (${offFocusFound.join(', ')}) = 0pts for these`);
+      parts.push(`No required services matched = +0pts`);
+    }
+    
+    // If missing ALL required services and there are required services, that's bad
+    if (requiredFound === 0 && requiredServices.length > 0) {
+      parts.push(`Missing all required services (${requiredServices.join(', ')})`);
+    }
+  } else {
+    // No required services specified - give base score for having service data
+    score += 6;
+    parts.push('Service data present = +6pts');
+  }
+  
+  // Check for PREFERRED services (max 8 points)
+  let preferredFound = 0;
+  const matchedPreferred: string[] = [];
+  for (const preferred of preferredServices) {
+    if (allText.includes(preferred.toLowerCase())) {
+      preferredFound++;
+      matchedPreferred.push(preferred);
     }
   }
   
-  // If no services matched at all, give base collision credit
-  if (requiredScore === 0 && preferredScore === 0) {
-    if (allText.includes('collision') || allText.includes('body shop') || allText.includes('auto body')) {
-      preferredScore = 2;
-      parts.push('Base collision services = 2pts');
-    } else {
-      parts.push('No recognized services = 0pts');
+  if (preferredServices.length > 0) {
+    const preferredRatio = preferredFound / preferredServices.length;
+    const preferredPts = Math.round(preferredRatio * 8);
+    score += preferredPts;
+    if (matchedPreferred.length > 0) {
+      parts.push(`Preferred services (${matchedPreferred.join(', ')}) = +${preferredPts}pts`);
     }
   }
   
-  const totalScore = Math.min(requiredScore + preferredScore, 15);
+  // Check for business model match (max 5 points)
+  if (businessModel) {
+    if (allText.includes(businessModel) || 
+        (businessModel === 'drp-focused' && (allText.includes('drp') || allText.includes('direct repair')))) {
+      score += 5;
+      parts.push(`Business model match (${businessModel}) = +5pts`);
+    } else if (allText.includes('insurance') || allText.includes('drp')) {
+      score += 3;
+      parts.push('Insurance/DRP mentioned = +3pts');
+    }
+  }
   
   return {
-    score: totalScore,
-    details: parts.join('; ') || 'No service data',
-    requiredScore: Math.min(requiredScore, 8),
-    preferredScore: Math.min(preferredScore, 7)
+    score: Math.max(0, Math.min(score, 25)),
+    details: parts.join('; '),
+    disqualified,
+    disqualificationReason
   };
 }
 
-/**
- * GEOGRAPHY SCORING (15 points max)
- * Based on MSA tier and proximity to buyer target markets
- * 
- * IMPORTANT: MSA matching should be done against the HEADQUARTERS field (city names like "Houston, TX")
- * NOT against the GEOGRAPHY field (which contains state abbreviations like "TX")
- */
-function calculateGeographyScore(deal: DealData, trackerCriteria: TrackerCriteria | null): {
+// ============= GEOGRAPHY SCORING (25 points max) =============
+
+function calculateGeographyScore(deal: DealData, criteria: TrackerCriteria | null): {
   score: number;
   details: string;
-  msaTier: string;
 } {
   const parts: string[] = [];
   let score = 0;
-  let msaTier = 'unknown';
   
-  // Get headquarters for MSA matching (contains city names like "Houston, TX", "Dallas, TX")
-  // This is the correct field for MSA matching since it contains actual city names
-  const headquartersText = (deal.headquarters || '').toLowerCase();
+  const dealStates = (deal.geography || []).map(s => s.toUpperCase().trim());
+  const headquarters = (deal.headquarters || '').toLowerCase();
   
-  // Get state info from geography array for fallback secondary market scoring
-  const statesList = (deal.geography || []).map(s => s.toUpperCase()).join(' ');
-  
-  // If no location data at all
-  if (!headquartersText && statesList.length === 0) {
-    return { score: 2, details: 'No geography data = 2pts (default)', msaTier: 'unknown' };
+  if (dealStates.length === 0 && !headquarters) {
+    return { score: 5, details: 'No geography data = +5pts (default)' };
   }
   
-  // Check Priority MSAs using headquarters (city-level matching)
-  let isPriority = PRIORITY_MSAS.some(msa => headquartersText.includes(msa));
+  // Parse tracker geography criteria
+  let requiredRegions: string[] = [];
+  let preferredRegions: string[] = [];
+  let excludedRegions: string[] = [];
   
-  // Also check tracker's specific geography criteria if available
-  if (trackerCriteria?.fit_criteria_geography && headquartersText) {
-    const trackerGeos = trackerCriteria.fit_criteria_geography.toLowerCase();
-    // Extract city names from criteria and check if deal's headquarters matches
-    const geoMatches = ['new york', 'san francisco', 'seattle', 'washington', 'dallas', 'denver']
-      .filter(city => trackerGeos.includes(city) && headquartersText.includes(city));
-    if (geoMatches.length > 0) {
-      isPriority = true;
-    }
+  if (criteria?.geography_criteria) {
+    const geoCriteria = typeof criteria.geography_criteria === 'string'
+      ? JSON.parse(criteria.geography_criteria)
+      : criteria.geography_criteria;
+    
+    requiredRegions = (geoCriteria.required_regions || []).map((s: string) => s.toLowerCase());
+    preferredRegions = (geoCriteria.preferred_regions || []).map((s: string) => s.toLowerCase());
+    excludedRegions = (geoCriteria.excluded_regions || []).map((s: string) => s.toLowerCase());
+    
+    console.log(`[score-deal] Geography criteria: Required=${requiredRegions.join(',')}, Preferred=${preferredRegions.join(',')}`);
   }
   
-  // Match MSAs against headquarters (city names)
-  if (isPriority) {
-    score = 15;
-    msaTier = 'priority';
-    parts.push(`Priority MSA match = 15pts`);
-  } else if (TIER_1_MSAS.some(msa => headquartersText.includes(msa))) {
-    score = 12;
-    msaTier = 'tier1';
-    parts.push(`Top 15 MSA = 12pts`);
-  } else if (TIER_2_MSAS.some(msa => headquartersText.includes(msa))) {
-    score = 8;
-    msaTier = 'tier2';
-    parts.push(`Top 50 MSA = 8pts`);
-  } else if (headquartersText || statesList.length > 0) {
-    // No major MSA match, but we have location data - secondary market
-    // Check if any valid state abbreviation is present
-    const hasStateData = deal.geography && deal.geography.length > 0;
-    if (hasStateData) {
-      score = 5;
-      msaTier = 'secondary';
-      parts.push(`Secondary market (${deal.geography?.join(', ')}) = 5pts`);
-    } else if (headquartersText) {
-      // Has headquarters but no MSA match - could be smaller city
-      score = 4;
-      msaTier = 'secondary';
-      parts.push(`Secondary market = 4pts`);
-    } else {
-      score = 2;
-      msaTier = 'rural';
-      parts.push(`Rural/unknown = 2pts`);
+  // Region/state mapping
+  const regionStates: Record<string, string[]> = {
+    'southeast': ['FL', 'GA', 'AL', 'SC', 'NC', 'TN', 'MS', 'LA', 'AR', 'KY', 'VA', 'WV'],
+    'texas': ['TX'],
+    'california': ['CA'],
+    'southwest': ['AZ', 'NM', 'NV', 'UT', 'CO'],
+    'northeast': ['NY', 'NJ', 'PA', 'CT', 'MA', 'RI', 'VT', 'NH', 'ME', 'MD', 'DE'],
+    'midwest': ['IL', 'IN', 'OH', 'MI', 'WI', 'MN', 'IA', 'MO', 'KS', 'NE', 'SD', 'ND'],
+    'pacific': ['CA', 'OR', 'WA', 'AK', 'HI'],
+    'mountain': ['MT', 'ID', 'WY', 'CO', 'UT', 'NV'],
+    'oklahoma': ['OK'],
+  };
+  
+  // Check if deal is in required regions
+  let inRequired = false;
+  let inPreferred = false;
+  let inExcluded = false;
+  
+  for (const region of requiredRegions) {
+    const regionLower = region.toLowerCase();
+    // Check if region name matches any state
+    const statesInRegion = regionStates[regionLower] || [];
+    
+    // Check headquarters match
+    if (headquarters.includes(regionLower)) {
+      inRequired = true;
+      parts.push(`HQ matches required region (${region})`);
+      break;
     }
-  } else {
+    
+    // Check state match
+    for (const dealState of dealStates) {
+      if (statesInRegion.includes(dealState)) {
+        inRequired = true;
+        parts.push(`State ${dealState} in required region (${region})`);
+        break;
+      }
+      // Direct state match (e.g., "Texas" -> "TX")
+      if (regionLower === 'texas' && dealState === 'TX') {
+        inRequired = true;
+        parts.push('Texas = required region');
+        break;
+      }
+      if (regionLower === 'california' && dealState === 'CA') {
+        inRequired = true;
+        parts.push('California = required region');
+        break;
+      }
+    }
+    if (inRequired) break;
+  }
+  
+  // Check preferred regions
+  for (const region of preferredRegions) {
+    const regionLower = region.toLowerCase();
+    const statesInRegion = regionStates[regionLower] || [];
+    
+    if (headquarters.includes(regionLower)) {
+      inPreferred = true;
+      break;
+    }
+    
+    for (const dealState of dealStates) {
+      if (statesInRegion.includes(dealState)) {
+        inPreferred = true;
+        break;
+      }
+    }
+    if (inPreferred) break;
+  }
+  
+  // Check excluded regions
+  for (const region of excludedRegions) {
+    const regionLower = region.toLowerCase();
+    const statesInRegion = regionStates[regionLower] || [];
+    
+    for (const dealState of dealStates) {
+      if (statesInRegion.includes(dealState)) {
+        inExcluded = true;
+        parts.push(`State ${dealState} in excluded region (${region})`);
+        break;
+      }
+    }
+    if (inExcluded) break;
+  }
+  
+  // Score based on region fit
+  if (inExcluded) {
     score = 2;
-    msaTier = 'rural';
-    parts.push(`Rural/unknown = 2pts`);
+    parts.push('In excluded region = +2pts');
+  } else if (inRequired) {
+    score = 25;
+    parts.push('In required region = +25pts');
+  } else if (inPreferred) {
+    score = 18;
+    parts.push('In preferred region = +18pts');
+  } else if (requiredRegions.length === 0 && preferredRegions.length === 0) {
+    // No geographic criteria specified - give moderate score
+    score = 15;
+    parts.push('No region criteria specified = +15pts');
+  } else {
+    // Has location but not in any target region
+    score = 8;
+    parts.push(`Location (${dealStates.join(', ')}) not in target regions = +8pts`);
   }
   
-  // Location context
-  const locationDisplay = headquartersText || statesList.substring(0, 50);
-  parts.push(`Location: ${locationDisplay.substring(0, 50)}${locationDisplay.length > 50 ? '...' : ''}`);
-  
-  return { score, details: parts.join('; '), msaTier };
+  return {
+    score: Math.min(score, 25),
+    details: parts.join('; ')
+  };
 }
 
-/**
- * DATA QUALITY SCORING (15 points max)
- * More complete data = faster due diligence = more attractive deal
- */
+// ============= DATA QUALITY SCORING (25 points max) =============
+
 function calculateDataScore(deal: DealData): {
   score: number;
   details: string;
@@ -519,39 +528,39 @@ function calculateDataScore(deal: DealData): {
   let score = 0;
   const fieldsPresent: string[] = [];
   
-  // Key fields worth 2 points each
+  // Key fields worth 3 points each
   if (deal.revenue && deal.revenue > 0) {
-    score += 2;
+    score += 4;
     fieldsPresent.push('revenue');
   }
   
   if ((deal.ebitda_amount && deal.ebitda_amount > 0) || (deal.ebitda_percentage && deal.ebitda_percentage > 0)) {
-    score += 2;
+    score += 4;
     fieldsPresent.push('ebitda');
   }
   
   if (deal.owner_goals && deal.owner_goals.trim().length > 10) {
-    score += 2;
+    score += 3;
     fieldsPresent.push('owner_goals');
   }
   
   if ((deal.geography && deal.geography.length > 0) || deal.headquarters) {
-    score += 2;
+    score += 3;
     fieldsPresent.push('geography');
   }
   
-  if (deal.service_mix && deal.service_mix.trim().length > 5) {
-    score += 2;
+  if (deal.service_mix && deal.service_mix.trim().length > 10) {
+    score += 4;
     fieldsPresent.push('service_mix');
   }
   
   if (deal.location_count && deal.location_count > 0) {
-    score += 1;
+    score += 2;
     fieldsPresent.push('location_count');
   }
   
   if (deal.employee_count && deal.employee_count > 0) {
-    score += 1;
+    score += 2;
     fieldsPresent.push('employee_count');
   }
   
@@ -570,187 +579,17 @@ function calculateDataScore(deal: DealData): {
     fieldsPresent.push('customer_concentration');
   }
   
-  // Cap at 15
-  score = Math.min(score, 15);
-  
   return { 
-    score, 
+    score: Math.min(score, 25), 
     details: fieldsPresent.length > 0 
-      ? `${fieldsPresent.length} key fields: ${fieldsPresent.join(', ')} = ${score}pts` 
+      ? `${fieldsPresent.length} key fields: ${fieldsPresent.join(', ')} = ${Math.min(score, 25)}pts` 
       : 'No key data = 0pts',
     fieldsPresent
   };
 }
 
-/**
- * OWNER GOALS SCORING (10 points max) - REDUCED WEIGHT
- * Exit intent and transaction readiness
- */
-function calculateOwnerScore(deal: DealData): { score: number; details: string } {
-  const goals = (deal.owner_goals || '').toLowerCase();
-  const additionalInfo = (deal.additional_info || '').toLowerCase();
-  const allText = goals + ' ' + additionalInfo;
-  
-  if (!goals && !additionalInfo) {
-    return { score: 2, details: 'No owner goals specified = 2pts (default)' };
-  }
-  
-  // Strong exit signals (10 pts)
-  if (allText.includes('100%') || allText.includes('full exit') || 
-      allText.includes('complete exit') || allText.includes('sell 100') ||
-      allText.includes('looking for buyer') || allText.includes('ready to sell')) {
-    return { score: 10, details: 'Full exit desired = 10pts' };
-  }
-  
-  // Majority sale (8 pts)
-  if (allText.includes('majority') || allText.includes('control')) {
-    return { score: 8, details: 'Majority sale = 8pts' };
-  }
-  
-  // Retirement/succession (7 pts)
-  if (allText.includes('retire') || allText.includes('retirement') || allText.includes('succession') || allText.includes('aging')) {
-    return { score: 7, details: 'Retirement/succession = 7pts' };
-  }
-  
-  // Growth partnership (5 pts)
-  if (allText.includes('partner') || allText.includes('growth capital') || allText.includes('expansion capital')) {
-    return { score: 5, details: 'Partnership/growth = 5pts' };
-  }
-  
-  // Partial/recapitalization (4 pts)
-  if (allText.includes('partial') || allText.includes('minority') || allText.includes('recapitalization') || allText.includes('recap')) {
-    return { score: 4, details: 'Partial/minority = 4pts' };
-  }
-  
-  // Prefers debt / ambiguous (3 pts)
-  if (allText.includes('debt') || allText.includes('loan') || allText.includes('financing')) {
-    return { score: 3, details: 'Prefers debt = 3pts' };
-  }
-  
-  // Ambiguous signals
-  if (allText.includes('exploring') || allText.includes('understand options') || allText.includes('possibly')) {
-    return { score: 2, details: 'Ambiguous intent = 2pts' };
-  }
-  
-  // Has some owner info
-  return { score: 3, details: 'Owner goals present but unclear = 3pts' };
-}
+// ============= MAIN SCORING FUNCTION =============
 
-/**
- * BONUS & PENALTY SCORING (10 points max, can go negative from penalties)
- * Industry-specific value drivers and deal-breakers
- */
-function calculateBonusScore(deal: DealData, trackerCriteria: TrackerCriteria | null): {
-  score: number;
-  details: string;
-  penalties: string[];
-} {
-  let score = 0;
-  const parts: string[] = [];
-  const penalties: string[] = [];
-  
-  const allText = [
-    deal.additional_info || '',
-    deal.service_mix || '',
-    deal.growth_trajectory || '',
-    deal.real_estate || '',
-    deal.company_overview || ''
-  ].join(' ').toLowerCase();
-  
-  // BONUSES
-  
-  // Real estate ownership (+3)
-  const realEstate = (deal.real_estate || '').toLowerCase();
-  if (realEstate.includes('own') || realEstate.includes('fee simple') || realEstate.includes('owns real estate')) {
-    score += 3;
-    parts.push('Owns real estate = +3pts');
-  }
-  
-  // Growth trajectory (+2)
-  if (deal.growth_trajectory) {
-    const growth = deal.growth_trajectory.toLowerCase();
-    if (growth.includes('grow') || growth.includes('expansion') || growth.includes('increasing')) {
-      score += 2;
-      parts.push('Growth trajectory = +2pts');
-    }
-  } else if (allText.includes('growing') || allText.includes('growth') || allText.includes('expanding')) {
-    score += 1;
-    parts.push('Growth mentioned = +1pt');
-  }
-  
-  // Low customer concentration (+2)
-  const concentration = (deal.customer_concentration || '').toLowerCase();
-  if (concentration.includes('diversified') || concentration.includes('no concentration') || 
-      concentration.includes('low concentration') || concentration.includes('diversified customer')) {
-    score += 2;
-    parts.push('Diversified customers = +2pts');
-  }
-  
-  // Modern facility - look for sqft indicators (+2)
-  if (allText.includes('10,000') || allText.includes('10000') || 
-      allText.includes('15,000') || allText.includes('20,000') ||
-      allText.includes('modern facility') || allText.includes('state of the art') ||
-      allText.includes('newly built') || allText.includes('recently renovated')) {
-    score += 2;
-    parts.push('Modern/large facility = +2pts');
-  }
-  
-  // Additional certifications not caught in service mix (+1)
-  if (allText.includes('i-car gold') || allText.includes('icar gold') || allText.includes('ase master')) {
-    score += 1;
-    parts.push('Premium certifications = +1pt');
-  }
-  
-  // Cap bonuses at 10
-  score = Math.min(score, 10);
-  
-  // PENALTIES (can bring score negative)
-  
-  // Check tracker size criteria for minimum requirements
-  let minRevenue = 2; // Default minimum $2M
-  let minLocations = 3; // Default minimum 3 locations
-  
-  if (trackerCriteria?.size_criteria) {
-    try {
-      const sizeCriteria = typeof trackerCriteria.size_criteria === 'string' 
-        ? JSON.parse(trackerCriteria.size_criteria) 
-        : trackerCriteria.size_criteria;
-      if (sizeCriteria.minRevenue) minRevenue = sizeCriteria.minRevenue;
-      if (sizeCriteria.minLocations) minLocations = sizeCriteria.minLocations;
-    } catch (e) {
-      console.log('[score-deal] Could not parse size_criteria');
-    }
-  }
-  
-  // Penalty: Single location when multi required (-5)
-  if (minLocations > 1 && deal.location_count === 1) {
-    score -= 5;
-    penalties.push(`Single location (requires ${minLocations}+) = -5pts`);
-  }
-  
-  // Penalty: Below minimum revenue (-3)
-  if (deal.revenue && deal.revenue < minRevenue && deal.revenue > 0) {
-    score -= 3;
-    penalties.push(`Below $${minRevenue}M minimum = -3pts`);
-  }
-  
-  // Penalty: Under 8,000 sqft (if mentioned)
-  if (allText.includes('under 8,000') || allText.includes('5,000 sqft') || 
-      allText.includes('small facility') || allText.includes('2,000 sqft')) {
-    score -= 2;
-    penalties.push('Small facility (<8,000 sqft) = -2pts');
-  }
-  
-  return { 
-    score,
-    details: parts.length > 0 ? parts.join('; ') : 'No bonus factors',
-    penalties
-  };
-}
-
-/**
- * MAIN SCORING FUNCTION
- */
 async function scoreDeal(deal: DealData, supabase: any): Promise<ScoreBreakdown> {
   // Fetch tracker criteria for context-aware scoring
   let trackerCriteria: TrackerCriteria | null = null;
@@ -758,7 +597,7 @@ async function scoreDeal(deal: DealData, supabase: any): Promise<ScoreBreakdown>
   try {
     const { data: tracker } = await supabase
       .from('industry_trackers')
-      .select('fit_criteria_size, fit_criteria_service, fit_criteria_geography, size_criteria, service_criteria, geography_criteria')
+      .select('fit_criteria_size, fit_criteria_service, fit_criteria_geography, size_criteria, service_criteria, geography_criteria, geography_weight, service_mix_weight, size_weight, owner_goals_weight')
       .eq('id', deal.tracker_id)
       .single();
     
@@ -775,49 +614,43 @@ async function scoreDeal(deal: DealData, supabase: any): Promise<ScoreBreakdown>
   const service = calculateServiceScore(deal, trackerCriteria);
   const geography = calculateGeographyScore(deal, trackerCriteria);
   const data = calculateDataScore(deal);
-  const owner = calculateOwnerScore(deal);
-  const bonus = calculateBonusScore(deal, trackerCriteria);
   
-  // Calculate total (cap at 100, floor at 0)
-  const rawTotal = size.score + service.score + geography.score + data.score + owner.score + bonus.score;
+  // Collect disqualification reasons
+  const disqualificationReasons: string[] = [];
+  if (size.disqualified && size.disqualificationReason) {
+    disqualificationReasons.push(size.disqualificationReason);
+  }
+  if (service.disqualified && service.disqualificationReason) {
+    disqualificationReasons.push(service.disqualificationReason);
+  }
+  
+  const isDisqualified = size.disqualified || service.disqualified;
+  
+  // Calculate total (100 points possible: 25 each for size, service, geography, data)
+  // If disqualified, cap at 30
+  let rawTotal = size.score + service.score + geography.score + data.score;
+  
+  if (isDisqualified) {
+    rawTotal = Math.min(rawTotal, 30);
+  }
+  
   const totalScore = Math.max(0, Math.min(rawTotal, 100));
   
+  console.log(`[score-deal] Scores - Size: ${size.score}, Service: ${service.score}, Geography: ${geography.score}, Data: ${data.score}, Total: ${totalScore}`);
+  
   return {
-    // Size & Scale
     sizeScore: size.score,
     sizeDetails: size.details,
-    revenueScore: size.revenueScore,
-    locationScore: size.locationScore,
-    employeeScore: size.employeeScore,
-    
-    // Service Mix
     serviceScore: service.score,
     serviceDetails: service.details,
-    requiredServicesScore: service.requiredScore,
-    preferredServicesScore: service.preferredScore,
-    
-    // Geography
     geographyScore: geography.score,
     geographyDetails: geography.details,
-    msaTier: geography.msaTier,
-    
-    // Data Quality
     dataScore: data.score,
     dataDetails: data.details,
-    fieldsPresent: data.fieldsPresent,
-    
-    // Owner Goals
-    ownerScore: owner.score,
-    ownerDetails: owner.details,
-    
-    // Bonus/Penalty
-    bonusScore: bonus.score,
-    bonusDetails: bonus.details,
-    penalties: bonus.penalties,
-    
-    // Total
     totalScore,
-    scoringVersion: '2.0-comprehensive'
+    scoringVersion: '3.0-tracker-criteria',
+    disqualified: isDisqualified,
+    disqualificationReasons
   };
 }
 
@@ -838,7 +671,7 @@ serve(async (req) => {
       );
     }
 
-    console.log('[score-deal] Scoring deal with comprehensive algorithm v2.0:', dealId);
+    console.log('[score-deal] Scoring deal with tracker-criteria algorithm v3.0:', dealId);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
