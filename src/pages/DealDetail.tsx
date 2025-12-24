@@ -577,9 +577,23 @@ export default function DealDetail() {
             title="Financial Overview"
             icon={<DollarSign className="w-5 h-5" />}
             onSave={async () => {
+              const revenue = editFinancial.revenue ? parseFloat(editFinancial.revenue) : null;
+              const ebitda_percentage = editFinancial.ebitda_percentage ? parseFloat(editFinancial.ebitda_percentage) : null;
+              
+              // Calculate EBITDA amount if we have both revenue and margin
+              let ebitda_amount: number | null = null;
+              let ebitda_is_inferred = false;
+              
+              if (revenue && ebitda_percentage) {
+                ebitda_amount = parseFloat((revenue * ebitda_percentage / 100).toFixed(2));
+                ebitda_is_inferred = true;
+              }
+              
               await saveSection({
-                revenue: editFinancial.revenue ? parseFloat(editFinancial.revenue) : null,
-                ebitda_percentage: editFinancial.ebitda_percentage ? parseFloat(editFinancial.ebitda_percentage) : null,
+                revenue,
+                ebitda_percentage,
+                ebitda_amount,
+                ebitda_is_inferred,
               });
             }}
             editContent={
