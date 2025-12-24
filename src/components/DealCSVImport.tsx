@@ -613,33 +613,53 @@ export function DealCSVImport({ trackerId, onComplete }: DealCSVImportProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {headers.map((header, index) => (
-                  <TableRow key={header}>
-                    <TableCell className="font-medium">{header}</TableCell>
-                    <TableCell className="text-muted-foreground truncate max-w-[200px]">
-                      {rows[0]?.[index] || '-'}
-                    </TableCell>
-                    <TableCell>
-                      <Select
-                        value={mapping[header] || 'skip'}
-                        onValueChange={(value) => updateMapping(header, value)}
-                      >
-                        <SelectTrigger className="w-[200px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableFields.map((field) => (
-                            <SelectItem key={field.key} value={field.key}>
-                              {field.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {headers.map((header, index) => {
+                  const currentMapping = mapping[header] || 'skip';
+                  const isNotesField = currentMapping === 'additional_info';
+                  const notesColumnCount = Object.values(mapping).filter(v => v === 'additional_info').length;
+                  
+                  return (
+                    <TableRow key={header} className={isNotesField ? 'bg-primary/5' : ''}>
+                      <TableCell className="font-medium">{header}</TableCell>
+                      <TableCell className="text-muted-foreground truncate max-w-[200px]">
+                        {rows[0]?.[index] || '-'}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={currentMapping}
+                            onValueChange={(value) => updateMapping(header, value)}
+                          >
+                            <SelectTrigger className="w-[200px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableFields.map((field) => (
+                                <SelectItem key={field.key} value={field.key}>
+                                  {field.label}
+                                  {field.key === 'additional_info' && ' (+ Multiple)'}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {isNotesField && notesColumnCount > 1 && (
+                            <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full whitespace-nowrap">
+                              {notesColumnCount} cols
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
+
+            {Object.values(mapping).filter(v => v === 'additional_info').length > 0 && (
+              <p className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                💡 <strong>Tip:</strong> Multiple columns can be mapped to "Deal Notes" — they will be combined together during import.
+              </p>
+            )}
 
             <div className="flex justify-between">
               <Button variant="outline" onClick={() => setStep('upload')}>
