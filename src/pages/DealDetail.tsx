@@ -648,6 +648,12 @@ export default function DealDetail() {
                     {(deal.ebitda_amount || calculatedEbitdaAmount) && (
                       <p className="text-sm text-muted-foreground">
                         EBITDA: <span className="font-medium text-foreground">${deal.ebitda_amount || calculatedEbitdaAmount}M</span>
+                        {!deal.ebitda_amount && calculatedEbitdaAmount && (
+                          <span className="text-xs text-muted-foreground ml-1">(calculated from margin)</span>
+                        )}
+                        {deal.ebitda_amount && deal.ebitda_is_inferred && deal.revenue && deal.ebitda_percentage && (
+                          <span className="text-xs text-muted-foreground ml-1">(calculated from margin)</span>
+                        )}
                       </p>
                     )}
                   </div>

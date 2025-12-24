@@ -755,6 +755,28 @@ Deno.serve(async (req) => {
       if (ebitda.source_quote) updateData.ebitda_source_quote = ebitda.source_quote;
     }
 
+    // Calculate EBITDA amount from revenue and margin if only margin is available
+    // This allows us to show an actual dollar amount even when the owner only gave us a percentage
+    const finalRevenue = updateData.revenue || (extractedInfo.revenue?.value);
+    const finalEbitdaMargin = updateData.ebitda_percentage || (extractedInfo.ebitda?.margin_percentage);
+    const hasEbitdaAmount = updateData.ebitda_amount || (extractedInfo.ebitda?.amount);
+    
+    if (finalRevenue && finalEbitdaMargin && !hasEbitdaAmount) {
+      const calculatedAmount = parseFloat((finalRevenue * finalEbitdaMargin / 100).toFixed(2));
+      console.log(`Calculating EBITDA amount: $${finalRevenue}M × ${finalEbitdaMargin}% = $${calculatedAmount}M`);
+      updateData.ebitda_amount = calculatedAmount;
+      updateData.ebitda_is_inferred = true;
+      extractedFieldsList.push('ebitda_amount');
+      
+      // Add note about calculation to financial notes
+      const calcNote = `EBITDA amount calculated from revenue ($${finalRevenue}M) × margin (${finalEbitdaMargin}%) = $${calculatedAmount}M`;
+      if (updateData.financial_notes) {
+        updateData.financial_notes = updateData.financial_notes + '\n' + calcNote;
+      } else {
+        updateData.financial_notes = calcNote;
+      }
+    }
+
     // Financial notes and follow-up questions
     if (extractedInfo.financial_notes) updateData.financial_notes = extractedInfo.financial_notes;
     if (extractedInfo.financial_followup_questions?.length) {
