@@ -32,6 +32,87 @@ type SectionType =
   | 'customer_info'
   | 'acquisition_history';
 
+// Helper function to generate deal summary email
+function generateDealSummaryMailto(
+  contact: { name: string; email: string },
+  deal: any | null,
+  hasFeeAgreement: boolean
+): string {
+  if (!deal || !contact.email) return `mailto:${contact.email}`;
+  
+  const firstName = contact.name?.split(' ')[0] || '';
+  
+  // Format geography - if no fee agreement, only show state (last part of geography)
+  const formatGeography = () => {
+    if (!deal.geography || deal.geography.length === 0) return 'Geography available upon request';
+    
+    if (hasFeeAgreement) {
+      return deal.geography.join(', ');
+    } else {
+      // Extract just the state from geography entries
+      const states = deal.geography.map((g: string) => {
+        const parts = g.split(',').map((p: string) => p.trim());
+        // Return just the last part (usually state) for anonymity
+        return parts[parts.length - 1];
+      });
+      // Get unique states
+      return [...new Set(states)].join(', ');
+    }
+  };
+  
+  const formatRevenue = () => {
+    if (!deal.revenue) return 'Revenue details available';
+    return `$${deal.revenue}M`;
+  };
+  
+  const formatEbitda = () => {
+    if (deal.ebitda_amount) return `$${deal.ebitda_amount}M`;
+    if (deal.ebitda_percentage && deal.revenue) {
+      return `~$${(deal.revenue * deal.ebitda_percentage / 100).toFixed(1)}M`;
+    }
+    return 'EBITDA details available';
+  };
+  
+  const formatLocations = () => {
+    const count = deal.location_count || 1;
+    return `${count} location${count !== 1 ? 's' : ''}`;
+  };
+  
+  const formatExpansionNote = () => {
+    if (deal.growth_trajectory) return deal.growth_trajectory;
+    return 'growth opportunity available';
+  };
+  
+  const formatCertifications = () => {
+    const parts: string[] = [];
+    if (deal.service_mix) parts.push(deal.service_mix);
+    return parts.length > 0 ? parts.join('; ') : 'certification details available';
+  };
+  
+  const subject = 'Off market collision deal';
+  
+  const body = `Hi ${firstName},
+
+I wanted to quickly share an off-market collision repair opportunity to see if it could be a fit.
+
+At a glance:
+
+• ${formatGeography()}
+
+• ${formatRevenue()} revenue / ${formatEbitda()} EBITDA
+
+• ${formatLocations()}, ${formatExpansionNote()}
+
+• Multiple DRPs; ${formatCertifications()}
+
+The owner is fully committed to a sale, has shared all diligence materials, and is ready to move forward. If this is directionally interesting, happy to share more detail or make an introduction.
+
+Best,
+Tomos Mughan`;
+
+  return `mailto:${contact.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 export default function BuyerDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -1432,7 +1513,10 @@ export default function BuyerDetail() {
                     </div>
                     <div className="flex items-center gap-4 mt-2 text-sm">
                       {c.email && (
-                        <a href={`mailto:${c.email}`} className="text-primary hover:underline">
+                        <a 
+                          href={generateDealSummaryMailto(c, deal, buyer?.has_fee_agreement || false)} 
+                          className="text-primary hover:underline"
+                        >
                           {c.email}
                         </a>
                       )}
