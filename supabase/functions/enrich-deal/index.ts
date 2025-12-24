@@ -14,27 +14,24 @@ const SOURCE_PRIORITY: Record<string, number> = {
   manual: 20,
 };
 
-interface ExtractionSource {
+// extraction_sources is stored as an object: { [fieldName]: { source, timestamp } }
+interface FieldSourceInfo {
   source: string;
   timestamp: string;
-  fields: string[];
 }
 
+type ExtractionSourcesObject = Record<string, FieldSourceInfo>;
+
 function getFieldSource(
-  extractionSources: ExtractionSource[] | null | undefined,
+  extractionSources: ExtractionSourcesObject | null | undefined,
   fieldName: string
-): ExtractionSource | null {
-  if (!extractionSources || !Array.isArray(extractionSources)) return null;
-  
-  const sourcesWithField = extractionSources
-    .filter(s => s.fields?.includes(fieldName))
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  
-  return sourcesWithField[0] || null;
+): FieldSourceInfo | null {
+  if (!extractionSources || typeof extractionSources !== 'object') return null;
+  return extractionSources[fieldName] || null;
 }
 
 function canOverwriteField(
-  existingSources: ExtractionSource[] | null | undefined,
+  existingSources: ExtractionSourcesObject | null | undefined,
   fieldName: string,
   newSourceType: string
 ): boolean {
@@ -355,8 +352,8 @@ Deno.serve(async (req) => {
     const updatedFields: string[] = [];
     const skippedFields: string[] = [];
 
-    // Check existing extraction sources
-    const existingSources: ExtractionSource[] = (deal.extraction_sources as ExtractionSource[]) || [];
+    // Check existing extraction sources (stored as object: { fieldName: { source, timestamp } })
+    const existingSources: ExtractionSourcesObject = (deal.extraction_sources as ExtractionSourcesObject) || {};
 
     // Helper to check if a value is a placeholder (N/A, none, etc.)
     const isPlaceholder = (value: any): boolean => {
@@ -488,14 +485,13 @@ Deno.serve(async (req) => {
       // Set last_enriched_at for caching
       updateData.last_enriched_at = new Date().toISOString();
       
-      // Add website source tracking for updated fields
+      // Add website source tracking for updated fields (object format)
       if (updatedFields.length > 0) {
-        const newSource: ExtractionSource = {
-          source: 'website',
-          timestamp: new Date().toISOString(),
-          fields: updatedFields
-        };
-        const updatedSources = [...existingSources, newSource];
+        const timestamp = new Date().toISOString();
+        const updatedSources: ExtractionSourcesObject = { ...existingSources };
+        for (const field of updatedFields) {
+          updatedSources[field] = { source: 'website', timestamp };
+        }
         updateData.extraction_sources = updatedSources;
       }
       
