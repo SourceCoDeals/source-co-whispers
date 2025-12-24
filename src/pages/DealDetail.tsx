@@ -174,6 +174,8 @@ export default function DealDetail() {
 
   const resetEditStates = (dealData: any) => {
     setEditCompany({
+      deal_name: dealData.deal_name || '',
+      company_website: dealData.company_website || '',
       headquarters: dealData.headquarters || '',
       company_address: dealData.company_address || '',
       founded_year: dealData.founded_year || '',
@@ -450,6 +452,8 @@ export default function DealDetail() {
             icon={<Building2 className="w-5 h-5" />}
             onSave={async () => {
               await saveSection({
+                deal_name: editCompany.deal_name || null,
+                company_website: editCompany.company_website || null,
                 headquarters: editCompany.headquarters || null,
                 company_address: editCompany.company_address || null,
                 founded_year: editCompany.founded_year ? parseInt(editCompany.founded_year) : null,
@@ -460,6 +464,20 @@ export default function DealDetail() {
             }}
             editContent={
               <div className="space-y-3 text-sm">
+                <div className="flex items-start gap-3">
+                  <Building2 className="w-4 h-4 text-muted-foreground mt-2.5" />
+                  <div className="flex-1">
+                    <label className="text-muted-foreground text-xs uppercase tracking-wide">Company Name</label>
+                    <Input value={editCompany.deal_name} onChange={(e) => setEditCompany({ ...editCompany, deal_name: e.target.value })} placeholder="Company Name" className="mt-1" />
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <ExternalLink className="w-4 h-4 text-muted-foreground mt-2.5" />
+                  <div className="flex-1">
+                    <label className="text-muted-foreground text-xs uppercase tracking-wide">Website</label>
+                    <Input value={editCompany.company_website} onChange={(e) => setEditCompany({ ...editCompany, company_website: e.target.value })} placeholder="https://example.com" className="mt-1" />
+                  </div>
+                </div>
                 <div className="flex items-start gap-3">
                   <MapPin className="w-4 h-4 text-muted-foreground mt-2.5" />
                   <div className="flex-1">
