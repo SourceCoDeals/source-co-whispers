@@ -98,6 +98,7 @@ export type Database = {
           deal_id: string
           fit_reasoning: string | null
           geography_score: number | null
+          hidden_from_deal: boolean | null
           human_override_score: number | null
           id: string
           interested: boolean | null
@@ -122,6 +123,7 @@ export type Database = {
           deal_id: string
           fit_reasoning?: string | null
           geography_score?: number | null
+          hidden_from_deal?: boolean | null
           human_override_score?: number | null
           id?: string
           interested?: boolean | null
@@ -146,6 +148,7 @@ export type Database = {
           deal_id?: string
           fit_reasoning?: string | null
           geography_score?: number | null
+          hidden_from_deal?: boolean | null
           human_override_score?: number | null
           id?: string
           interested?: boolean | null
