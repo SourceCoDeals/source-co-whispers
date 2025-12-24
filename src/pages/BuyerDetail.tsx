@@ -10,6 +10,7 @@ import { BuyerSectionEditDialog } from "@/components/BuyerSectionEditDialog";
 import { MainContactSection } from "@/components/MainContactSection";
 import { ContactCSVImport } from "@/components/ContactCSVImport";
 import { AddContactDialog } from "@/components/AddContactDialog";
+import { EditContactDialog } from "@/components/EditContactDialog";
 import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2, Briefcase, DollarSign, TrendingUp, Linkedin, Sparkles, CheckCircle, Clock, ChevronDown, ChevronUp, Check, Pencil, Star } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1418,12 +1419,29 @@ export default function BuyerDetail() {
                           )}
                         </div>
                       </div>
-                      {c.priority_level && <Badge variant="outline">Priority {c.priority_level}</Badge>}
+                      <div className="flex items-center gap-2">
+                        {c.priority_level && <Badge variant="outline">Priority {c.priority_level}</Badge>}
+                        <EditContactDialog
+                          contact={c}
+                          buyerId={id!}
+                          onContactUpdated={loadData}
+                          peFirmName={buyer?.pe_firm_name}
+                          platformCompanyName={buyer?.platform_company_name}
+                        />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                      {c.email && <span>{c.email}</span>}
-                      {c.phone && <span>{c.phone}</span>}
-                      {c.linkedin_url && <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">LinkedIn</a>}
+                    <div className="flex items-center gap-4 mt-2 text-sm">
+                      {c.email && (
+                        <a href={`mailto:${c.email}`} className="text-primary hover:underline">
+                          {c.email}
+                        </a>
+                      )}
+                      {c.phone && <span className="text-muted-foreground">{c.phone}</span>}
+                      {c.linkedin_url && (
+                        <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                          LinkedIn
+                        </a>
+                      )}
                     </div>
                   </div>
                 ))}
