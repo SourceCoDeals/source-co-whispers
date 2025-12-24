@@ -12,7 +12,7 @@ const DEAL_FIELDS = [
   { key: 'company_website', label: 'Website', description: 'Company website URL' },
   { key: 'company_address', label: 'Address', description: 'Company street address or location' },
   { key: 'transcript_link', label: 'Fireflies Link', description: 'Link to Fireflies transcript or call recording' },
-  { key: 'additional_info', label: 'Deal Notes (Bill Notes)', description: 'Internal notes with deal details like revenue, EBITDA, owner goals - will be analyzed for structured data' },
+  { key: 'additional_info', label: 'Deal Notes', description: 'Internal notes about the deal - map multiple columns here and they will be combined', multiColumn: true },
   { key: 'company_overview', label: 'Company Description', description: 'AI or public description of the company business' },
   { key: 'contact_first_name', label: 'Owner First Name', description: 'Owner/contact first name' },
   { key: 'contact_last_name', label: 'Owner Last Name', description: 'Owner/contact last name' },
@@ -66,23 +66,24 @@ SAMPLE DATA (first 3 rows):
 ${sampleRows.slice(0, 3).map((row: string[]) => row.join(' | ')).join('\n')}
 
 MAPPING RULES (ORDER MATTERS - CHECK SPECIFIC PATTERNS FIRST):
-- "Bill Notes", "Bill's Notes", "Internal Notes", "Deal Notes" → additional_info (HIGHEST PRIORITY for notes with deal details)
 - "AI Description", "Company Description", "Business Description", "Overview" → company_overview
 - "Description" alone (without "AI" or "Company") → company_overview
 - "Company", "Name", "Deal", "Target", "Business" (when column is about the company name, not description) → deal_name
 - "Website", "URL", "Site", "Web" → company_website
 - "Address", "Location", "Street", "City", "HQ", "Headquarters" → company_address
 - "Fireflies", "Transcript", "Recording", "Call Link", "Meeting Link" → transcript_link
-- "Notes", "Comments" (generic without "Bill" or "Deal") → additional_info
 - "First Name", "First", "Given Name", "Owner First" → contact_first_name
 - "Last Name", "Last", "Surname", "Family Name", "Owner Last" → contact_last_name
 - "Title", "Position", "Role", "Job Title" → contact_title
 - "Email", "E-mail", "Contact Email", "Owner Email" → contact_email
 - "Phone", "Cell", "Mobile", "Telephone", "Cell Phone" → contact_phone
+- ANY column with "Notes", "Comments", "Remarks", "Details", "Info" → additional_info (MULTIPLE COLUMNS CAN MAP HERE - they will be combined)
 - EVERYTHING ELSE → skip
 
+IMPORTANT: Multiple columns CAN be mapped to "additional_info" - map ALL notes/comments columns to it.
+
 Return a JSON object where keys are the CSV column headers and values are the matching field keys.
-Example: {"Company Name": "deal_name", "Website URL": "company_website", "Random Column": "skip"}
+Example: {"Company Name": "deal_name", "Internal Notes": "additional_info", "Comments": "additional_info", "Random Column": "skip"}
 
 IMPORTANT: Only return the JSON object, nothing else.`;
 
@@ -125,13 +126,7 @@ IMPORTANT: Only return the JSON object, nothing else.`;
         const lower = header.toLowerCase();
         
         // Check specific patterns first (higher priority)
-        if (lower.includes('bill') && lower.includes('note')) {
-          mapping[header] = 'additional_info';
-        } else if (lower.includes('deal') && lower.includes('note')) {
-          mapping[header] = 'additional_info';
-        } else if (lower.includes('internal') && lower.includes('note')) {
-          mapping[header] = 'additional_info';
-        } else if (lower.includes('ai') && lower.includes('description')) {
+        if (lower.includes('ai') && lower.includes('description')) {
           mapping[header] = 'company_overview';
         } else if (lower.includes('company') && lower.includes('description')) {
           mapping[header] = 'company_overview';
@@ -157,7 +152,8 @@ IMPORTANT: Only return the JSON object, nothing else.`;
           mapping[header] = 'company_address';
         } else if (lower.includes('fireflies') || lower.includes('transcript') || lower.includes('recording') || (lower.includes('call') && !lower.includes('cell'))) {
           mapping[header] = 'transcript_link';
-        } else if (lower.includes('note') || lower.includes('comment')) {
+        } else if (lower.includes('note') || lower.includes('comment') || lower.includes('remark') || lower.includes('detail') || lower.includes('info')) {
+          // Map ALL notes-like columns to additional_info (they will be combined)
           mapping[header] = 'additional_info';
         } else {
           mapping[header] = 'skip';
