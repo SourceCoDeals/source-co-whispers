@@ -14,6 +14,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PassReasonDialog } from "@/components/PassReasonDialog";
 import { BuyerQueryChat } from "@/components/BuyerQueryChat";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 interface CategoryScore {
   score: number;
@@ -57,6 +58,8 @@ export default function DealMatching() {
   const [passDialogOpen, setPassDialogOpen] = useState(false);
   const [buyerToPass, setBuyerToPass] = useState<any>(null);
   const [dealAttractiveness, setDealAttractiveness] = useState<number>(50);
+  const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
+  const [buyerToRemove, setBuyerToRemove] = useState<any>(null);
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -300,11 +303,18 @@ export default function DealMatching() {
     });
   };
 
-  const handleRemoveFromDeal = async (buyer: any) => {
+  const openRemoveDialog = (buyer: any) => {
+    setBuyerToRemove(buyer);
+    setRemoveDialogOpen(true);
+  };
+
+  const confirmRemoveFromDeal = async () => {
+    if (!buyerToRemove) return;
+    
     const { error } = await supabase
       .from("buyer_deal_scores")
       .upsert({
-        buyer_id: buyer.id,
+        buyer_id: buyerToRemove.id,
         deal_id: id,
         hidden_from_deal: true,
         scored_at: new Date().toISOString()
@@ -312,28 +322,33 @@ export default function DealMatching() {
 
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
+      setBuyerToRemove(null);
+      setRemoveDialogOpen(false);
       return;
     }
 
     // Update local state
-    const existingIdx = scores.findIndex(s => s.buyer_id === buyer.id);
+    const existingIdx = scores.findIndex(s => s.buyer_id === buyerToRemove.id);
     if (existingIdx >= 0) {
       setScores(scores.map(s => 
-        s.buyer_id === buyer.id ? { ...s, hidden_from_deal: true } : s
+        s.buyer_id === buyerToRemove.id ? { ...s, hidden_from_deal: true } : s
       ));
     } else {
-      setScores([...scores, { buyer_id: buyer.id, deal_id: id, hidden_from_deal: true, scored_at: new Date().toISOString() }]);
+      setScores([...scores, { buyer_id: buyerToRemove.id, deal_id: id, hidden_from_deal: true, scored_at: new Date().toISOString() }]);
     }
 
     // Remove from selected if selected
     const newSelected = new Set(selected);
-    newSelected.delete(buyer.id);
+    newSelected.delete(buyerToRemove.id);
     setSelected(newSelected);
 
     toast({ 
       title: "Buyer removed from deal", 
-      description: `${buyer.platform_company_name || buyer.pe_firm_name} has been removed from this deal's match list` 
+      description: `${buyerToRemove.platform_company_name || buyerToRemove.pe_firm_name} has been removed from this deal's match list` 
     });
+
+    setBuyerToRemove(null);
+    setRemoveDialogOpen(false);
   };
 
   const getHQ = (buyer: any) => {
@@ -763,9 +778,8 @@ export default function DealMatching() {
                 {showRemoveButton && (
                   <Button 
                     variant="outline" 
-                    size="sm" 
-                    className="h-7 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/30 hover:bg-destructive/10 mt-1"
-                    onClick={(e) => { e.stopPropagation(); handleRemoveFromDeal(buyer); }}
+                    className="text-muted-foreground hover:text-destructive hover:border-destructive/30 hover:bg-destructive/10 mt-1"
+                    onClick={(e) => { e.stopPropagation(); openRemoveDialog(buyer); }}
                   >
                     Not A Fit
                   </Button>
@@ -937,6 +951,24 @@ export default function DealMatching() {
           dealName={deal?.deal_name || ""}
           onConfirm={handleMarkAsPassed}
         />
+
+        {/* Remove Confirmation Dialog */}
+        <AlertDialog open={removeDialogOpen} onOpenChange={setRemoveDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove Buyer from Deal?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to mark <strong>{buyerToRemove?.platform_company_name || buyerToRemove?.pe_firm_name}</strong> as not a fit for this deal? They will be hidden from this deal's match list.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmRemoveFromDeal}>
+                Confirm
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
       
       {/* AI Query Chat */}
