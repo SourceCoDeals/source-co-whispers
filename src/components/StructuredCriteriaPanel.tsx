@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { DollarSign, MapPin, Briefcase, Users, Building2, Target, TrendingUp, Store, Landmark, MapPinned, Ruler, Ban, Lightbulb } from "lucide-react";
+import { DollarSign, MapPin, Briefcase, Users, Building2, Target, TrendingUp, Store, Landmark, MapPinned, Ruler, Ban, Lightbulb, BarChart3, Calculator } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SizeCriteria {
@@ -7,6 +7,16 @@ interface SizeCriteria {
   max_revenue?: string;
   min_ebitda?: string;
   max_ebitda?: string;
+  // Valuation Multiples (NEW)
+  ebitda_multiple_min?: string;
+  ebitda_multiple_max?: string;
+  revenue_multiple_min?: string;
+  revenue_multiple_max?: string;
+  // Per-Location Metrics (NEW)
+  min_revenue_per_location?: string;
+  max_revenue_per_location?: string;
+  min_sqft_per_location?: string;
+  // Existing
   employee_count?: string;
   location_count?: string;
   sqft_requirements?: string;
@@ -40,6 +50,8 @@ interface BuyerType {
   min_revenue_per_location?: string;
   min_ebitda?: string;
   max_ebitda?: string;
+  ebitda_multiple_min?: string;
+  ebitda_multiple_max?: string;
   min_sqft_per_location?: string;
   geographic_scope?: string;
   geographic_rules?: string;
@@ -127,10 +139,15 @@ function BuyerTypeCard({ buyerType, index }: { buyerType: BuyerType; index: numb
   
   const Icon = getTypeIcon(buyerType.type_name);
   
-  // Combine EBITDA range
+  // Combine EBITDA range (dollar amounts)
   const ebitdaRange = buyerType.min_ebitda && buyerType.max_ebitda 
     ? `${buyerType.min_ebitda} - ${buyerType.max_ebitda}`
     : buyerType.min_ebitda || buyerType.max_ebitda;
+  
+  // Combine EBITDA multiple range (valuation)
+  const ebitdaMultipleRange = buyerType.ebitda_multiple_min && buyerType.ebitda_multiple_max
+    ? `${buyerType.ebitda_multiple_min} - ${buyerType.ebitda_multiple_max}`
+    : buyerType.ebitda_multiple_min || buyerType.ebitda_multiple_max;
     
   // Combine location range
   const locationRange = buyerType.min_locations && buyerType.max_locations
@@ -178,6 +195,7 @@ function BuyerTypeCard({ buyerType, index }: { buyerType: BuyerType; index: numb
         <MetricChip icon={MapPinned} label="Locations" value={locationRange} />
         <MetricChip icon={DollarSign} label="Rev/Loc" value={buyerType.min_revenue_per_location} />
         <MetricChip icon={TrendingUp} label="EBITDA" value={ebitdaRange} />
+        <MetricChip icon={Calculator} label="Multiple" value={ebitdaMultipleRange} />
         <MetricChip icon={Ruler} label="Sq Ft" value={buyerType.min_sqft_per_location} />
         <MetricChip icon={MapPin} label="Scope" value={buyerType.geographic_scope} />
       </div>
@@ -277,7 +295,11 @@ function isSizeEmpty(criteria?: SizeCriteria | null): boolean {
   if (!criteria) return true;
   return !criteria.min_revenue && !criteria.max_revenue && !criteria.min_ebitda && 
          !criteria.max_ebitda && !criteria.employee_count && !criteria.location_count && 
-         !criteria.sqft_requirements && (!criteria.other || criteria.other.length === 0);
+         !criteria.sqft_requirements && (!criteria.other || criteria.other.length === 0) &&
+         !criteria.ebitda_multiple_min && !criteria.ebitda_multiple_max &&
+         !criteria.revenue_multiple_min && !criteria.revenue_multiple_max &&
+         !criteria.min_revenue_per_location && !criteria.max_revenue_per_location &&
+         !criteria.min_sqft_per_location;
 }
 
 function isServiceEmpty(criteria?: ServiceCriteria | null): boolean {
@@ -303,6 +325,14 @@ function isBuyerTypesEmpty(criteria?: BuyerTypesCriteria | null): boolean {
   return !criteria.buyer_types || criteria.buyer_types.length === 0;
 }
 
+// Helper to format valuation multiple range
+function formatMultipleRange(min?: string, max?: string): string | null {
+  if (min && max) return `${min} - ${max}`;
+  if (min) return `${min}+`;
+  if (max) return `up to ${max}`;
+  return null;
+}
+
 export function StructuredCriteriaPanel({ 
   sizeCriteria, 
   serviceCriteria, 
@@ -323,6 +353,12 @@ export function StructuredCriteriaPanel({
   const sortedBuyerTypes = [...(buyerTypesCriteria?.buyer_types || [])].sort((a, b) => 
     (a.priority_order || 99) - (b.priority_order || 99)
   );
+
+  // Check if we have valuation multiples or per-location metrics
+  const hasValuationMultiples = sizeCriteria?.ebitda_multiple_min || sizeCriteria?.ebitda_multiple_max ||
+                                  sizeCriteria?.revenue_multiple_min || sizeCriteria?.revenue_multiple_max;
+  const hasPerLocationMetrics = sizeCriteria?.min_revenue_per_location || sizeCriteria?.max_revenue_per_location ||
+                                  sizeCriteria?.min_sqft_per_location;
 
   return (
     <div className="space-y-6 mt-4">
@@ -353,13 +389,37 @@ export function StructuredCriteriaPanel({
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <CriteriaCard title="Size Criteria" icon={DollarSign} isEmpty={isSizeEmpty(sizeCriteria)}>
+              {/* Financial Thresholds (Dollar Amounts) */}
               <CriteriaRow label="Min Revenue" value={sizeCriteria?.min_revenue} />
               <CriteriaRow label="Max Revenue" value={sizeCriteria?.max_revenue} />
               <CriteriaRow label="Min EBITDA" value={sizeCriteria?.min_ebitda} />
               <CriteriaRow label="Max EBITDA" value={sizeCriteria?.max_ebitda} />
+              
+              {/* Valuation Multiples Section */}
+              {hasValuationMultiples && (
+                <div className="pt-2 mt-2 border-t border-border/50">
+                  <span className="text-xs font-medium text-primary flex items-center gap-1 mb-1">
+                    <BarChart3 className="w-3 h-3" /> Valuation Multiples
+                  </span>
+                  <CriteriaRow label="EBITDA Multiple" value={formatMultipleRange(sizeCriteria?.ebitda_multiple_min, sizeCriteria?.ebitda_multiple_max)} />
+                  <CriteriaRow label="Revenue Multiple" value={formatMultipleRange(sizeCriteria?.revenue_multiple_min, sizeCriteria?.revenue_multiple_max)} />
+                </div>
+              )}
+              
+              {/* Per-Location Metrics Section */}
+              {hasPerLocationMetrics && (
+                <div className="pt-2 mt-2 border-t border-border/50">
+                  <span className="text-xs font-medium text-primary flex items-center gap-1 mb-1">
+                    <Store className="w-3 h-3" /> Per-Location
+                  </span>
+                  <CriteriaRow label="Rev/Location" value={sizeCriteria?.min_revenue_per_location || sizeCriteria?.max_revenue_per_location} />
+                  <CriteriaRow label="Sq Ft/Location" value={sizeCriteria?.min_sqft_per_location} />
+                </div>
+              )}
+              
               <CriteriaRow label="Employees" value={sizeCriteria?.employee_count} />
               <CriteriaRow label="Locations" value={sizeCriteria?.location_count} />
-              <CriteriaRow label="Sq Ft" value={sizeCriteria?.sqft_requirements} />
+              <CriteriaRow label="Total Sq Ft" value={sizeCriteria?.sqft_requirements} />
               <CriteriaBadges label="Other" items={sizeCriteria?.other} />
             </CriteriaCard>
 

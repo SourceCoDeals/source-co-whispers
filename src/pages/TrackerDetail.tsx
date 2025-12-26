@@ -729,8 +729,24 @@ export default function TrackerDetail() {
       if (sc.max_revenue) parts.push(`Max Revenue: ${sc.max_revenue}`);
       if (sc.min_ebitda) parts.push(`Min EBITDA: ${sc.min_ebitda}`);
       if (sc.max_ebitda) parts.push(`Max EBITDA: ${sc.max_ebitda}`);
+      // NEW: Valuation multiples
+      if (sc.ebitda_multiple_min || sc.ebitda_multiple_max) {
+        const range = sc.ebitda_multiple_min && sc.ebitda_multiple_max 
+          ? `${sc.ebitda_multiple_min} - ${sc.ebitda_multiple_max}`
+          : sc.ebitda_multiple_min || sc.ebitda_multiple_max;
+        parts.push(`EBITDA Multiple: ${range}`);
+      }
+      if (sc.revenue_multiple_min || sc.revenue_multiple_max) {
+        const range = sc.revenue_multiple_min && sc.revenue_multiple_max 
+          ? `${sc.revenue_multiple_min} - ${sc.revenue_multiple_max}`
+          : sc.revenue_multiple_min || sc.revenue_multiple_max;
+        parts.push(`Revenue Multiple: ${range}`);
+      }
+      // NEW: Per-location metrics
+      if (sc.min_revenue_per_location) parts.push(`Revenue/Location: ${sc.min_revenue_per_location}`);
+      if (sc.min_sqft_per_location) parts.push(`Sq Ft/Location: ${sc.min_sqft_per_location}`);
       if (sc.location_count) parts.push(`Locations: ${sc.location_count}`);
-      if (sc.min_square_footage) parts.push(`Min Square Footage: ${sc.min_square_footage}`);
+      if (sc.sqft_requirements) parts.push(`Total Sq Ft: ${sc.sqft_requirements}`);
       if (sc.other?.length) parts.push(`Other: ${sc.other.join(', ')}`);
       sizeText = parts.join('\n');
     }
@@ -803,6 +819,8 @@ export default function TrackerDetail() {
 
   const saveFitCriteria = async () => {
     setIsSavingFitCriteria(true);
+    
+    // 1. Save text fields immediately
     const { error } = await supabase
       .from("industry_trackers")
       .update({ 
@@ -816,8 +834,51 @@ export default function TrackerDetail() {
     
     if (error) {
       toast({ title: "Error", description: "Failed to save fit criteria", variant: "destructive" });
-    } else {
-      toast({ title: "Fit criteria updated" });
+      setIsSavingFitCriteria(false);
+      return;
+    }
+
+    // 2. Auto-parse text to JSONB for structured display
+    const criteriaText = `Size Criteria: ${editedSizeCriteria}\n\nService/Product Criteria: ${editedServiceCriteria}\n\nGeography Criteria: ${editedGeographyCriteria}\n\nBuyer Types: ${editedBuyerTypesCriteria}`;
+    
+    try {
+      const { data: parsedData } = await supabase.functions.invoke('parse-fit-criteria', {
+        body: { fit_criteria: criteriaText }
+      });
+
+      if (parsedData?.success) {
+        await supabase
+          .from("industry_trackers")
+          .update({
+            size_criteria: parsedData.size_criteria,
+            service_criteria: parsedData.service_criteria,
+            geography_criteria: parsedData.geography_criteria,
+            buyer_types_criteria: parsedData.buyer_types_criteria,
+          })
+          .eq("id", id);
+        
+        setTracker({ 
+          ...tracker, 
+          fit_criteria_size: editedSizeCriteria,
+          fit_criteria_service: editedServiceCriteria,
+          fit_criteria_geography: editedGeographyCriteria,
+          fit_criteria_buyer_types: editedBuyerTypesCriteria,
+          size_criteria: parsedData.size_criteria,
+          service_criteria: parsedData.service_criteria,
+          geography_criteria: parsedData.geography_criteria,
+          buyer_types_criteria: parsedData.buyer_types_criteria
+        });
+      } else {
+        setTracker({ 
+          ...tracker, 
+          fit_criteria_size: editedSizeCriteria,
+          fit_criteria_service: editedServiceCriteria,
+          fit_criteria_geography: editedGeographyCriteria,
+          fit_criteria_buyer_types: editedBuyerTypesCriteria
+        });
+      }
+    } catch {
+      // Parsing failed but text was saved
       setTracker({ 
         ...tracker, 
         fit_criteria_size: editedSizeCriteria,
@@ -825,8 +886,10 @@ export default function TrackerDetail() {
         fit_criteria_geography: editedGeographyCriteria,
         fit_criteria_buyer_types: editedBuyerTypesCriteria
       });
-      setIsEditingFitCriteria(false);
     }
+    
+    toast({ title: "Fit criteria updated" });
+    setIsEditingFitCriteria(false);
     setIsSavingFitCriteria(false);
   };
 

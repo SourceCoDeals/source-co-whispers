@@ -118,6 +118,11 @@ serve(async (req) => {
 
     console.log(`Processing ${documents.length} documents for tracker ${tracker_id}`);
 
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) {
+      throw new Error('LOVABLE_API_KEY is not configured');
+    }
+
     // Download and parse each document
     const documentContents: string[] = [];
     
@@ -171,20 +176,16 @@ serve(async (req) => {
         continue;
       }
 
-      // For PDFs and other binary documents, use OpenAI with image_url
+      // For PDFs and other binary documents, use AI vision to extract text
       try {
-        const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-        if (!OPENAI_API_KEY) {
-          throw new Error('OPENAI_API_KEY is not configured');
-        }
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${OPENAI_API_KEY}`,
+            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: 'google/gemini-2.5-flash',
             messages: [
               {
                 role: 'user',
@@ -246,25 +247,43 @@ serve(async (req) => {
     const fullContent = combinedContent + existingCriteria;
 
     // Now send to AI to extract structured buyer fit criteria
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-    if (!OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY is not configured');
-    }
-
     console.log('Sending to AI for structured extraction...');
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'google/gemini-2.5-flash',
         messages: [
           {
             role: 'system',
             content: `You are an expert M&A analyst who extracts buyer fit criteria from business documents. Your job is to extract EVERY distinct buyer segment/type mentioned.
+
+⚠️ UNIVERSAL EXTRACTION GUIDE - CRITICAL SEMANTIC DISTINCTIONS ⚠️
+
+VALUATION MULTIPLES vs DOLLAR AMOUNTS:
+✅ "3x-12x EBITDA" = VALUATION MULTIPLE (for what buyers pay for deals)
+   → Use: ebitda_multiple_min: "3x", ebitda_multiple_max: "12x"
+✅ "1x-2x revenue" = REVENUE MULTIPLE
+   → Use: revenue_multiple_min: "1x", revenue_multiple_max: "2x"
+   
+❌ NEVER put multiples in min_ebitda/max_ebitda - those are for DOLLAR AMOUNTS ONLY!
+   
+✅ "$2M-$10M EBITDA" = DOLLAR AMOUNT (buyer's current EBITDA)
+   → Use: min_ebitda: "$2M", max_ebitda: "$10M"
+✅ "$5M+ revenue" = DOLLAR AMOUNT
+   → Use: min_revenue: "$5M"
+
+PER-LOCATION vs TOTAL METRICS:
+✅ "$2M+ revenue per location" or "$2M per store"
+   → Use: min_revenue_per_location: "$2M"
+✅ "7,500 sq ft per location"
+   → Use: min_sqft_per_location: "7,500 sq ft"
+   
+❌ These are DIFFERENT from total company metrics!
 
 CRITICAL INSTRUCTIONS:
 1. Identify ALL buyer types/segments mentioned - there may be 2-6+ different buyer categories
@@ -299,10 +318,17 @@ Look for these key data points:
                   size_criteria: {
                     type: 'object',
                     properties: {
-                      min_revenue: { type: 'string' },
-                      max_revenue: { type: 'string' },
-                      min_ebitda: { type: 'string' },
-                      max_ebitda: { type: 'string' },
+                      min_revenue: { type: 'string', description: 'Minimum revenue in dollars' },
+                      max_revenue: { type: 'string', description: 'Maximum revenue in dollars' },
+                      min_ebitda: { type: 'string', description: 'Minimum EBITDA in dollars (NOT multiples!)' },
+                      max_ebitda: { type: 'string', description: 'Maximum EBITDA in dollars (NOT multiples!)' },
+                      ebitda_multiple_min: { type: 'string', description: 'Min EBITDA valuation multiple (e.g., "3x")' },
+                      ebitda_multiple_max: { type: 'string', description: 'Max EBITDA valuation multiple (e.g., "12x")' },
+                      revenue_multiple_min: { type: 'string', description: 'Min revenue multiple (e.g., "1x")' },
+                      revenue_multiple_max: { type: 'string', description: 'Max revenue multiple (e.g., "2x")' },
+                      min_revenue_per_location: { type: 'string', description: 'Min revenue per location' },
+                      max_revenue_per_location: { type: 'string', description: 'Max revenue per location' },
+                      min_sqft_per_location: { type: 'string', description: 'Min sq ft per location' },
                       employee_count: { type: 'string' },
                       location_count: { type: 'string' },
                       sqft_requirements: { type: 'string' },
@@ -346,8 +372,10 @@ Look for these key data points:
                             min_locations: { type: 'string' },
                             max_locations: { type: 'string' },
                             min_revenue_per_location: { type: 'string' },
-                            min_ebitda: { type: 'string' },
-                            max_ebitda: { type: 'string' },
+                            min_ebitda: { type: 'string', description: 'EBITDA in dollars' },
+                            max_ebitda: { type: 'string', description: 'EBITDA in dollars' },
+                            ebitda_multiple_min: { type: 'string', description: 'Valuation multiple (e.g., "3x")' },
+                            ebitda_multiple_max: { type: 'string', description: 'Valuation multiple (e.g., "8x")' },
                             min_sqft_per_location: { type: 'string' },
                             geographic_scope: { type: 'string' },
                             geographic_rules: { type: 'string' },
