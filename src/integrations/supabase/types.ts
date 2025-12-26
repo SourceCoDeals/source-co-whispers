@@ -743,6 +743,7 @@ export type Database = {
           growth_trajectory: string | null
           headquarters: string | null
           id: string
+          industry_kpis: Json | null
           industry_type: string | null
           key_risks: string[] | null
           last_enriched_at: string | null
@@ -795,6 +796,7 @@ export type Database = {
           growth_trajectory?: string | null
           headquarters?: string | null
           id?: string
+          industry_kpis?: Json | null
           industry_type?: string | null
           key_risks?: string[] | null
           last_enriched_at?: string | null
@@ -847,6 +849,7 @@ export type Database = {
           growth_trajectory?: string | null
           headquarters?: string | null
           id?: string
+          industry_kpis?: Json | null
           industry_type?: string | null
           key_risks?: string[] | null
           last_enriched_at?: string | null
@@ -952,6 +955,8 @@ export type Database = {
           geography_weight: number
           id: string
           industry_name: string
+          industry_template: string | null
+          kpi_scoring_config: Json | null
           owner_goals_weight: number
           service_criteria: Json | null
           service_mix_weight: number
@@ -975,6 +980,8 @@ export type Database = {
           geography_weight?: number
           id?: string
           industry_name: string
+          industry_template?: string | null
+          kpi_scoring_config?: Json | null
           owner_goals_weight?: number
           service_criteria?: Json | null
           service_mix_weight?: number
@@ -998,6 +1005,8 @@ export type Database = {
           geography_weight?: number
           id?: string
           industry_name?: string
+          industry_template?: string | null
+          kpi_scoring_config?: Json | null
           owner_goals_weight?: number
           service_criteria?: Json | null
           service_mix_weight?: number
