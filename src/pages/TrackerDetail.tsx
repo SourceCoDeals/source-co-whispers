@@ -61,6 +61,7 @@ export default function TrackerDetail() {
   const [isSavingFitCriteria, setIsSavingFitCriteria] = useState(false);
   const [isParsingCriteria, setIsParsingCriteria] = useState(false);
   const [isAnalyzingDocuments, setIsAnalyzingDocuments] = useState(false);
+  const [showAnalysisConfirmDialog, setShowAnalysisConfirmDialog] = useState(false);
   const [isCriteriaCollapsed, setIsCriteriaCollapsed] = useState(true);
   const [isUploadingDocs, setIsUploadingDocs] = useState(false);
   const docFileInputRef = useRef<HTMLInputElement>(null);
@@ -957,13 +958,31 @@ export default function TrackerDetail() {
     }
   };
 
-  const analyzeDocuments = async () => {
+  const hasExistingCriteria = () => {
+    return tracker?.size_criteria || tracker?.service_criteria || 
+           tracker?.geography_criteria || tracker?.buyer_types_criteria ||
+           tracker?.fit_criteria_size || tracker?.fit_criteria_service ||
+           tracker?.fit_criteria_geography || tracker?.fit_criteria_buyer_types;
+  };
+
+  const handleAnalyzeDocuments = () => {
     const documents = tracker?.documents as { name: string; path: string; size: number }[] | null;
     if (!documents || documents.length === 0) {
       toast({ title: "No documents", description: "Upload documents first to analyze them", variant: "destructive" });
       return;
     }
 
+    // Check if existing criteria exists - show confirmation dialog
+    if (hasExistingCriteria()) {
+      setShowAnalysisConfirmDialog(true);
+      return;
+    }
+
+    performDocumentAnalysis();
+  };
+
+  const performDocumentAnalysis = async () => {
+    setShowAnalysisConfirmDialog(false);
     setIsAnalyzingDocuments(true);
     try {
       const { data, error } = await supabase.functions.invoke('parse-tracker-documents', {
@@ -1090,6 +1109,24 @@ export default function TrackerDetail() {
 
   return (
     <AppLayout>
+      {/* Document Analysis Confirmation Dialog */}
+      <AlertDialog open={showAnalysisConfirmDialog} onOpenChange={setShowAnalysisConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace existing criteria?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This tracker already has buyer fit criteria defined. Analyzing documents will replace the current structured criteria with new data extracted from the uploaded documents. Your original text criteria will be preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={performDocumentAnalysis}>
+              Replace & Analyze
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="space-y-6">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate("/trackers")}><ArrowLeft className="w-4 h-4" /></Button>
@@ -1371,7 +1408,7 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      onClick={analyzeDocuments}
+                      onClick={handleAnalyzeDocuments}
                       disabled={isAnalyzingDocuments}
                     >
                       {isAnalyzingDocuments ? (
