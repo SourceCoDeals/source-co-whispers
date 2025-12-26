@@ -13,7 +13,7 @@ import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Buildi
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
@@ -1061,48 +1061,66 @@ export default function TrackerDetail() {
             )}
           </div>
           
-          {!isCriteriaCollapsed && (isEditingFitCriteria ? (
-            <div className="mt-3 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Fit Criteria Edit Dialog */}
+          <Dialog open={isEditingFitCriteria} onOpenChange={(open) => !open && cancelEditingFitCriteria()}>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Info className="w-5 h-5 text-primary" />
+                  Edit Buyer Fit Criteria
+                </DialogTitle>
+                <DialogDescription>
+                  Define the criteria that will guide buyer matching for this tracker.
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
+                {/* Size Criteria */}
                 <div className="space-y-2">
-                  <Label className="text-xs font-medium flex items-center gap-1.5">
-                    <DollarSign className="w-3.5 h-3.5 text-primary" />
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-primary" />
                     Size Criteria
                   </Label>
                   <Textarea
                     value={editedSizeCriteria}
                     onChange={(e) => setEditedSizeCriteria(e.target.value)}
                     placeholder="Revenue thresholds, EBITDA ranges, employee count, location count, sq ft requirements..."
-                    className="min-h-[100px] text-sm"
+                    className="min-h-[180px] text-base resize-y"
                   />
                 </div>
+                
+                {/* Service/Product Mix */}
                 <div className="space-y-2">
-                  <Label className="text-xs font-medium flex items-center gap-1.5">
-                    <Briefcase className="w-3.5 h-3.5 text-primary" />
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <Briefcase className="w-4 h-4 text-primary" />
                     Service/Product Mix
                   </Label>
                   <Textarea
                     value={editedServiceCriteria}
                     onChange={(e) => setEditedServiceCriteria(e.target.value)}
                     placeholder="Required services, preferred capabilities, excluded services, business model preferences..."
-                    className="min-h-[100px] text-sm"
+                    className="min-h-[180px] text-base resize-y"
                   />
                 </div>
+                
+                {/* Geography */}
                 <div className="space-y-2">
-                  <Label className="text-xs font-medium flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-primary" />
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-primary" />
                     Geography
                   </Label>
                   <Textarea
                     value={editedGeographyCriteria}
                     onChange={(e) => setEditedGeographyCriteria(e.target.value)}
                     placeholder="Target regions, excluded areas, coverage type, HQ requirements..."
-                    className="min-h-[100px] text-sm"
+                    className="min-h-[180px] text-base resize-y"
                   />
                 </div>
+                
+                {/* Buyer Types */}
                 <div className="space-y-2">
-                  <Label className="text-xs font-medium flex items-center gap-1.5">
-                    <Target className="w-3.5 h-3.5 text-primary" />
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <Target className="w-4 h-4 text-primary" />
                     Buyer Types
                   </Label>
                   <Textarea
@@ -1113,34 +1131,36 @@ export default function TrackerDetail() {
 Regional MSOs: 6-50 locations, 7,500+ sq ft, $1.2M+/location...
 
 PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
-                    className="min-h-[100px] text-sm"
+                    className="min-h-[180px] text-base resize-y"
                   />
                 </div>
               </div>
-              <div className="flex items-center gap-2 justify-end">
-                <Button variant="ghost" size="sm" onClick={cancelEditingFitCriteria} disabled={isSavingFitCriteria || isParsingCriteria}>
-                  <X className="w-3.5 h-3.5 mr-1" />
+              
+              <DialogFooter className="flex-col sm:flex-row gap-2">
+                <Button variant="ghost" onClick={cancelEditingFitCriteria} disabled={isSavingFitCriteria || isParsingCriteria}>
                   Cancel
                 </Button>
-                <Button variant="outline" size="sm" onClick={parseFitCriteria} disabled={isParsingCriteria || isSavingFitCriteria}>
+                <Button variant="outline" onClick={parseFitCriteria} disabled={isParsingCriteria || isSavingFitCriteria}>
                   {isParsingCriteria ? (
-                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   ) : (
-                    <Wand2 className="w-3.5 h-3.5 mr-1" />
+                    <Wand2 className="w-4 h-4 mr-2" />
                   )}
                   Parse Criteria
                 </Button>
-                <Button size="sm" onClick={saveFitCriteria} disabled={isSavingFitCriteria || isParsingCriteria}>
+                <Button onClick={saveFitCriteria} disabled={isSavingFitCriteria || isParsingCriteria}>
                   {isSavingFitCriteria ? (
-                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   ) : (
-                    <Check className="w-3.5 h-3.5 mr-1" />
+                    <Check className="w-4 h-4 mr-2" />
                   )}
-                  Save
+                  Save Changes
                 </Button>
-              </div>
-            </div>
-          ) : (
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {!isCriteriaCollapsed && (
             <>
               {/* Show structured criteria if available */}
               {(tracker.size_criteria || tracker.service_criteria || tracker.geography_criteria || tracker.buyer_types_criteria) ? (
@@ -1241,7 +1261,7 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                 </p>
               )}
             </>
-          ))}
+          )}
           
           
           {/* Documents Section */}
