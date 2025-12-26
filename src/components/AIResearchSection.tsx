@@ -1,22 +1,12 @@
 import { useState, useRef, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, ChevronDown, ChevronRight, Check, ArrowRight, RotateCcw, FileText, DollarSign, MapPin, Users, Briefcase } from "lucide-react";
-
-interface ResearchQuestion {
-  id: string;
-  question: string;
-  hint?: string;
-  inputType: "text" | "textarea";
-}
+import { Loader2, Sparkles, ChevronDown, ChevronRight, Check, RotateCcw, DollarSign, MapPin, Users, Briefcase } from "lucide-react";
+import { Label } from "@/components/ui/label";
 
 interface ExtractedCriteria {
   sizeCriteria?: string;
@@ -36,13 +26,11 @@ interface AIResearchSectionProps {
   onGuideGenerated?: (guide: string, qaContext: Record<string, string>) => void;
 }
 
-type ResearchState = "idle" | "loading-questions" | "answering" | "generating" | "complete";
+type ResearchState = "idle" | "generating" | "complete";
 
 export function AIResearchSection({ industryName, onApply, onGuideGenerated }: AIResearchSectionProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [state, setState] = useState<ResearchState>("idle");
-  const [questions, setQuestions] = useState<ResearchQuestion[]>([]);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [guideContent, setGuideContent] = useState("");
   const [streamProgress, setStreamProgress] = useState(0);
   const [extractedCriteria, setExtractedCriteria] = useState<ExtractedCriteria | null>(null);
@@ -57,37 +45,12 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
     }
   }, [guideContent, state]);
 
-  const startResearch = async () => {
+  const generateGuide = async () => {
     if (!industryName.trim()) {
       toast({ title: "Missing industry", description: "Please enter an industry name first", variant: "destructive" });
       return;
     }
 
-    setState("loading-questions");
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-research-questions', {
-        body: { industryName }
-      });
-
-      if (error || !data?.success) {
-        throw new Error(error?.message || data?.error || 'Failed to generate questions');
-      }
-
-      setQuestions(data.questions);
-      setAnswers({});
-      setState("answering");
-    } catch (err) {
-      console.error('Question generation error:', err);
-      toast({ 
-        title: "Failed to start research", 
-        description: err instanceof Error ? err.message : "Unknown error",
-        variant: "destructive" 
-      });
-      setState("idle");
-    }
-  };
-
-  const generateGuide = async () => {
     setState("generating");
     setGuideContent("");
     setStreamProgress(0);
@@ -100,10 +63,7 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ 
-          industryName,
-          qaResponses: answers 
-        }),
+        body: JSON.stringify({ industryName }),
       });
 
       if (!response.ok) {
@@ -165,9 +125,9 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
         }
       }
 
-      // Notify parent of generated guide
+      // Notify parent of generated guide (empty qaContext since we removed Q&A)
       if (onGuideGenerated) {
-        onGuideGenerated(fullContent, answers);
+        onGuideGenerated(fullContent, {});
       }
 
       setState("complete");
@@ -179,7 +139,7 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
         description: err instanceof Error ? err.message : "Unknown error",
         variant: "destructive" 
       });
-      setState("answering");
+      setState("idle");
     }
   };
 
@@ -198,14 +158,11 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
 
   const reset = () => {
     setState("idle");
-    setQuestions([]);
-    setAnswers({});
     setGuideContent("");
     setExtractedCriteria(null);
     setStreamProgress(0);
+    setCurrentSection("");
   };
-
-  const answeredCount = Object.values(answers).filter(a => a.trim()).length;
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -241,77 +198,20 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
               <div className="text-center py-6">
                 <Sparkles className="w-10 h-10 text-primary mx-auto mb-3 opacity-50" />
                 <p className="text-sm text-muted-foreground mb-4">
-                  Generate an objective M&A industry guide with buyer types, valuation benchmarks, and fit criteria.
+                  Generate a comprehensive M&A guide with buyer types, valuation benchmarks, and fit criteria for{" "}
+                  <span className="font-medium text-foreground">{industryName || "this industry"}</span>.
                 </p>
                 <Button 
-                  onClick={startResearch} 
+                  onClick={generateGuide} 
                   disabled={!industryName.trim()}
                   className="gap-2"
                 >
                   <Sparkles className="w-4 h-4" />
-                  Start AI Research
+                  Generate M&A Guide
                 </Button>
                 {!industryName.trim() && (
                   <p className="text-xs text-muted-foreground mt-2">Enter an industry name above to begin</p>
                 )}
-              </div>
-            )}
-
-            {/* State: Loading Questions */}
-            {state === "loading-questions" && (
-              <div className="text-center py-8">
-                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-primary" />
-                <p className="text-sm text-muted-foreground">Generating industry-specific questions...</p>
-              </div>
-            )}
-
-            {/* State: Answering Questions */}
-            {state === "answering" && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Help us understand this industry</Label>
-                  <span className="text-xs text-muted-foreground">
-                    {answeredCount}/{questions.length} answered
-                  </span>
-                </div>
-
-                <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-                  {questions.map((q, i) => (
-                    <div key={q.id} className="space-y-1.5">
-                      <Label className="text-sm">
-                        {i + 1}. {q.question}
-                      </Label>
-                      {q.hint && (
-                        <p className="text-xs text-muted-foreground">{q.hint}</p>
-                      )}
-                      {q.inputType === "textarea" ? (
-                        <Textarea
-                          value={answers[q.id] || ""}
-                          onChange={(e) => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                          placeholder="Your answer..."
-                          className="min-h-[80px]"
-                        />
-                      ) : (
-                        <Input
-                          value={answers[q.id] || ""}
-                          onChange={(e) => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                          placeholder="Your answer..."
-                        />
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={reset} className="gap-1">
-                    <RotateCcw className="w-3 h-3" />
-                    Start Over
-                  </Button>
-                  <Button onClick={generateGuide} className="flex-1 gap-2">
-                    Generate M&A Guide
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </div>
               </div>
             )}
 
@@ -320,7 +220,10 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
               <div className="space-y-4">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Generating guide...</span>
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Generating guide...
+                    </span>
                     <span className="font-medium">{Math.round(streamProgress)}%</span>
                   </div>
                   <Progress value={streamProgress} className="h-2" />

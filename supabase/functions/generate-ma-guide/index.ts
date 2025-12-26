@@ -109,7 +109,7 @@ serve(async (req) => {
   }
 
   try {
-    const { industryName, qaResponses } = await req.json();
+    const { industryName } = await req.json();
 
     if (!industryName) {
       return new Response(
@@ -120,18 +120,7 @@ serve(async (req) => {
 
     console.log(`Generating M&A guide for: ${industryName}`);
 
-    // Build context from Q&A responses
-    let qaContext = "";
-    if (qaResponses && Object.keys(qaResponses).length > 0) {
-      qaContext = "\n\n## INDUSTRY CONTEXT FROM USER:\n";
-      for (const [questionId, answer] of Object.entries(qaResponses)) {
-        if (answer && typeof answer === 'string' && answer.trim()) {
-          qaContext += `- ${answer}\n`;
-        }
-      }
-    }
-
-    const userPrompt = `Generate a comprehensive M&A guide for the "${industryName}" industry.${qaContext}
+    const userPrompt = `Generate a comprehensive M&A guide for the "${industryName}" industry.
 
 Focus on practical, actionable intelligence for matching deals with buyers in this space. Be specific about valuation ranges, buyer types, and fit criteria.`;
 
