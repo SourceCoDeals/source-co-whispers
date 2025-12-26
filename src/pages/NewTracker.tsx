@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, Lightbulb, Upload, FileText, X } from "lucide-react";
+import { TrackerNotesSection } from "@/components/TrackerNotesSection";
 
 interface UploadedDoc {
   name: string;
@@ -155,6 +156,30 @@ export default function NewTracker() {
     }
   };
 
+  const handleApplyExtracted = (data: {
+    industryName?: string;
+    sizeCriteria: string;
+    serviceCriteria: string;
+    geographyCriteria: string;
+    buyerTypesCriteria: string;
+  }) => {
+    if (data.industryName && !name.trim()) {
+      setName(data.industryName);
+    }
+    if (data.sizeCriteria) {
+      setSizeCriteria(prev => prev ? `${prev}\n${data.sizeCriteria}` : data.sizeCriteria);
+    }
+    if (data.serviceCriteria) {
+      setServiceCriteria(prev => prev ? `${prev}\n${data.serviceCriteria}` : data.serviceCriteria);
+    }
+    if (data.geographyCriteria) {
+      setGeographyCriteria(prev => prev ? `${prev}\n${data.geographyCriteria}` : data.geographyCriteria);
+    }
+    if (data.buyerTypesCriteria) {
+      setBuyerTypesCriteria(prev => prev ? `${prev}\n${data.buyerTypesCriteria}` : data.buyerTypesCriteria);
+    }
+  };
+
   return (
     <AppLayout>
       <div className="max-w-2xl mx-auto">
@@ -165,6 +190,8 @@ export default function NewTracker() {
         <p className="text-muted-foreground mb-6">Define a new industry vertical and what matters most when matching buyers to deals.</p>
         
         <form onSubmit={handleSubmit} className="space-y-6">
+          <TrackerNotesSection onApply={handleApplyExtracted} />
+
           <div className="bg-card rounded-lg border p-6">
             <Label htmlFor="name">Industry Name</Label>
             <Input 
