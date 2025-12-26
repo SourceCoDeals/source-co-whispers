@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { CSVImport } from "@/components/CSVImport";
 import { DealCSVImport } from "@/components/DealCSVImport";
 import { StructuredCriteriaPanel } from "@/components/StructuredCriteriaPanel";
+import { KPIConfigPanel } from "@/components/KPIConfigPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload, TrendingUp, ArrowUp, ArrowDown, Filter } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -1452,6 +1453,32 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                   No documents uploaded. Add documents to analyze and extract criteria.
                 </p>
               )}
+            </div>
+          )}
+          
+          {/* KPI Configuration Section */}
+          {!isCriteriaCollapsed && (
+            <div className="mt-4 pt-4 border-t">
+              <KPIConfigPanel
+                config={tracker.kpi_scoring_config as any}
+                industryName={tracker.industry_name}
+                onChange={async (newConfig) => {
+                  const { error } = await supabase
+                    .from("industry_trackers")
+                    .update({ 
+                      kpi_scoring_config: newConfig as any,
+                      updated_at: new Date().toISOString() 
+                    })
+                    .eq("id", id);
+                  
+                  if (error) {
+                    toast({ title: "Error", description: "Failed to save KPI config", variant: "destructive" });
+                  } else {
+                    setTracker({ ...tracker, kpi_scoring_config: newConfig });
+                    toast({ title: "KPI config saved" });
+                  }
+                }}
+              />
             </div>
           )}
         </div>

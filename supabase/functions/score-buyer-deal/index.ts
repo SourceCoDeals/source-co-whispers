@@ -205,6 +205,33 @@ interface Tracker {
   service_mix_weight: number;
   size_weight: number;
   owner_goals_weight: number;
+  service_criteria: {
+    primary_focus?: string[];
+    excluded_services?: string[];
+    required_services?: string[];
+    preferred_services?: string[];
+  } | null;
+  size_criteria: {
+    min_revenue?: number;
+    max_revenue?: number;
+    min_ebitda?: number;
+    max_ebitda?: number;
+  } | null;
+  kpi_scoring_config: {
+    kpis?: Array<{
+      field_name: string;
+      display_name: string;
+      weight: number;
+      scoring_rules: {
+        ideal_range?: [number, number];
+        penalty_below?: number;
+        penalty_above?: number;
+        bonus_per_item?: number;
+        max_bonus?: number;
+        boolean_bonus?: number;
+      };
+    }>;
+  } | null;
 }
 
 interface CategoryScore {
@@ -743,23 +770,59 @@ function scoreGeographyCategory(
   };
 }
 
-// Score SERVICES category using keyword matching
-function scoreServicesCategory(deal: Deal, buyer: Buyer, industryName: string): CategoryScore {
+// Score SERVICES category using tracker-based criteria (industry-agnostic)
+function scoreServicesCategory(deal: Deal, buyer: Buyer, tracker: Tracker): CategoryScore {
   const dealServices = deal.service_mix?.toLowerCase() || "";
   const buyerServices = (buyer.services_offered || "").toLowerCase();
   const targetServices = (buyer.target_services || []).map(s => s.toLowerCase());
   const servicePrefs = (buyer.service_mix_prefs || "").toLowerCase();
   
-  // Check for industry/service exclusions
-  const exclusions = (buyer.industry_exclusions || []).map(e => e.toLowerCase());
+  // Get tracker-defined service criteria (industry-agnostic)
+  const trackerCriteria = tracker.service_criteria || {};
+  const primaryFocus = (trackerCriteria.primary_focus || []).map(s => s.toLowerCase());
+  const excludedServices = (trackerCriteria.excluded_services || []).map(s => s.toLowerCase());
+  
+  // Check for industry/service exclusions from both buyer AND tracker
+  const buyerExclusions = (buyer.industry_exclusions || []).map(e => e.toLowerCase());
   const dealIndustry = (deal.industry_type || "").toLowerCase();
   
-  if (exclusions.some(ex => dealIndustry.includes(ex) || dealServices.includes(ex))) {
+  // Check buyer exclusions
+  if (buyerExclusions.some(ex => dealIndustry.includes(ex) || dealServices.includes(ex))) {
     return {
       score: 0,
       reasoning: `Deal industry/services match buyer's exclusion criteria`,
       isDisqualified: true,
       disqualificationReason: `Industry exclusion match found`,
+      confidence: 'high'
+    };
+  }
+  
+  // Check tracker-level excluded services (off-focus penalty)
+  const matchesExcludedService = excludedServices.some(ex => dealServices.includes(ex));
+  
+  // Detect primary service using tracker's primary_focus keywords
+  let isPrimaryServiceOffFocus = false;
+  let detectedPrimaryService = "";
+  
+  if (primaryFocus.length > 0 && dealServices) {
+    // Check if any primary focus keyword appears in deal services
+    const hasPrimaryFocus = primaryFocus.some(focus => dealServices.includes(focus));
+    
+    // If deal mentions excluded services more prominently than primary focus, it's off-focus
+    if (matchesExcludedService && !hasPrimaryFocus) {
+      isPrimaryServiceOffFocus = true;
+      const matchedExclusion = excludedServices.find(ex => dealServices.includes(ex));
+      detectedPrimaryService = matchedExclusion || "off-focus service";
+    }
+  }
+  
+  // Apply off-focus penalty (similar to old towing penalty but now industry-agnostic)
+  if (isPrimaryServiceOffFocus) {
+    return {
+      score: 30,
+      reasoning: `Primary service appears to be ${detectedPrimaryService} (off-focus for this tracker). -20pt penalty applied.`,
+      isDisqualified: false,
+      disqualificationReason: null,
       confidence: 'high'
     };
   }
@@ -796,24 +859,37 @@ function scoreServicesCategory(deal: Deal, buyer: Buyer, industryName: string): 
   const matches = dealKeywords.filter(dk => buyerKeywords.has(dk));
   const overlapPercent = (matches.length / dealKeywords.length) * 100;
   
+  // Bonus for matching tracker's primary focus
+  let primaryFocusBonus = 0;
+  if (primaryFocus.length > 0) {
+    const hasPrimaryFocusMatch = primaryFocus.some(focus => dealServices.includes(focus));
+    if (hasPrimaryFocusMatch) {
+      primaryFocusBonus = 10;
+    }
+  }
+  
   let score = 50;
   let reasoning = "";
   
   if (overlapPercent >= 70) {
-    score = 90 + (overlapPercent - 70) / 3;
+    score = 90 + (overlapPercent - 70) / 3 + primaryFocusBonus;
     reasoning = `Strong service alignment (${Math.round(overlapPercent)}% overlap): ${matches.slice(0, 4).join(", ")}`;
   } else if (overlapPercent >= 40) {
-    score = 70 + (overlapPercent - 40);
+    score = 70 + (overlapPercent - 40) + primaryFocusBonus;
     reasoning = `Good service alignment (${Math.round(overlapPercent)}% overlap): ${matches.slice(0, 3).join(", ")}`;
   } else if (overlapPercent >= 20) {
-    score = 50 + overlapPercent;
+    score = 50 + overlapPercent + primaryFocusBonus;
     reasoning = `Partial service overlap (${Math.round(overlapPercent)}%): ${matches.join(", ")}. May be complementary.`;
   } else if (matches.length > 0) {
-    score = 40;
+    score = 40 + primaryFocusBonus;
     reasoning = `Limited service overlap: ${matches.join(", ")}. Consider as add-on opportunity.`;
   } else {
     score = 25;
     reasoning = `No direct service overlap. Deal: ${dealKeywords.slice(0, 3).join(", ")}. Buyer focuses on: ${Array.from(buyerKeywords).slice(0, 3).join(", ")}`;
+  }
+  
+  if (primaryFocusBonus > 0) {
+    reasoning += ` +${primaryFocusBonus}pt primary focus bonus.`;
   }
   
   return {
@@ -823,6 +899,68 @@ function scoreServicesCategory(deal: Deal, buyer: Buyer, industryName: string): 
     disqualificationReason: null,
     confidence: overlapPercent > 0 ? 'high' : 'medium'
   };
+}
+
+// Calculate KPI bonus points based on tracker's kpi_scoring_config
+function calculateKPIBonus(deal: any, tracker: Tracker): { bonus: number; breakdown: string[] } {
+  const kpiConfig = tracker.kpi_scoring_config;
+  const dealKPIs = deal.industry_kpis || {};
+  
+  if (!kpiConfig?.kpis || kpiConfig.kpis.length === 0) {
+    return { bonus: 0, breakdown: [] };
+  }
+  
+  let totalBonus = 0;
+  const breakdown: string[] = [];
+  
+  for (const kpi of kpiConfig.kpis) {
+    const value = dealKPIs[kpi.field_name];
+    
+    // Skip if no data for this KPI (no penalty for missing data)
+    if (value === undefined || value === null) {
+      continue;
+    }
+    
+    const rules = kpi.scoring_rules || {};
+    let kpiBonus = 0;
+    
+    // Handle range-based scoring
+    if (rules.ideal_range && typeof value === 'number') {
+      const [min, max] = rules.ideal_range;
+      if (value >= min && value <= max) {
+        kpiBonus = kpi.weight;
+        breakdown.push(`${kpi.display_name}: +${kpiBonus}pt (${value} in ideal range)`);
+      } else if (value < min && rules.penalty_below !== undefined) {
+        // Below ideal range
+        const penaltyPercent = Math.min(1, (min - value) / min);
+        kpiBonus = Math.max(0, kpi.weight * (1 - penaltyPercent));
+        breakdown.push(`${kpi.display_name}: +${Math.round(kpiBonus)}pt (${value} below ideal)`);
+      } else if (value > max && rules.penalty_above !== undefined) {
+        // Above ideal range
+        kpiBonus = Math.max(0, kpi.weight * 0.5);
+        breakdown.push(`${kpi.display_name}: +${Math.round(kpiBonus)}pt (${value} above ideal)`);
+      }
+    }
+    
+    // Handle per-item bonus (for arrays like certifications)
+    if (rules.bonus_per_item && Array.isArray(value)) {
+      const maxBonus = rules.max_bonus || kpi.weight;
+      kpiBonus = Math.min(maxBonus, value.length * rules.bonus_per_item);
+      if (kpiBonus > 0) {
+        breakdown.push(`${kpi.display_name}: +${Math.round(kpiBonus)}pt (${value.length} items)`);
+      }
+    }
+    
+    // Handle boolean bonus
+    if (rules.boolean_bonus && value === true) {
+      kpiBonus = rules.boolean_bonus;
+      breakdown.push(`${kpi.display_name}: +${kpiBonus}pt`);
+    }
+    
+    totalBonus += kpiBonus;
+  }
+  
+  return { bonus: Math.round(totalBonus), breakdown };
 }
 
 // Extract service keywords for matching
@@ -1143,10 +1281,10 @@ serve(async (req) => {
 
     console.log(`Scoring deal ${dealId}...`);
 
-    // Fetch deal with tracker
+    // Fetch deal with tracker (including new service_criteria and kpi_scoring_config)
     const { data: deal, error: dealError } = await supabase
       .from("deals")
-      .select("*, industry_trackers!inner(id, industry_name, fit_criteria, geography_weight, service_mix_weight, size_weight, owner_goals_weight)")
+      .select("*, industry_trackers!inner(id, industry_name, fit_criteria, geography_weight, service_mix_weight, size_weight, owner_goals_weight, service_criteria, size_criteria, kpi_scoring_config)")
       .eq("id", dealId)
       .single();
 
@@ -1226,9 +1364,12 @@ serve(async (req) => {
       
       const sizeScore = scoreSizeCategory(deal as Deal, buyer as Buyer);
       const geographyScore = scoreGeographyCategory(deal as Deal, buyer as Buyer, dealAttractiveness, engagementSignals);
-      const servicesScore = scoreServicesCategory(deal as Deal, buyer as Buyer, tracker.industry_name);
+      const servicesScore = scoreServicesCategory(deal as Deal, buyer as Buyer, tracker);
       const ownerGoalsScore = scoreOwnerGoalsCategory(deal as Deal, buyer as Buyer);
       const thesisBonus = calculateThesisBonus(buyer as Buyer);
+      
+      // NEW: Calculate KPI bonus from tracker configuration
+      const kpiResult = calculateKPIBonus(deal, tracker);
       
       // NEW: Calculate engagement bonus (up to 15 points)
       const engagementBonus = Math.min(15, engagementSignals.engagementScore * 0.15);
@@ -1256,7 +1397,8 @@ serve(async (req) => {
         (servicesScore.score * weights.services) +
         (ownerGoalsScore.score * weights.ownerGoals) +
         (thesisBonus * 0.3) + // Thesis bonus adds up to 9 points
-        engagementBonus // Engagement bonus adds up to 15 points
+        engagementBonus + // Engagement bonus adds up to 15 points
+        kpiResult.bonus // KPI bonus from industry-specific data
       );
       
       // Apply size multiplier - this is the key mechanism for making size a gating factor
