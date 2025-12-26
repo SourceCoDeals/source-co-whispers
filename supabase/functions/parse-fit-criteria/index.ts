@@ -46,25 +46,48 @@ serve(async (req) => {
       );
     }
 
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-    if (!OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY is not configured');
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) {
+      throw new Error('LOVABLE_API_KEY is not configured');
     }
 
     console.log('Parsing fit criteria:', fit_criteria.substring(0, 100) + '...');
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'google/gemini-2.5-flash',
         messages: [
           {
             role: 'system',
             content: `You are an expert M&A analyst who parses buyer fit criteria into structured data. Your job is to extract EVERY distinct buyer segment/type mentioned in the text.
+
+⚠️ UNIVERSAL EXTRACTION GUIDE - CRITICAL SEMANTIC DISTINCTIONS ⚠️
+
+VALUATION MULTIPLES vs DOLLAR AMOUNTS:
+✅ "3x-12x EBITDA" = VALUATION MULTIPLE (for what buyers pay for deals)
+   → Use: ebitda_multiple_min: "3x", ebitda_multiple_max: "12x"
+✅ "1x-2x revenue" = REVENUE MULTIPLE
+   → Use: revenue_multiple_min: "1x", revenue_multiple_max: "2x"
+   
+❌ NEVER put multiples in min_ebitda/max_ebitda - those are for DOLLAR AMOUNTS ONLY!
+   
+✅ "$2M-$10M EBITDA" = DOLLAR AMOUNT (buyer's current EBITDA)
+   → Use: min_ebitda: "$2M", max_ebitda: "$10M"
+✅ "$5M+ revenue" = DOLLAR AMOUNT
+   → Use: min_revenue: "$5M"
+
+PER-LOCATION vs TOTAL METRICS:
+✅ "$2M+ revenue per location" or "$2M per store"
+   → Use: min_revenue_per_location: "$2M"
+✅ "7,500 sq ft per location"
+   → Use: min_sqft_per_location: "7,500 sq ft"
+   
+❌ These are DIFFERENT from total company metrics!
 
 CRITICAL INSTRUCTIONS:
 1. Identify ALL buyer types/segments mentioned - there may be 2-6+ different buyer categories
@@ -104,13 +127,20 @@ For each buyer type, extract ALL of these if mentioned:
                     type: 'object',
                     description: 'Size-related requirements',
                     properties: {
-                      min_revenue: { type: 'string', description: 'Minimum revenue threshold (e.g., "$5M+")' },
-                      max_revenue: { type: 'string', description: 'Maximum revenue threshold' },
-                      min_ebitda: { type: 'string', description: 'Minimum EBITDA threshold' },
-                      max_ebitda: { type: 'string', description: 'Maximum EBITDA threshold' },
+                      min_revenue: { type: 'string', description: 'Minimum revenue threshold in dollars (e.g., "$5M+")' },
+                      max_revenue: { type: 'string', description: 'Maximum revenue threshold in dollars' },
+                      min_ebitda: { type: 'string', description: 'Minimum EBITDA threshold in dollars (NOT multiples!)' },
+                      max_ebitda: { type: 'string', description: 'Maximum EBITDA threshold in dollars (NOT multiples!)' },
+                      ebitda_multiple_min: { type: 'string', description: 'Minimum EBITDA valuation multiple (e.g., "3x", "4x")' },
+                      ebitda_multiple_max: { type: 'string', description: 'Maximum EBITDA valuation multiple (e.g., "8x", "12x")' },
+                      revenue_multiple_min: { type: 'string', description: 'Minimum revenue valuation multiple (e.g., "1x")' },
+                      revenue_multiple_max: { type: 'string', description: 'Maximum revenue valuation multiple (e.g., "2x")' },
+                      min_revenue_per_location: { type: 'string', description: 'Minimum revenue per location/store (e.g., "$2M per location")' },
+                      max_revenue_per_location: { type: 'string', description: 'Maximum revenue per location/store' },
+                      min_sqft_per_location: { type: 'string', description: 'Minimum square footage per location (e.g., "7,500 sq ft")' },
                       employee_count: { type: 'string', description: 'Employee count requirements' },
                       location_count: { type: 'string', description: 'Number of locations required' },
-                      sqft_requirements: { type: 'string', description: 'Square footage requirements' },
+                      sqft_requirements: { type: 'string', description: 'Total square footage requirements' },
                       other: { type: 'array', items: { type: 'string' }, description: 'Other size-related criteria' }
                     }
                   },
@@ -155,8 +185,10 @@ For each buyer type, extract ALL of these if mentioned:
                             min_locations: { type: 'string', description: 'Minimum locations required (e.g., "3+ locations", "6-50 locations")' },
                             max_locations: { type: 'string', description: 'Maximum locations if mentioned' },
                             min_revenue_per_location: { type: 'string', description: 'Revenue per location requirement (e.g., "$2M+ per location")' },
-                            min_ebitda: { type: 'string', description: 'Minimum EBITDA requirements (e.g., "$1.5M+")' },
-                            max_ebitda: { type: 'string', description: 'Maximum EBITDA if mentioned (e.g., "$3M")' },
+                            min_ebitda: { type: 'string', description: 'Minimum EBITDA requirements in dollars (e.g., "$1.5M+")' },
+                            max_ebitda: { type: 'string', description: 'Maximum EBITDA in dollars if mentioned (e.g., "$3M")' },
+                            ebitda_multiple_min: { type: 'string', description: 'Min EBITDA multiple for valuation (e.g., "3x")' },
+                            ebitda_multiple_max: { type: 'string', description: 'Max EBITDA multiple for valuation (e.g., "8x")' },
                             min_sqft_per_location: { type: 'string', description: 'Sq ft per location requirement (e.g., "7,500+ sq ft")' },
                             geographic_scope: { type: 'string', description: 'Geographic scope (e.g., "National", "Regional", "Adjacent regions only")' },
                             geographic_rules: { type: 'string', description: 'Specific geographic matching rules (e.g., "1 shop must be in exact footprint, 2-4 shops can be adjacent regions")' },
