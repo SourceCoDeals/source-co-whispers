@@ -7,20 +7,20 @@ const corsHeaders = {
 };
 
 /**
- * Deal Scoring Algorithm v5.0 - Prioritized Scoring
+ * Deal Scoring Algorithm v6.0 - Industry-Adaptive Scoring
  * 
  * Weight Distribution (100 points total):
  * - Size: 40 pts (TOP PRIORITY - gating factor)
- * - Service Alignment: 30 pts (Critical - primary service detection)
+ * - Service Alignment: 30 pts (Dynamic primary service detection from tracker criteria)
  * - Data Quality: 15 pts
- * - Geography: 10 pts (Much less important)
- * - Buyer Type Bonus: 5 pts (Bonus for fitting multiple buyer types)
+ * - Geography: 10 pts
+ * - Buyer Type Bonus: 5 pts
+ * - Industry KPI Bonus: Up to 15 pts (optional, based on tracker config)
  * 
- * Key Features:
- * - Primary service detection (towing vs collision)
- * - Severe penalties for off-focus primary services
- * - Size disqualification for deals way below minimums
- * - NO engagement signals
+ * Key v6.0 Features:
+ * - Dynamic primary service detection using tracker's service_criteria.primary_focus
+ * - Industry-agnostic - no hardcoded collision/towing logic
+ * - Optional KPI boost layer when tracker defines kpi_scoring_config
  */
 
 // ============= INTERFACES =============
@@ -43,9 +43,11 @@ interface DealData {
   real_estate: string | null;
   customer_concentration: string | null;
   company_overview: string | null;
+  industry_kpis: Record<string, any> | null;
 }
 
 interface TrackerCriteria {
+  industry_name: string;
   fit_criteria_size: string | null;
   fit_criteria_service: string | null;
   fit_criteria_geography: string | null;
@@ -53,6 +55,7 @@ interface TrackerCriteria {
   service_criteria: any;
   geography_criteria: any;
   buyer_types_criteria: any;
+  kpi_scoring_config: any;
   geography_weight: number;
   service_mix_weight: number;
   size_weight: number;
@@ -83,6 +86,8 @@ interface ScoreBreakdown {
   dataDetails: string;
   buyerTypeBonusScore: number;
   buyerTypeBonusDetails: string;
+  kpiBonusScore: number;
+  kpiBonusDetails: string;
   totalScore: number;
   scoringVersion: string;
   disqualified: boolean;
@@ -90,15 +95,15 @@ interface ScoreBreakdown {
   primaryService: string;
 }
 
-// ============= PRIMARY SERVICE DETECTION =============
+// ============= DYNAMIC PRIMARY SERVICE DETECTION =============
 
 /**
- * Detects whether the deal's PRIMARY business is collision repair or something else (like towing).
- * This is critical for accurate scoring - a company that primarily does towing should score 
- * much lower for a collision repair tracker.
+ * Detects the deal's PRIMARY business using tracker-defined focus keywords.
+ * This is industry-agnostic - uses service_criteria.primary_focus from tracker.
  */
-function detectPrimaryService(deal: DealData): {
-  primaryService: 'collision' | 'towing' | 'mechanical' | 'other';
+function detectPrimaryService(deal: DealData, serviceCriteria: any): {
+  primaryService: string;
+  isOnFocus: boolean;
   confidence: 'high' | 'medium' | 'low';
   reasoning: string;
 } {
@@ -110,100 +115,80 @@ function detectPrimaryService(deal: DealData): {
   ].join(' ').toLowerCase();
   
   if (allText.trim().length < 5) {
-    return { primaryService: 'other', confidence: 'low', reasoning: 'Insufficient data' };
+    return { primaryService: 'unknown', isOnFocus: false, confidence: 'low', reasoning: 'Insufficient data' };
   }
   
-  // 1. Asset count analysis - tow trucks strongly indicate towing business
-  const towTruckMatch = allText.match(/(\d+)\s*(?:tow\s*trucks?|flatbed|flatbeds|wreckers?)/i);
-  const towTruckCount = towTruckMatch ? parseInt(towTruckMatch[1]) : 0;
+  // Get focus and exclusion keywords from tracker's service criteria
+  const primaryFocusKeywords: string[] = (serviceCriteria?.primary_focus || []).map((s: string) => s.toLowerCase());
+  const excludedServices: string[] = (serviceCriteria?.excluded_services || []).map((s: string) => s.toLowerCase());
   
-  // 2. Position analysis - first mentioned service often indicates primary focus
-  const towingIndex = allText.indexOf('towing');
-  const collisionIndex = allText.indexOf('collision');
-  const bodyShopIndex = allText.indexOf('body shop');
-  const autoBodyIndex = allText.indexOf('auto body');
-  const paintIndex = allText.indexOf('paint');
+  // If no primary_focus defined, default to generic detection
+  if (primaryFocusKeywords.length === 0) {
+    return { primaryService: 'not-specified', isOnFocus: true, confidence: 'low', reasoning: 'No primary focus defined in tracker' };
+  }
   
-  // Find first collision-related mention
-  const collisionPositions = [collisionIndex, bodyShopIndex, autoBodyIndex, paintIndex]
-    .filter(p => p >= 0);
-  const firstCollisionMention = collisionPositions.length > 0 ? Math.min(...collisionPositions) : -1;
+  // Count mentions of focus vs exclusion keywords
+  let focusMentions = 0;
+  let focusMatches: string[] = [];
+  let exclusionMentions = 0;
+  let exclusionMatches: string[] = [];
   
-  // 3. Frequency analysis
-  const towingMentions = (allText.match(/towing|tow\s*truck|flatbed|wrecker/g) || []).length;
-  const collisionMentions = (allText.match(/collision|body\s*shop|auto\s*body|paint|refinish|drp|adas|calibration/g) || []).length;
-  
-  // 4. Deal name analysis - if "towing" is in the name, it's primary
+  // Check deal name first - strongest signal
   const dealNameLower = (deal.deal_name || '').toLowerCase();
-  if (dealNameLower.includes('towing') || dealNameLower.includes('tow')) {
-    return { 
-      primaryService: 'towing', 
-      confidence: 'high', 
-      reasoning: `"Towing" in deal name indicates primary business` 
-    };
-  }
   
-  // 5. Strong towing indicators
-  if (towTruckCount >= 5) {
-    return { 
-      primaryService: 'towing', 
-      confidence: 'high', 
-      reasoning: `${towTruckCount} tow trucks indicate towing is primary business` 
-    };
-  }
-  
-  // 6. If towing mentioned first AND more frequently than collision
-  if (towingIndex >= 0 && (firstCollisionMention === -1 || towingIndex < firstCollisionMention)) {
-    if (towingMentions >= collisionMentions) {
-      return { 
-        primaryService: 'towing', 
-        confidence: 'medium', 
-        reasoning: `Towing mentioned first (position ${towingIndex}) and ${towingMentions}x vs collision ${collisionMentions}x` 
-      };
+  for (const keyword of primaryFocusKeywords) {
+    if (dealNameLower.includes(keyword)) {
+      focusMentions += 3; // Strong weight for deal name
+      focusMatches.push(keyword);
+    }
+    // Count in full text
+    const regex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    const matches = (allText.match(regex) || []).length;
+    if (matches > 0) {
+      focusMentions += matches;
+      if (!focusMatches.includes(keyword)) focusMatches.push(keyword);
     }
   }
   
-  // 7. If collision clearly dominates
-  if (collisionMentions > towingMentions * 2) {
-    return { 
-      primaryService: 'collision', 
-      confidence: 'high', 
-      reasoning: `Collision services dominant (${collisionMentions} mentions vs ${towingMentions} towing)` 
+  for (const keyword of excludedServices) {
+    if (dealNameLower.includes(keyword)) {
+      exclusionMentions += 3; // Strong weight for deal name
+      exclusionMatches.push(keyword);
+    }
+    const regex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    const matches = (allText.match(regex) || []).length;
+    if (matches > 0) {
+      exclusionMentions += matches;
+      if (!exclusionMatches.includes(keyword)) exclusionMatches.push(keyword);
+    }
+  }
+  
+  // Determine if on-focus or off-focus
+  if (exclusionMentions > focusMentions * 1.5) {
+    // Exclusion keywords dominate - off-focus primary
+    return {
+      primaryService: exclusionMatches[0] || 'off-focus',
+      isOnFocus: false,
+      confidence: 'high',
+      reasoning: `Off-focus: "${exclusionMatches.join(', ')}" dominates (${exclusionMentions} vs ${focusMentions} focus mentions)`
     };
   }
   
-  // 8. If collision mentioned at all and towing not mentioned, it's collision
-  if (firstCollisionMention >= 0 && towingIndex === -1) {
-    return { 
-      primaryService: 'collision', 
-      confidence: 'high', 
-      reasoning: `Collision/body shop mentioned, no towing references` 
+  if (focusMentions > 0 && focusMentions >= exclusionMentions) {
+    return {
+      primaryService: focusMatches[0] || 'on-focus',
+      isOnFocus: true,
+      confidence: focusMentions > 3 ? 'high' : 'medium',
+      reasoning: `On-focus: "${focusMatches.join(', ')}" (${focusMentions} mentions)`
     };
   }
   
-  // 9. Mechanical shop detection
-  const mechanicalMentions = (allText.match(/mechanical|oil change|brake|tire|transmission|engine repair/g) || []).length;
-  if (mechanicalMentions > collisionMentions && mechanicalMentions > towingMentions) {
-    return { 
-      primaryService: 'mechanical', 
-      confidence: 'medium', 
-      reasoning: `Mechanical services dominant (${mechanicalMentions} mentions)` 
-    };
-  }
-  
-  // 10. Default - if we have any collision mentions, assume collision
-  if (collisionMentions > 0) {
-    return { 
-      primaryService: 'collision', 
-      confidence: 'low', 
-      reasoning: `Defaulting to collision with ${collisionMentions} mentions` 
-    };
-  }
-  
-  return { 
-    primaryService: 'other', 
-    confidence: 'low', 
-    reasoning: 'Could not determine primary service' 
+  // Neither focus nor exclusion detected
+  return {
+    primaryService: 'undetermined',
+    isOnFocus: true, // Give benefit of doubt
+    confidence: 'low',
+    reasoning: 'Could not determine primary service from text'
   };
 }
 
@@ -226,7 +211,7 @@ function calculateSizeScore(deal: DealData, criteria: TrackerCriteria | null): {
   
   // Parse tracker size criteria
   let minRevenue = 0;
-  let maxRevenue = 100; // Default in millions
+  let maxRevenue = 100;
   let minEbitda = 0;
   let maxEbitda = 20;
   let minLocations = 1;
@@ -237,37 +222,42 @@ function calculateSizeScore(deal: DealData, criteria: TrackerCriteria | null): {
       ? JSON.parse(criteria.size_criteria) 
       : criteria.size_criteria;
     
-    // Parse revenue (stored in dollars, deal.revenue is in millions)
     if (sizeCriteria.min_revenue) {
-      minRevenue = sizeCriteria.min_revenue / 1000000;
+      minRevenue = typeof sizeCriteria.min_revenue === 'number' 
+        ? sizeCriteria.min_revenue / 1000000 
+        : parseFloat(String(sizeCriteria.min_revenue).replace(/[^0-9.]/g, '')) / 1000000 || 0;
     }
     if (sizeCriteria.max_revenue) {
-      maxRevenue = sizeCriteria.max_revenue / 1000000;
+      maxRevenue = typeof sizeCriteria.max_revenue === 'number'
+        ? sizeCriteria.max_revenue / 1000000
+        : parseFloat(String(sizeCriteria.max_revenue).replace(/[^0-9.]/g, '')) / 1000000 || 100;
     }
     if (sizeCriteria.min_ebitda) {
-      minEbitda = sizeCriteria.min_ebitda / 1000000;
+      minEbitda = typeof sizeCriteria.min_ebitda === 'number'
+        ? sizeCriteria.min_ebitda / 1000000
+        : parseFloat(String(sizeCriteria.min_ebitda).replace(/[^0-9.]/g, '')) / 1000000 || 0;
     }
     if (sizeCriteria.max_ebitda) {
-      maxEbitda = sizeCriteria.max_ebitda / 1000000;
+      maxEbitda = typeof sizeCriteria.max_ebitda === 'number'
+        ? sizeCriteria.max_ebitda / 1000000
+        : parseFloat(String(sizeCriteria.max_ebitda).replace(/[^0-9.]/g, '')) / 1000000 || 20;
     }
     if (sizeCriteria.min_locations) {
-      minLocations = sizeCriteria.min_locations;
+      minLocations = parseInt(sizeCriteria.min_locations) || 1;
     }
     if (sizeCriteria.max_locations) {
-      maxLocations = sizeCriteria.max_locations;
+      maxLocations = parseInt(sizeCriteria.max_locations) || 100;
     }
     
-    console.log(`[score-deal v5.0] Size criteria: Revenue $${minRevenue}M-$${maxRevenue}M, EBITDA $${minEbitda}M-$${maxEbitda}M, Locations ${minLocations}-${maxLocations}`);
+    console.log(`[score-deal v6.0] Size criteria: Revenue $${minRevenue}M-$${maxRevenue}M, EBITDA $${minEbitda}M-$${maxEbitda}M, Locations ${minLocations}-${maxLocations}`);
   }
   
   // REVENUE SCORING (16 pts max)
   if (dealRevenue > 0) {
     if (dealRevenue >= minRevenue && dealRevenue <= maxRevenue) {
-      // Perfect fit
       score += 16;
       parts.push(`Revenue $${dealRevenue.toFixed(2)}M in range = +16pts`);
     } else if (dealRevenue > maxRevenue) {
-      // Over max - still good but might need bigger buyer
       if (dealRevenue > maxRevenue * 2) {
         score += 8;
         parts.push(`Revenue $${dealRevenue.toFixed(2)}M way over max = +8pts`);
@@ -276,10 +266,8 @@ function calculateSizeScore(deal: DealData, criteria: TrackerCriteria | null): {
         parts.push(`Revenue $${dealRevenue.toFixed(2)}M slightly over = +12pts`);
       }
     } else if (dealRevenue < minRevenue) {
-      // Under min - check how much
       const percentBelow = ((minRevenue - dealRevenue) / minRevenue) * 100;
       if (percentBelow > 50) {
-        // Way below - DISQUALIFY
         disqualified = true;
         disqualificationReason = `Revenue $${dealRevenue.toFixed(2)}M is ${percentBelow.toFixed(0)}% below minimum $${minRevenue}M`;
         score = 0;
@@ -293,7 +281,6 @@ function calculateSizeScore(deal: DealData, criteria: TrackerCriteria | null): {
       }
     }
   } else {
-    // No revenue data - partial score
     score += 4;
     parts.push('No revenue data = +4pts');
   }
@@ -301,7 +288,6 @@ function calculateSizeScore(deal: DealData, criteria: TrackerCriteria | null): {
   // EBITDA SCORING (16 pts max)
   if (dealEbitda > 0) {
     if (minEbitda > 0 || maxEbitda < 20) {
-      // Has EBITDA criteria
       if (dealEbitda >= minEbitda && dealEbitda <= maxEbitda) {
         score += 16;
         parts.push(`EBITDA $${dealEbitda.toFixed(2)}M in range = +16pts`);
@@ -309,10 +295,8 @@ function calculateSizeScore(deal: DealData, criteria: TrackerCriteria | null): {
         score += 12;
         parts.push(`EBITDA $${dealEbitda.toFixed(2)}M over range = +12pts`);
       } else {
-        // Under min
         const percentBelow = ((minEbitda - dealEbitda) / minEbitda) * 100;
         if (percentBelow > 50) {
-          // Way below - severe penalty
           score += 2;
           parts.push(`EBITDA ${percentBelow.toFixed(0)}% below min = +2pts (weak)`);
         } else {
@@ -321,7 +305,6 @@ function calculateSizeScore(deal: DealData, criteria: TrackerCriteria | null): {
         }
       }
     } else {
-      // No EBITDA criteria - give points for having EBITDA
       score += 10;
       parts.push(`EBITDA $${dealEbitda.toFixed(2)}M present = +10pts`);
     }
@@ -343,7 +326,6 @@ function calculateSizeScore(deal: DealData, criteria: TrackerCriteria | null): {
       parts.push(`${dealLocations} locations (need ${minLocations}+) = +4pts`);
     }
   } else {
-    // Over max locations - still good
     score += 6;
     parts.push(`${dealLocations} locations (above ${maxLocations}) = +6pts`);
   }
@@ -358,7 +340,7 @@ function calculateSizeScore(deal: DealData, criteria: TrackerCriteria | null): {
 
 // ============= SERVICE SCORING (30 points max) =============
 
-function calculateServiceScore(deal: DealData, criteria: TrackerCriteria | null, primaryService: string): {
+function calculateServiceScore(deal: DealData, criteria: TrackerCriteria | null, primaryServiceInfo: { primaryService: string; isOnFocus: boolean; confidence: string; reasoning: string }): {
   score: number;
   details: string;
   disqualified: boolean;
@@ -395,36 +377,28 @@ function calculateServiceScore(deal: DealData, criteria: TrackerCriteria | null,
     excludedServices = (serviceCriteria.excluded_services || []).map((s: string) => s.toLowerCase());
     businessModel = serviceCriteria.business_model?.toLowerCase() || null;
     
-    console.log(`[score-deal v5.0] Service criteria: Required=${requiredServices.join(',')}, Excluded=${excludedServices.join(',')}`);
+    console.log(`[score-deal v6.0] Service criteria: Required=${requiredServices.join(',')}, Excluded=${excludedServices.join(',')}`);
   }
   
-  // CRITICAL: Check primary service alignment
-  // If primary service is on the EXCLUDED list, severe penalty
-  if (primaryService === 'towing') {
-    const towingExcluded = excludedServices.some(s => 
-      s.includes('towing') || s.includes('tow')
-    );
-    
-    if (towingExcluded || excludedServices.length > 0) {
-      // Towing is primary and it's on excluded list - SEVERE PENALTY
-      score -= 20;
-      parts.push(`PRIMARY SERVICE IS TOWING (excluded) = -20pts SEVERE PENALTY`);
-    } else {
-      // Towing is primary but not explicitly excluded
-      score -= 10;
-      parts.push(`PRIMARY SERVICE IS TOWING (off-focus for collision tracker) = -10pts`);
-    }
-  } else if (primaryService === 'mechanical') {
-    score -= 10;
-    parts.push(`PRIMARY SERVICE IS MECHANICAL (off-focus) = -10pts`);
-  } else if (primaryService === 'collision') {
+  // DYNAMIC: Check primary service alignment using tracker-defined focus
+  if (primaryServiceInfo.isOnFocus) {
     // On-focus primary service - bonus
-    score += 15;
-    parts.push(`PRIMARY SERVICE IS COLLISION = +15pts (on-focus)`);
+    if (primaryServiceInfo.confidence === 'high') {
+      score += 15;
+      parts.push(`PRIMARY SERVICE ON-FOCUS (${primaryServiceInfo.primaryService}) = +15pts`);
+    } else {
+      score += 10;
+      parts.push(`PRIMARY SERVICE likely on-focus = +10pts`);
+    }
   } else {
-    // Unknown primary
-    score += 5;
-    parts.push(`PRIMARY SERVICE UNKNOWN = +5pts`);
+    // Off-focus primary service - penalty
+    if (primaryServiceInfo.confidence === 'high') {
+      score -= 20;
+      parts.push(`PRIMARY SERVICE OFF-FOCUS (${primaryServiceInfo.primaryService}) = -20pts SEVERE PENALTY`);
+    } else {
+      score -= 10;
+      parts.push(`PRIMARY SERVICE may be off-focus = -10pts`);
+    }
   }
   
   // Check for REQUIRED services (max 8 pts additional)
@@ -463,16 +437,13 @@ function calculateServiceScore(deal: DealData, criteria: TrackerCriteria | null,
   }
   
   // Business model match (max 2 pts)
-  if (businessModel) {
-    if (allText.includes(businessModel) || 
-        (businessModel === 'drp-focused' && (allText.includes('drp') || allText.includes('direct repair')))) {
-      score += 2;
-      parts.push(`Business model match = +2pts`);
-    }
+  if (businessModel && allText.includes(businessModel)) {
+    score += 2;
+    parts.push(`Business model match = +2pts`);
   }
   
   return {
-    score: Math.max(-10, Math.min(score, 30)), // Can go negative but floor at -10
+    score: Math.max(-10, Math.min(score, 30)),
     details: parts.join('; '),
     disqualified,
     disqualificationReason
@@ -569,7 +540,6 @@ function calculateGeographyScore(deal: DealData, criteria: TrackerCriteria | nul
     if (inExcluded) break;
   }
   
-  // Score
   if (inExcluded) {
     score = 1;
     parts.push('= +1pt');
@@ -603,7 +573,6 @@ function calculateDataScore(deal: DealData): {
   let score = 0;
   const fieldsPresent: string[] = [];
   
-  // Key fields
   if (deal.revenue && deal.revenue > 0) {
     score += 3;
     fieldsPresent.push('revenue');
@@ -682,19 +651,13 @@ function calculateBuyerTypeBonus(deal: DealData, criteria: TrackerCriteria | nul
   const dealEbitda = deal.ebitda_amount || 0;
   const dealLocations = deal.location_count || 1;
   
-  // Check each buyer type for fit
   for (const bt of buyerTypes) {
     let fits = true;
     
-    // Check revenue
     if (bt.min_revenue && dealRevenue < bt.min_revenue / 1000000) fits = false;
     if (bt.max_revenue && dealRevenue > bt.max_revenue / 1000000) fits = false;
-    
-    // Check EBITDA
     if (bt.min_ebitda && dealEbitda < bt.min_ebitda / 1000000) fits = false;
     if (bt.max_ebitda && dealEbitda > bt.max_ebitda / 1000000) fits = false;
-    
-    // Check locations
     if (bt.min_locations && dealLocations < bt.min_locations) fits = false;
     if (bt.max_locations && dealLocations > bt.max_locations) fits = false;
     
@@ -703,7 +666,6 @@ function calculateBuyerTypeBonus(deal: DealData, criteria: TrackerCriteria | nul
     }
   }
   
-  // Score based on how many buyer types this deal fits
   let score = 0;
   if (fittingBuyerTypes.length >= 3) {
     score = 5;
@@ -711,8 +673,6 @@ function calculateBuyerTypeBonus(deal: DealData, criteria: TrackerCriteria | nul
     score = 3;
   } else if (fittingBuyerTypes.length === 1) {
     score = 2;
-  } else {
-    score = 0;
   }
   
   return {
@@ -724,18 +684,103 @@ function calculateBuyerTypeBonus(deal: DealData, criteria: TrackerCriteria | nul
   };
 }
 
+// ============= INDUSTRY KPI BONUS (up to 15 points) =============
+
+function calculateKPIBonus(deal: DealData, criteria: TrackerCriteria | null): {
+  score: number;
+  details: string;
+  matchedKPIs: string[];
+} {
+  if (!criteria?.kpi_scoring_config || !deal.industry_kpis) {
+    return { score: 0, details: 'No KPI config or data', matchedKPIs: [] };
+  }
+  
+  let kpiConfig: any;
+  try {
+    kpiConfig = typeof criteria.kpi_scoring_config === 'string'
+      ? JSON.parse(criteria.kpi_scoring_config)
+      : criteria.kpi_scoring_config;
+  } catch {
+    return { score: 0, details: 'Could not parse KPI config', matchedKPIs: [] };
+  }
+  
+  const kpis = kpiConfig.kpis || [];
+  if (kpis.length === 0) {
+    return { score: 0, details: 'No KPIs defined', matchedKPIs: [] };
+  }
+  
+  let totalScore = 0;
+  const matchedKPIs: string[] = [];
+  const parts: string[] = [];
+  
+  for (const kpi of kpis) {
+    const fieldName = kpi.field_name;
+    const dealValue = deal.industry_kpis?.[fieldName];
+    
+    // Skip if deal doesn't have this KPI data - no penalty for missing data
+    if (dealValue === undefined || dealValue === null) continue;
+    
+    const weight = kpi.weight || 5;
+    const rules = kpi.scoring_rules || {};
+    let kpiScore = 0;
+    
+    // Apply scoring rules
+    if (rules.ideal_range && Array.isArray(rules.ideal_range) && rules.ideal_range.length === 2) {
+      const [min, max] = rules.ideal_range;
+      const numValue = typeof dealValue === 'number' ? dealValue : parseFloat(dealValue);
+      
+      if (!isNaN(numValue)) {
+        if (numValue >= min && numValue <= max) {
+          kpiScore = weight; // Full points for ideal range
+          parts.push(`${kpi.display_name || fieldName}: ${numValue} (ideal) = +${weight}pts`);
+        } else if (rules.penalty_below && numValue < min) {
+          kpiScore = Math.max(0, weight - rules.penalty_below);
+          parts.push(`${kpi.display_name || fieldName}: ${numValue} (below) = +${kpiScore}pts`);
+        } else if (rules.penalty_above && numValue > max) {
+          kpiScore = Math.max(0, weight - rules.penalty_above);
+          parts.push(`${kpi.display_name || fieldName}: ${numValue} (above) = +${kpiScore}pts`);
+        } else {
+          kpiScore = Math.round(weight * 0.5); // Partial credit
+          parts.push(`${kpi.display_name || fieldName}: ${numValue} = +${kpiScore}pts`);
+        }
+      }
+    } else if (rules.bonus_per_item) {
+      // For array/count-based KPIs
+      const count = Array.isArray(dealValue) ? dealValue.length : (typeof dealValue === 'number' ? dealValue : 1);
+      const maxBonus = rules.max_bonus || weight;
+      kpiScore = Math.min(count * rules.bonus_per_item, maxBonus);
+      parts.push(`${kpi.display_name || fieldName}: ${count} items = +${kpiScore}pts`);
+    } else if (rules.boolean && dealValue === true) {
+      kpiScore = weight;
+      parts.push(`${kpi.display_name || fieldName}: Yes = +${weight}pts`);
+    }
+    
+    if (kpiScore > 0) {
+      totalScore += kpiScore;
+      matchedKPIs.push(fieldName);
+    }
+  }
+  
+  return {
+    score: Math.min(totalScore, 15), // Cap at 15 points
+    details: parts.length > 0 ? parts.join('; ') : 'No KPI matches',
+    matchedKPIs
+  };
+}
+
 // ============= MAIN SCORING FUNCTION =============
 
 async function scoreDeal(deal: DealData, supabase: any): Promise<ScoreBreakdown> {
-  // Fetch tracker criteria
   let trackerCriteria: TrackerCriteria | null = null;
   
   try {
     const { data: tracker } = await supabase
       .from('industry_trackers')
       .select(`
+        industry_name,
         fit_criteria_size, fit_criteria_service, fit_criteria_geography, 
         size_criteria, service_criteria, geography_criteria, buyer_types_criteria,
+        kpi_scoring_config,
         geography_weight, service_mix_weight, size_weight, owner_goals_weight
       `)
       .eq('id', deal.tracker_id)
@@ -743,22 +788,33 @@ async function scoreDeal(deal: DealData, supabase: any): Promise<ScoreBreakdown>
     
     if (tracker) {
       trackerCriteria = tracker;
-      console.log('[score-deal v5.0] Using tracker criteria');
+      console.log(`[score-deal v6.0] Using tracker criteria for industry: ${tracker.industry_name}`);
     }
   } catch (e) {
-    console.log('[score-deal v5.0] Could not fetch tracker criteria');
+    console.log('[score-deal v6.0] Could not fetch tracker criteria');
   }
   
-  // STEP 1: Detect primary service
-  const primaryServiceInfo = detectPrimaryService(deal);
-  console.log(`[score-deal v5.0] Primary service: ${primaryServiceInfo.primaryService} (${primaryServiceInfo.confidence}) - ${primaryServiceInfo.reasoning}`);
+  // Parse service criteria for dynamic detection
+  let serviceCriteria: any = null;
+  if (trackerCriteria?.service_criteria) {
+    try {
+      serviceCriteria = typeof trackerCriteria.service_criteria === 'string'
+        ? JSON.parse(trackerCriteria.service_criteria)
+        : trackerCriteria.service_criteria;
+    } catch { /* ignore */ }
+  }
+  
+  // STEP 1: Detect primary service using tracker-defined focus keywords
+  const primaryServiceInfo = detectPrimaryService(deal, serviceCriteria);
+  console.log(`[score-deal v6.0] Primary service: ${primaryServiceInfo.primaryService} (on-focus: ${primaryServiceInfo.isOnFocus}, ${primaryServiceInfo.confidence}) - ${primaryServiceInfo.reasoning}`);
   
   // STEP 2: Calculate all scores
   const size = calculateSizeScore(deal, trackerCriteria);
-  const service = calculateServiceScore(deal, trackerCriteria, primaryServiceInfo.primaryService);
+  const service = calculateServiceScore(deal, trackerCriteria, primaryServiceInfo);
   const geography = calculateGeographyScore(deal, trackerCriteria);
   const data = calculateDataScore(deal);
   const buyerTypeBonus = calculateBuyerTypeBonus(deal, trackerCriteria);
+  const kpiBonus = calculateKPIBonus(deal, trackerCriteria);
   
   // Collect disqualifications
   const disqualificationReasons: string[] = [];
@@ -771,17 +827,16 @@ async function scoreDeal(deal: DealData, supabase: any): Promise<ScoreBreakdown>
   
   const isDisqualified = size.disqualified || service.disqualified;
   
-  // Calculate total (100 pts max: 40 size + 30 service + 10 geo + 15 data + 5 bonus)
-  let rawTotal = size.score + service.score + geography.score + data.score + buyerTypeBonus.score;
+  // Calculate total (100 pts max + up to 15 KPI bonus)
+  let rawTotal = size.score + service.score + geography.score + data.score + buyerTypeBonus.score + kpiBonus.score;
   
-  // Cap disqualified deals at 25
   if (isDisqualified) {
     rawTotal = Math.min(rawTotal, 25);
   }
   
-  const totalScore = Math.max(0, Math.min(rawTotal, 100));
+  const totalScore = Math.max(0, Math.min(rawTotal, 115)); // Allow up to 115 with KPI bonus
   
-  console.log(`[score-deal v5.0] ${deal.deal_name}: Size=${size.score}/40, Service=${service.score}/30, Geo=${geography.score}/10, Data=${data.score}/15, Bonus=${buyerTypeBonus.score}/5 = ${totalScore}`);
+  console.log(`[score-deal v6.0] ${deal.deal_name}: Size=${size.score}/40, Service=${service.score}/30, Geo=${geography.score}/10, Data=${data.score}/15, Bonus=${buyerTypeBonus.score}/5, KPI=${kpiBonus.score}/15 = ${totalScore}`);
   
   return {
     sizeScore: size.score,
@@ -794,8 +849,10 @@ async function scoreDeal(deal: DealData, supabase: any): Promise<ScoreBreakdown>
     dataDetails: data.details,
     buyerTypeBonusScore: buyerTypeBonus.score,
     buyerTypeBonusDetails: buyerTypeBonus.details,
+    kpiBonusScore: kpiBonus.score,
+    kpiBonusDetails: kpiBonus.details,
     totalScore,
-    scoringVersion: '5.0-prioritized',
+    scoringVersion: '6.0-industry-adaptive',
     disqualified: isDisqualified,
     disqualificationReasons,
     primaryService: primaryServiceInfo.primaryService
@@ -819,38 +876,35 @@ serve(async (req) => {
       );
     }
 
-    console.log('[score-deal v5.0] Scoring deal:', dealId);
+    console.log('[score-deal v6.0] Scoring deal:', dealId);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const serviceClient = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch deal
     const { data: deal, error: fetchError } = await serviceClient
       .from('deals')
       .select(`
         id, deal_name, tracker_id, revenue, ebitda_amount, ebitda_percentage, 
         owner_goals, geography, headquarters, location_count, employee_count,
         additional_info, service_mix, growth_trajectory, real_estate, 
-        customer_concentration, company_overview
+        customer_concentration, company_overview, industry_kpis
       `)
       .eq('id', dealId)
       .single();
 
     if (fetchError || !deal) {
-      console.error('[score-deal v5.0] Deal not found:', fetchError);
+      console.error('[score-deal v6.0] Deal not found:', fetchError);
       return new Response(
         JSON.stringify({ success: false, error: 'Deal not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Score
     const breakdown = await scoreDeal(deal as DealData, serviceClient);
     
-    console.log('[score-deal v5.0] Score breakdown:', JSON.stringify(breakdown, null, 2));
+    console.log('[score-deal v6.0] Score breakdown:', JSON.stringify(breakdown, null, 2));
 
-    // Update deal
     const { error: updateError } = await serviceClient
       .from('deals')
       .update({ 
@@ -860,14 +914,14 @@ serve(async (req) => {
       .eq('id', dealId);
 
     if (updateError) {
-      console.error('[score-deal v5.0] Update failed:', updateError);
+      console.error('[score-deal v6.0] Update failed:', updateError);
       return new Response(
         JSON.stringify({ success: false, error: 'Failed to save score' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('[score-deal v5.0] Scored:', deal.deal_name, '=', breakdown.totalScore);
+    console.log('[score-deal v6.0] Scored:', deal.deal_name, '=', breakdown.totalScore);
 
     return new Response(
       JSON.stringify({ 
@@ -878,7 +932,7 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error('[score-deal v5.0] Error:', error);
+    console.error('[score-deal v6.0] Error:', error);
     return new Response(
       JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
