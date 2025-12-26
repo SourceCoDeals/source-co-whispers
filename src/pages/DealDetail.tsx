@@ -18,6 +18,8 @@ import { DealHistorySection } from "@/components/DealHistorySection";
 import { DealNotesSection } from "@/components/DealNotesSection";
 import { DealDetailSkeleton } from "@/components/skeletons/DealDetailSkeleton";
 import { SourceBadge } from "@/components/SourceBadge";
+import { DealDataQualityScore } from "@/components/DealDataQualityScore";
+import { IndustryKPIEntryPanel } from "@/components/IndustryKPIEntryPanel";
 
 import {
   Collapsible,
@@ -334,6 +336,7 @@ export default function DealDetail() {
               {deal.industry_type && <span>• {deal.industry_type}</span>}
             </div>
           </div>
+          <DealDataQualityScore deal={deal} variant="compact" />
           <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"} className="text-sm">{deal.status}</Badge>
         </div>
 
@@ -717,6 +720,18 @@ export default function DealDetail() {
             </div>
           </EditableSection>
         </div>
+
+        {/* Industry KPIs Panel - Only show if tracker has KPI config */}
+        {tracker?.kpi_scoring_config?.kpis?.length > 0 && (
+          <IndustryKPIEntryPanel
+            kpiConfig={tracker.kpi_scoring_config}
+            currentValues={deal.industry_kpis || {}}
+            onValuesChange={async (values) => {
+              await saveSection({ industry_kpis: values });
+              toast({ title: "KPIs saved", description: "Industry KPI data has been updated" });
+            }}
+          />
+        )}
 
         {/* Row 2: Executive Summary */}
         <EditableSection

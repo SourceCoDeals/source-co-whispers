@@ -232,6 +232,28 @@ interface Tracker {
       };
     }>;
   } | null;
+  buyer_types_criteria: {
+    buyer_types?: Array<{
+      type_name: string;
+      priority_order: number;
+      description?: string;
+      ownership_profile?: string;
+      min_locations?: string;
+      max_locations?: string;
+      min_revenue_per_location?: string;
+      min_ebitda?: string;
+      max_ebitda?: string;
+      ebitda_multiple_min?: string;
+      ebitda_multiple_max?: string;
+      min_sqft_per_location?: string;
+      geographic_scope?: string;
+      geographic_rules?: string;
+      deal_requirements?: string;
+      acquisition_style?: string;
+      exclusions?: string;
+      fit_notes?: string;
+    }>;
+  } | null;
 }
 
 interface CategoryScore {
@@ -412,6 +434,27 @@ function analyzeEngagementSignals(callIntelligence: any[] | null): EngagementSig
   return signals;
 }
 
+// Determine if a buyer operates at a "national" or "large platform" scale
+// Uses buyer data rather than hardcoded thresholds when possible
+function determineBuyerScale(buyer: Buyer): boolean {
+  // Check geographic footprint
+  const hasNationalPresence = 
+    (buyer.target_geographies && buyer.target_geographies.length > 3) ||
+    (buyer.geographic_footprint && buyer.geographic_footprint.length > 3);
+  
+  // Check acquisition history
+  const isActiveAcquirer = buyer.total_acquisitions && buyer.total_acquisitions > 5;
+  
+  // Check if buyer specifically mentions national/regional scope
+  const mentionsNational = [
+    buyer.thesis_summary,
+    buyer.acquisition_appetite,
+    buyer.services_offered
+  ].some(text => text?.toLowerCase().includes('national') || text?.toLowerCase().includes('nationwide'));
+  
+  return hasNationalPresence || isActiveAcquirer || mentionsNational;
+}
+
 // Score SIZE category - SIZE IS A GATING FACTOR
 // When deal is too small for buyer, it should significantly limit the overall score
 // Even if geography and services are perfect, a too-small deal is rarely a fit
@@ -463,11 +506,9 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore & { sizeMult
     };
   }
   
-  // Check if this is a single-location deal against a national/multi-location platform
-  const buyerIsNationalPlatform = 
-    (buyer.total_acquisitions && buyer.total_acquisitions > 5) ||
-    (buyer.target_geographies && buyer.target_geographies.length > 3) ||
-    (buyer.geographic_footprint && buyer.geographic_footprint.length > 3);
+  // Check if this is a single-location deal against a buyer that needs larger scale
+  // Use tracker's buyer_types_criteria if available to determine what "national platform" means
+  const buyerIsNationalPlatform = determineBuyerScale(buyer);
     
   // Single-location deals are penalized for national platforms  
   if (dealLocations === 1 && buyerIsNationalPlatform) {
@@ -476,9 +517,9 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore & { sizeMult
       sizeMultiplier = Math.min(sizeMultiplier, 0.45);
       return {
         score: 20,
-        reasoning: `Single-location deal ($${dealRevenue}M) significantly below national platform's sweet spot ($${buyer.revenue_sweet_spot}M)`,
+        reasoning: `Single-location deal ($${dealRevenue}M) significantly below platform's sweet spot ($${buyer.revenue_sweet_spot}M)`,
         isDisqualified: true,
-        disqualificationReason: `Single location + small revenue unlikely to attract national platform`,
+        disqualificationReason: `Single location + small revenue unlikely to attract platform buyer`,
         confidence: 'high',
         sizeMultiplier
       };
@@ -770,7 +811,65 @@ function scoreGeographyCategory(
   };
 }
 
-// Score SERVICES category using tracker-based criteria (industry-agnostic)
+// Call AI-powered service fit scoring with fallback to keyword matching
+async function getAIServiceFitScore(
+  deal: Deal, 
+  buyer: Buyer, 
+  tracker: Tracker
+): Promise<CategoryScore> {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    
+    if (!supabaseUrl || !serviceRoleKey) {
+      console.log('[Service Fit] Missing env vars, falling back to keyword matching');
+      return scoreServicesCategory(deal, buyer, tracker);
+    }
+    
+    const response = await fetch(`${supabaseUrl}/functions/v1/score-service-fit`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${serviceRoleKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        deal_services: deal.service_mix,
+        tracker_criteria: tracker.service_criteria,
+        buyer_services: buyer.services_offered,
+        buyer_target_services: buyer.target_services,
+        industry: tracker.industry_name,
+        deal_industry_type: deal.industry_type
+      })
+    });
+    
+    if (!response.ok) {
+      console.log(`[Service Fit] AI call failed with status ${response.status}, falling back to keywords`);
+      return scoreServicesCategory(deal, buyer, tracker);
+    }
+    
+    const result = await response.json();
+    
+    if (result.error || !result.score) {
+      console.log('[Service Fit] AI response invalid, falling back to keywords');
+      return scoreServicesCategory(deal, buyer, tracker);
+    }
+    
+    // Map AI response to CategoryScore
+    return {
+      score: Math.round(result.score),
+      reasoning: result.reasoning || "AI-powered service matching",
+      isDisqualified: result.is_disqualified || false,
+      disqualificationReason: result.disqualification_reason || null,
+      confidence: result.confidence || 'medium'
+    };
+    
+  } catch (error) {
+    console.log('[Service Fit] AI call error, falling back to keywords:', error);
+    return scoreServicesCategory(deal, buyer, tracker);
+  }
+}
+
+// Score SERVICES category using tracker-based criteria (industry-agnostic) - FALLBACK
 function scoreServicesCategory(deal: Deal, buyer: Buyer, tracker: Tracker): CategoryScore {
   const dealServices = deal.service_mix?.toLowerCase() || "";
   const buyerServices = (buyer.services_offered || "").toLowerCase();
@@ -1281,10 +1380,10 @@ serve(async (req) => {
 
     console.log(`Scoring deal ${dealId}...`);
 
-    // Fetch deal with tracker (including new service_criteria and kpi_scoring_config)
+    // Fetch deal with tracker (including service_criteria, kpi_scoring_config, and buyer_types_criteria)
     const { data: deal, error: dealError } = await supabase
       .from("deals")
-      .select("*, industry_trackers!inner(id, industry_name, fit_criteria, geography_weight, service_mix_weight, size_weight, owner_goals_weight, service_criteria, size_criteria, kpi_scoring_config)")
+      .select("*, industry_trackers!inner(id, industry_name, fit_criteria, geography_weight, service_mix_weight, size_weight, owner_goals_weight, service_criteria, size_criteria, kpi_scoring_config, buyer_types_criteria)")
       .eq("id", dealId)
       .single();
 
@@ -1356,15 +1455,18 @@ serve(async (req) => {
       ownerGoals: (tracker.owner_goals_weight || 25) / 100,
     };
 
-    // Score each buyer
-    const scores: BuyerScore[] = (buyers || []).map(buyer => {
+    // Score each buyer (using async for AI service scoring)
+    const scores: BuyerScore[] = await Promise.all((buyers || []).map(async (buyer) => {
       // Analyze engagement signals from call intelligence
       const buyerCalls = callsByBuyer[buyer.id] || [];
       const engagementSignals = analyzeEngagementSignals(buyerCalls);
       
       const sizeScore = scoreSizeCategory(deal as Deal, buyer as Buyer);
       const geographyScore = scoreGeographyCategory(deal as Deal, buyer as Buyer, dealAttractiveness, engagementSignals);
-      const servicesScore = scoreServicesCategory(deal as Deal, buyer as Buyer, tracker);
+      
+      // Try AI service scoring first, fallback to keyword matching
+      const servicesScore = await getAIServiceFitScore(deal as Deal, buyer as Buyer, tracker);
+      
       const ownerGoalsScore = scoreOwnerGoalsCategory(deal as Deal, buyer as Buyer);
       const thesisBonus = calculateThesisBonus(buyer as Buyer);
       
@@ -1446,7 +1548,7 @@ serve(async (req) => {
         dealAttractiveness,
         engagementSignals,
       };
-    });
+    }));
 
     // Sort by composite score descending, disqualified at bottom
     scores.sort((a, b) => {
