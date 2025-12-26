@@ -5,7 +5,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, ChevronDown, ChevronRight, Check, RotateCcw, DollarSign, MapPin, Users, Briefcase, Download, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Loader2, Sparkles, ChevronDown, ChevronRight, Check, RotateCcw, DollarSign, MapPin, Users, Briefcase, Download, AlertTriangle, CheckCircle2, XCircle, Table2, FileText, Hash } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
 import { saveAs } from "file-saver";
@@ -25,7 +25,12 @@ interface QualityResult {
   sectionsFound: string[];
   missingElements: string[];
   tableCount: number;
+  placeholderCount?: number;
+  industryMentions?: number;
+  dataRowCount?: number;
   issues: string[];
+  afterGapFill?: boolean;
+  attempt?: number;
 }
 
 interface AIResearchSectionProps {
@@ -50,6 +55,7 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
   const [phaseName, setPhaseName] = useState("");
   const [extractedCriteria, setExtractedCriteria] = useState<ExtractedCriteria | null>(null);
   const [qualityResult, setQualityResult] = useState<QualityResult | null>(null);
+  const [gapFillAttempt, setGapFillAttempt] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -71,6 +77,7 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
     setCurrentPhase(1);
     setPhaseName("Industry Fundamentals");
     setQualityResult(null);
+    setGapFillAttempt(0);
 
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ma-guide`, {
@@ -140,13 +147,12 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
                 break;
               case "gap_fill_start":
                 setState("gap_filling");
-                setPhaseName("Filling Gaps");
+                setPhaseName(`Improving (Attempt ${parsed.attempt || 1})`);
+                setGapFillAttempt(parsed.attempt || 1);
                 break;
               case "gap_fill_content":
                 fullContent += parsed.content || "";
                 setGuideContent(fullContent);
-                break;
-              case "gap_fill_complete":
                 break;
               case "final_quality":
                 setQualityResult(parsed as QualityResult);
@@ -157,9 +163,12 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
               case "complete":
                 setState("complete");
                 setOverallProgress(100);
+                if (parsed.quality) {
+                  setQualityResult(parsed.quality);
+                }
                 toast({ 
                   title: "Guide generated", 
-                  description: `${parsed.wordCount?.toLocaleString()} words` 
+                  description: `${parsed.wordCount?.toLocaleString()} words, quality score: ${parsed.quality?.score || 'N/A'}` 
                 });
                 break;
               case "error":
@@ -210,6 +219,7 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
     setCurrentPhase(0);
     setPhaseName("");
     setQualityResult(null);
+    setGapFillAttempt(0);
   };
 
   const downloadAsDoc = async () => {
@@ -257,6 +267,18 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
   };
 
   const isGenerating = state === "generating" || state === "quality_check" || state === "gap_filling";
+
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return "text-green-600";
+    if (score >= 60) return "text-yellow-600";
+    return "text-red-600";
+  };
+
+  const getScoreBadgeVariant = (score: number): "default" | "secondary" | "destructive" => {
+    if (score >= 80) return "default";
+    if (score >= 60) return "secondary";
+    return "destructive";
+  };
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -310,8 +332,8 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      {state === "quality_check" ? "Checking quality..." : 
-                       state === "gap_filling" ? "Filling missing sections..." :
+                      {state === "quality_check" ? "Validating quality..." : 
+                       state === "gap_filling" ? `Improving content (Attempt ${gapFillAttempt})...` :
                        `Phase ${currentPhase}/3: ${phaseName}`}
                     </span>
                     <span className="font-medium">{Math.round(overallProgress)}%</span>
@@ -327,8 +349,48 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
                         {p === 1 ? "Fundamentals" : p === 2 ? "Attractiveness" : "Application"}
                       </Badge>
                     ))}
+                    {(state === "quality_check" || state === "gap_filling") && (
+                      <Badge variant="outline" className="text-xs ml-auto">
+                        {state === "quality_check" ? "Quality Check" : `Gap Fill #${gapFillAttempt}`}
+                      </Badge>
+                    )}
                   </div>
                 </div>
+
+                {qualityResult && state !== "generating" && (
+                  <div className="p-3 bg-muted/50 rounded-lg border space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Live Quality Score</span>
+                      <Badge variant={getScoreBadgeVariant(qualityResult.score)}>
+                        {qualityResult.score}/100
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2 text-xs">
+                      <div className="text-center p-1 bg-background rounded">
+                        <FileText className="w-3 h-3 mx-auto mb-1 text-muted-foreground" />
+                        <div className="font-medium">{qualityResult.wordCount.toLocaleString()}</div>
+                        <div className="text-muted-foreground">Words</div>
+                      </div>
+                      <div className="text-center p-1 bg-background rounded">
+                        <Table2 className="w-3 h-3 mx-auto mb-1 text-muted-foreground" />
+                        <div className="font-medium">{qualityResult.tableCount}</div>
+                        <div className="text-muted-foreground">Tables</div>
+                      </div>
+                      <div className="text-center p-1 bg-background rounded">
+                        <Hash className="w-3 h-3 mx-auto mb-1 text-muted-foreground" />
+                        <div className={`font-medium ${(qualityResult.placeholderCount || 0) > 10 ? 'text-red-500' : ''}`}>
+                          {qualityResult.placeholderCount || 0}
+                        </div>
+                        <div className="text-muted-foreground">Placeholders</div>
+                      </div>
+                      <div className="text-center p-1 bg-background rounded">
+                        <div className="w-3 h-3 mx-auto mb-1 text-muted-foreground text-xs font-bold">#</div>
+                        <div className="font-medium">{qualityResult.dataRowCount || 0}</div>
+                        <div className="text-muted-foreground">Data Rows</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <ScrollArea className="h-[300px] rounded-lg border bg-background p-4" ref={scrollRef}>
                   <div className="prose prose-sm dark:prose-invert max-w-none">
@@ -341,42 +403,79 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
             {state === "complete" && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-green-600">
-                    <CheckCircle2 className="w-5 h-5" />
-                    <span className="font-medium">M&A Guide Generated</span>
+                  <div className="flex items-center gap-2">
+                    {qualityResult?.passed ? (
+                      <CheckCircle2 className="w-5 h-5 text-green-600" />
+                    ) : (
+                      <AlertTriangle className="w-5 h-5 text-yellow-600" />
+                    )}
+                    <span className="font-medium">
+                      {qualityResult?.passed ? "M&A Guide Generated" : "Guide Generated (Quality Issues)"}
+                    </span>
                   </div>
                   {qualityResult && (
-                    <Badge variant={qualityResult.passed ? "default" : "secondary"}>
-                      Quality Score: {qualityResult.score}/100
+                    <Badge variant={getScoreBadgeVariant(qualityResult.score)}>
+                      Score: {qualityResult.score}/100
                     </Badge>
                   )}
                 </div>
 
                 {qualityResult && (
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div className="p-2 bg-muted rounded">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div className="p-2 bg-muted rounded text-center">
+                      <FileText className="w-4 h-4 mx-auto mb-1 text-muted-foreground" />
+                      <div className="font-medium text-lg">{qualityResult.wordCount.toLocaleString()}</div>
                       <div className="text-muted-foreground">Words</div>
-                      <div className="font-medium">{qualityResult.wordCount.toLocaleString()}</div>
                     </div>
-                    <div className="p-2 bg-muted rounded">
-                      <div className="text-muted-foreground">Sections</div>
-                      <div className="font-medium">{qualityResult.sectionsFound.length}</div>
-                    </div>
-                    <div className="p-2 bg-muted rounded">
+                    <div className="p-2 bg-muted rounded text-center">
+                      <Table2 className="w-4 h-4 mx-auto mb-1 text-muted-foreground" />
+                      <div className="font-medium text-lg">{qualityResult.tableCount}</div>
                       <div className="text-muted-foreground">Tables</div>
-                      <div className="font-medium">{qualityResult.tableCount}</div>
+                    </div>
+                    <div className="p-2 bg-muted rounded text-center">
+                      <div className="w-4 h-4 mx-auto mb-1 flex items-center justify-center">
+                        {(qualityResult.placeholderCount || 0) < 10 ? (
+                          <CheckCircle2 className="w-4 h-4 text-green-500" />
+                        ) : (
+                          <XCircle className="w-4 h-4 text-red-500" />
+                        )}
+                      </div>
+                      <div className={`font-medium text-lg ${(qualityResult.placeholderCount || 0) > 10 ? 'text-red-500' : 'text-green-600'}`}>
+                        {qualityResult.placeholderCount || 0}
+                      </div>
+                      <div className="text-muted-foreground">Placeholders</div>
+                    </div>
+                    <div className="p-2 bg-muted rounded text-center">
+                      <Hash className="w-4 h-4 mx-auto mb-1 text-muted-foreground" />
+                      <div className="font-medium text-lg">{qualityResult.dataRowCount || 0}</div>
+                      <div className="text-muted-foreground">Data Rows</div>
+                    </div>
+                  </div>
+                )}
+
+                {qualityResult && (
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2 bg-muted rounded">
+                      <div className="text-muted-foreground mb-1">Sections Found</div>
+                      <div className="font-medium">{qualityResult.sectionsFound.length}/14</div>
+                    </div>
+                    <div className="p-2 bg-muted rounded">
+                      <div className="text-muted-foreground mb-1">Industry Mentions</div>
+                      <div className={`font-medium ${(qualityResult.industryMentions || 0) < 30 ? 'text-yellow-600' : 'text-green-600'}`}>
+                        {qualityResult.industryMentions || 0}
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {qualityResult?.issues && qualityResult.issues.length > 0 && (
                   <div className="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
-                    <div className="flex items-center gap-2 text-yellow-600 text-sm mb-1">
+                    <div className="flex items-center gap-2 text-yellow-600 text-sm mb-2">
                       <AlertTriangle className="w-4 h-4" />
-                      Quality Notes
+                      Quality Notes ({qualityResult.issues.length})
                     </div>
-                    <ul className="text-xs text-muted-foreground list-disc list-inside">
-                      {qualityResult.issues.slice(0, 3).map((issue, i) => (
+                    <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
+                      {qualityResult.issues.map((issue, i) => (
                         <li key={i}>{issue}</li>
                       ))}
                     </ul>
@@ -384,7 +483,7 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
                 )}
 
                 <ScrollArea className="h-[200px] rounded-lg border bg-background p-4">
-                  <pre className="whitespace-pre-wrap text-xs font-mono">{guideContent.slice(0, 3000)}...</pre>
+                  <pre className="whitespace-pre-wrap text-xs font-mono">{guideContent.slice(0, 5000)}...</pre>
                 </ScrollArea>
 
                 {extractedCriteria && (
@@ -431,18 +530,18 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
                   </div>
                 )}
 
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={reset} className="gap-1">
+                <div className="flex gap-2 pt-2">
+                  <Button variant="outline" size="sm" onClick={reset} className="gap-1">
                     <RotateCcw className="w-3 h-3" />
-                    Start Over
+                    Reset
                   </Button>
-                  <Button variant="outline" onClick={downloadAsDoc} className="gap-1">
+                  <Button variant="outline" size="sm" onClick={downloadAsDoc} className="gap-1">
                     <Download className="w-3 h-3" />
-                    Download
+                    Download .docx
                   </Button>
                   {extractedCriteria && (
-                    <Button onClick={applyExtracted} className="flex-1 gap-2">
-                      <Check className="w-4 h-4" />
+                    <Button size="sm" onClick={applyExtracted} className="gap-1 ml-auto">
+                      <Check className="w-3 h-3" />
                       Apply Criteria to Form
                     </Button>
                   )}
