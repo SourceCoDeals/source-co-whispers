@@ -132,13 +132,14 @@ Focus on practical, actionable intelligence for matching deals with buyers in th
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         messages: [
           { role: 'system', content: MASTER_PROMPT },
           { role: 'user', content: userPrompt }
         ],
         stream: true,
         max_tokens: 16000,
+        temperature: 0.7,
       }),
     });
 
