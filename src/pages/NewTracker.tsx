@@ -17,7 +17,10 @@ interface UploadedDoc {
 
 export default function NewTracker() {
   const [name, setName] = useState("");
-  const [fitCriteria, setFitCriteria] = useState("");
+  const [sizeCriteria, setSizeCriteria] = useState("");
+  const [serviceCriteria, setServiceCriteria] = useState("");
+  const [geographyCriteria, setGeographyCriteria] = useState("");
+  const [buyerTypesCriteria, setBuyerTypesCriteria] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -77,13 +80,25 @@ export default function NewTracker() {
       setIsLoading(false);
       return;
     }
+
+    // Combine all criteria text for legacy fit_criteria field
+    const combinedCriteria = [
+      sizeCriteria && `Size: ${sizeCriteria}`,
+      serviceCriteria && `Service: ${serviceCriteria}`,
+      geographyCriteria && `Geography: ${geographyCriteria}`,
+      buyerTypesCriteria && `Buyer Types: ${buyerTypesCriteria}`
+    ].filter(Boolean).join('\n\n');
     
     const { data, error } = await supabase
       .from("industry_trackers")
       .insert({ 
         industry_name: name.trim(), 
         user_id: user.id,
-        fit_criteria: fitCriteria.trim() || null,
+        fit_criteria: combinedCriteria || null,
+        fit_criteria_size: sizeCriteria.trim() || null,
+        fit_criteria_service: serviceCriteria.trim() || null,
+        fit_criteria_geography: geographyCriteria.trim() || null,
+        fit_criteria_buyer_types: buyerTypesCriteria.trim() || null,
         documents: uploadedDocs.length > 0 ? uploadedDocs : null,
       } as any)
       .select()
@@ -95,10 +110,13 @@ export default function NewTracker() {
       return; 
     }
 
-    if (fitCriteria.trim()) {
+    // Parse fit criteria into structured JSONB fields
+    const hasCriteria = sizeCriteria.trim() || serviceCriteria.trim() || geographyCriteria.trim() || buyerTypesCriteria.trim();
+    if (hasCriteria) {
       try {
+        const criteriaText = `Size Criteria: ${sizeCriteria}\n\nService/Product Criteria: ${serviceCriteria}\n\nGeography Criteria: ${geographyCriteria}\n\nBuyer Types: ${buyerTypesCriteria}`;
         const { data: parsedData } = await supabase.functions.invoke('parse-fit-criteria', {
-          body: { fit_criteria: fitCriteria.trim() }
+          body: { fit_criteria: criteriaText }
         });
 
         if (parsedData?.success) {
@@ -108,6 +126,7 @@ export default function NewTracker() {
               size_criteria: parsedData.size_criteria,
               service_criteria: parsedData.service_criteria,
               geography_criteria: parsedData.geography_criteria,
+              buyer_types_criteria: parsedData.buyer_types_criteria,
             })
             .eq("id", data.id);
         }
@@ -136,14 +155,6 @@ export default function NewTracker() {
     }
   };
 
-  const exampleCriteria = `Example for Collision Repair:
-• Per store revenue above $1.2M
-• Minimum 7,500 sq ft per store
-• Geography and proximity to existing locations in TX/OK/LA
-• Strong DRP or insurance relationships
-• Prefer operators with 3+ locations
-• No heavy truck or fleet-only shops`;
-
   return (
     <AppLayout>
       <div className="max-w-2xl mx-auto">
@@ -167,20 +178,57 @@ export default function NewTracker() {
 
           <div className="bg-card rounded-lg border p-6">
             <div className="mb-4">
-              <Label htmlFor="fitCriteria">What Matters for Buyer Fit</Label>
+              <Label>What Matters for Buyer Fit</Label>
               <p className="text-sm text-muted-foreground mt-1">
-                Describe the key criteria that make a buyer a good fit for deals in this industry. 
-                This will be used to score buyers when matching them to deals.
+                Describe the key criteria that make a buyer a good fit for deals in this industry.
               </p>
             </div>
 
-            <Textarea 
-              id="fitCriteria"
-              placeholder={exampleCriteria}
-              value={fitCriteria}
-              onChange={(e) => setFitCriteria(e.target.value)}
-              className="min-h-[200px] font-mono text-sm"
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="sizeCriteria" className="text-sm">Size Criteria</Label>
+                <Textarea 
+                  id="sizeCriteria"
+                  placeholder="Min revenue: $5M+&#10;EBITDA: $1M-$10M&#10;EBITDA Multiple: 3x-8x&#10;Locations: 3+"
+                  value={sizeCriteria}
+                  onChange={(e) => setSizeCriteria(e.target.value)}
+                  className="mt-1 min-h-[120px] font-mono text-sm"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="serviceCriteria" className="text-sm">Service/Product Mix</Label>
+                <Textarea 
+                  id="serviceCriteria"
+                  placeholder="Required: DRP programs&#10;Preferred: OEM certifications&#10;Excluded: Heavy truck only"
+                  value={serviceCriteria}
+                  onChange={(e) => setServiceCriteria(e.target.value)}
+                  className="mt-1 min-h-[120px] font-mono text-sm"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="geographyCriteria" className="text-sm">Geography</Label>
+                <Textarea 
+                  id="geographyCriteria"
+                  placeholder="Preferred: TX, OK, LA&#10;Coverage: Regional&#10;Excluded: Northeast"
+                  value={geographyCriteria}
+                  onChange={(e) => setGeographyCriteria(e.target.value)}
+                  className="mt-1 min-h-[120px] font-mono text-sm"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="buyerTypesCriteria" className="text-sm">Buyer Types</Label>
+                <Textarea 
+                  id="buyerTypesCriteria"
+                  placeholder="1. Large MSOs: 50+ locations, national&#10;2. Regional MSOs: 6-50 locations&#10;3. PE Platform Seekers"
+                  value={buyerTypesCriteria}
+                  onChange={(e) => setBuyerTypesCriteria(e.target.value)}
+                  className="mt-1 min-h-[120px] font-mono text-sm"
+                />
+              </div>
+            </div>
 
             <div className="mt-4 p-3 bg-muted/50 rounded-lg border border-border/50">
               <div className="flex items-start gap-2">
