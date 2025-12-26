@@ -957,6 +957,9 @@ export type Database = {
           industry_name: string
           industry_template: string | null
           kpi_scoring_config: Json | null
+          ma_guide_content: string | null
+          ma_guide_generated_at: string | null
+          ma_guide_qa_context: Json | null
           owner_goals_weight: number
           scoring_behavior: Json | null
           service_criteria: Json | null
@@ -983,6 +986,9 @@ export type Database = {
           industry_name: string
           industry_template?: string | null
           kpi_scoring_config?: Json | null
+          ma_guide_content?: string | null
+          ma_guide_generated_at?: string | null
+          ma_guide_qa_context?: Json | null
           owner_goals_weight?: number
           scoring_behavior?: Json | null
           service_criteria?: Json | null
@@ -1009,6 +1015,9 @@ export type Database = {
           industry_name?: string
           industry_template?: string | null
           kpi_scoring_config?: Json | null
+          ma_guide_content?: string | null
+          ma_guide_generated_at?: string | null
+          ma_guide_qa_context?: Json | null
           owner_goals_weight?: number
           scoring_behavior?: Json | null
           service_criteria?: Json | null
