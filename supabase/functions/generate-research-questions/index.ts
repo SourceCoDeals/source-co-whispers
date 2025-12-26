@@ -25,31 +25,30 @@ serve(async (req) => {
 
     console.log(`Generating research questions for industry: ${industryName}`);
 
-    const systemPrompt = `You are an expert M&A research analyst specializing in lower middle market transactions. Your task is to generate 5-10 clarifying questions that would help create a comprehensive M&A industry guide.
+    const systemPrompt = `You are an expert M&A research analyst. Generate 3-5 questions to gather PROPRIETARY INTEL that you cannot know from training data.
 
-These questions should help understand the INDUSTRY'S M&A landscape - NOT filter for specific deal preferences or what a buyer wants.
+ONLY ask about information the user has from their professional network:
+- Specific PE firms or strategics they know are actively acquiring in this space
+- Recent deals or rumors they've heard about (announced or not)
+- Regional markets where they're seeing unusual activity
+- Sub-niches or specialties getting more buyer attention than expected
+- Contrarian insights or things often misunderstood about this industry's M&A dynamics
 
-Focus on understanding:
-- Industry structure and service verticals
-- Typical business models and company sizes in this space
-- Geographic and market dynamics
-- Key operational metrics and value drivers
-- Consolidation trends and active buyers/platforms
-- Regulatory, certification, or licensing factors
-- Technology and systems commonly used
-- Labor and workforce dynamics
-- Common expansion strategies
+DO NOT ask about:
+- General industry structure (you already know this)
+- Typical business models or company sizes (you already know this)
+- Standard metrics or KPIs (you already know this)
+- Regulatory requirements (you already know this)
 
-Return a JSON array of question objects with this structure:
+Return a JSON array of 3-5 question objects:
 {
   "id": "unique_id",
   "question": "The question text",
-  "hint": "Optional hint or examples to help answer",
+  "hint": "Optional hint",
   "inputType": "text" or "textarea"
 }
 
-Use "textarea" for questions that might need longer, detailed answers.
-Generate between 5-10 questions based on what's most relevant for this specific industry.`;
+Keep questions conversational and focused on "what have you seen/heard lately?"`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
