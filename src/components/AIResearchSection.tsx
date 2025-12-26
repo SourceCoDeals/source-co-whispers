@@ -5,8 +5,10 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, ChevronDown, ChevronRight, Check, RotateCcw, DollarSign, MapPin, Users, Briefcase } from "lucide-react";
+import { Loader2, Sparkles, ChevronDown, ChevronRight, Check, RotateCcw, DollarSign, MapPin, Users, Briefcase, Download } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
+import { saveAs } from "file-saver";
 
 interface ExtractedCriteria {
   sizeCriteria?: string;
@@ -164,6 +166,63 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
     setCurrentSection("");
   };
 
+  const downloadAsDoc = async () => {
+    if (!guideContent) return;
+
+    // Parse markdown content into docx paragraphs
+    const lines = guideContent.split('\n');
+    const children: Paragraph[] = [];
+
+    for (const line of lines) {
+      if (line.startsWith('## SECTION') || line.startsWith('# ')) {
+        // Main section headers
+        children.push(new Paragraph({
+          text: line.replace(/^#+\s*/, ''),
+          heading: HeadingLevel.HEADING_1,
+          spacing: { before: 400, after: 200 },
+        }));
+      } else if (line.startsWith('### ')) {
+        // Sub-headers
+        children.push(new Paragraph({
+          text: line.replace(/^###\s*/, ''),
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 300, after: 100 },
+        }));
+      } else if (line.startsWith('- ')) {
+        // Bullet points
+        children.push(new Paragraph({
+          children: [new TextRun(line.replace(/^-\s*/, '• '))],
+          spacing: { before: 100 },
+        }));
+      } else if (line.trim()) {
+        // Regular paragraphs - handle bold text
+        const parts = line.split(/(\*\*[^*]+\*\*)/g);
+        const runs: TextRun[] = parts.map(part => {
+          if (part.startsWith('**') && part.endsWith('**')) {
+            return new TextRun({ text: part.slice(2, -2), bold: true });
+          }
+          return new TextRun(part);
+        });
+        children.push(new Paragraph({ children: runs, spacing: { before: 100 } }));
+      } else {
+        // Empty line
+        children.push(new Paragraph({ text: '' }));
+      }
+    }
+
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children,
+      }],
+    });
+
+    const blob = await Packer.toBlob(doc);
+    const fileName = `${industryName.replace(/[^a-zA-Z0-9]/g, '_')}_MA_Guide.docx`;
+    saveAs(blob, fileName);
+    toast({ title: "Downloaded", description: fileName });
+  };
+
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <Card className="border-dashed border-primary/30 bg-primary/5">
@@ -305,6 +364,10 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
                   <Button variant="outline" onClick={reset} className="gap-1">
                     <RotateCcw className="w-3 h-3" />
                     Start Over
+                  </Button>
+                  <Button variant="outline" onClick={downloadAsDoc} className="gap-1">
+                    <Download className="w-3 h-3" />
+                    Download
                   </Button>
                   {extractedCriteria && (
                     <Button onClick={applyExtracted} className="flex-1 gap-2">
