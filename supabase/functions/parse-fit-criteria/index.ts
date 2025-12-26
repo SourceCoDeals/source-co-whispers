@@ -243,10 +243,57 @@ For each buyer type, extract ALL of these if mentioned:
     const extractedCriteria = JSON.parse(toolCall.function.arguments);
     console.log('Extracted criteria:', JSON.stringify(extractedCriteria).substring(0, 200));
 
+    // Post-process to validate and correct EBITDA multiples vs dollar amounts
+    const sizeCriteria = extractedCriteria.size_criteria || {};
+    
+    // Detect misplaced EBITDA multiples (values like "3", "3x", "8x" in min_ebitda/max_ebitda)
+    const isLikelyMultiple = (val: string | undefined): boolean => {
+      if (!val) return false;
+      const cleaned = val.toString().toLowerCase().replace(/[^0-9.x]/g, '');
+      // If it contains 'x' or is a small number without $ prefix, it's likely a multiple
+      if (cleaned.includes('x')) return true;
+      const numVal = parseFloat(cleaned);
+      return !val.includes('$') && numVal > 0 && numVal <= 15;
+    };
+
+    // Move misplaced multiples to correct fields
+    if (isLikelyMultiple(sizeCriteria.min_ebitda)) {
+      sizeCriteria.ebitda_multiple_min = sizeCriteria.min_ebitda.toString().includes('x') 
+        ? sizeCriteria.min_ebitda 
+        : sizeCriteria.min_ebitda + 'x';
+      sizeCriteria.min_ebitda = null;
+      console.log('Corrected min_ebitda to ebitda_multiple_min:', sizeCriteria.ebitda_multiple_min);
+    }
+    
+    if (isLikelyMultiple(sizeCriteria.max_ebitda)) {
+      sizeCriteria.ebitda_multiple_max = sizeCriteria.max_ebitda.toString().includes('x') 
+        ? sizeCriteria.max_ebitda 
+        : sizeCriteria.max_ebitda + 'x';
+      sizeCriteria.max_ebitda = null;
+      console.log('Corrected max_ebitda to ebitda_multiple_max:', sizeCriteria.ebitda_multiple_max);
+    }
+
+    // Also validate buyer_types_criteria for the same issue
+    const buyerTypes = extractedCriteria.buyer_types_criteria?.buyer_types || [];
+    for (const buyerType of buyerTypes) {
+      if (isLikelyMultiple(buyerType.min_ebitda)) {
+        buyerType.ebitda_multiple_min = buyerType.min_ebitda.toString().includes('x') 
+          ? buyerType.min_ebitda 
+          : buyerType.min_ebitda + 'x';
+        buyerType.min_ebitda = null;
+      }
+      if (isLikelyMultiple(buyerType.max_ebitda)) {
+        buyerType.ebitda_multiple_max = buyerType.max_ebitda.toString().includes('x') 
+          ? buyerType.max_ebitda 
+          : buyerType.max_ebitda + 'x';
+        buyerType.max_ebitda = null;
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
-        size_criteria: extractedCriteria.size_criteria || {},
+        size_criteria: sizeCriteria,
         service_criteria: extractedCriteria.service_criteria || {},
         geography_criteria: extractedCriteria.geography_criteria || {},
         buyer_types_criteria: extractedCriteria.buyer_types_criteria || {}
