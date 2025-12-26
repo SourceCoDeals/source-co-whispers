@@ -5,16 +5,27 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, ChevronDown, ChevronRight, Check, RotateCcw, DollarSign, MapPin, Users, Briefcase, Download } from "lucide-react";
+import { Loader2, Sparkles, ChevronDown, ChevronRight, Check, RotateCcw, DollarSign, MapPin, Users, Briefcase, Download, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
 import { saveAs } from "file-saver";
+import { Badge } from "@/components/ui/badge";
 
 interface ExtractedCriteria {
   sizeCriteria?: string;
   serviceCriteria?: string;
   geographyCriteria?: string;
   buyerTypesCriteria?: string;
+}
+
+interface QualityResult {
+  passed: boolean;
+  score: number;
+  wordCount: number;
+  sectionsFound: string[];
+  missingElements: string[];
+  tableCount: number;
+  issues: string[];
 }
 
 interface AIResearchSectionProps {
@@ -28,19 +39,20 @@ interface AIResearchSectionProps {
   onGuideGenerated?: (guide: string, qaContext: Record<string, string>) => void;
 }
 
-type ResearchState = "idle" | "generating" | "complete";
+type ResearchState = "idle" | "generating" | "quality_check" | "gap_filling" | "complete";
 
 export function AIResearchSection({ industryName, onApply, onGuideGenerated }: AIResearchSectionProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [state, setState] = useState<ResearchState>("idle");
   const [guideContent, setGuideContent] = useState("");
-  const [streamProgress, setStreamProgress] = useState(0);
+  const [overallProgress, setOverallProgress] = useState(0);
+  const [currentPhase, setCurrentPhase] = useState(0);
+  const [phaseName, setPhaseName] = useState("");
   const [extractedCriteria, setExtractedCriteria] = useState<ExtractedCriteria | null>(null);
-  const [currentSection, setCurrentSection] = useState("");
+  const [qualityResult, setQualityResult] = useState<QualityResult | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  // Auto-scroll as content streams in
   useEffect(() => {
     if (scrollRef.current && state === "generating") {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -55,8 +67,10 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
 
     setState("generating");
     setGuideContent("");
-    setStreamProgress(0);
-    setCurrentSection("Starting...");
+    setOverallProgress(0);
+    setCurrentPhase(1);
+    setPhaseName("Industry Fundamentals");
+    setQualityResult(null);
 
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ma-guide`, {
@@ -86,7 +100,6 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
 
         buffer += decoder.decode(value, { stream: true });
 
-        // Process SSE lines
         let newlineIndex: number;
         while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
           let line = buffer.slice(0, newlineIndex);
@@ -102,38 +115,71 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
           try {
             const parsed = JSON.parse(jsonStr);
             
-            // Handle different event types
-            if (parsed.type === "progress") {
-              setStreamProgress(parsed.progress || 0);
-              if (parsed.section) setCurrentSection(parsed.section);
-            } else if (parsed.type === "content") {
-              fullContent += parsed.content || "";
-              setGuideContent(fullContent);
-            } else if (parsed.type === "criteria") {
-              setExtractedCriteria(parsed.criteria);
-            } else if (parsed.type === "complete") {
-              setStreamProgress(100);
-              setCurrentSection("Complete");
-            } else if (parsed.choices?.[0]?.delta?.content) {
-              // Standard OpenAI streaming format
-              fullContent += parsed.choices[0].delta.content;
-              setGuideContent(fullContent);
+            switch (parsed.type) {
+              case "phase_start":
+                setCurrentPhase(parsed.phase);
+                setPhaseName(parsed.phaseName);
+                break;
+              case "content":
+                fullContent += parsed.content || "";
+                setGuideContent(fullContent);
+                setOverallProgress(parsed.overallProgress || 0);
+                break;
+              case "phase_complete":
+                toast({ 
+                  title: `Phase ${parsed.phase} complete`, 
+                  description: `${parsed.phaseName}: ${parsed.phaseWordCount?.toLocaleString()} words` 
+                });
+                break;
+              case "quality_check_start":
+                setState("quality_check");
+                setPhaseName("Quality Check");
+                break;
+              case "quality_check_result":
+                setQualityResult(parsed as QualityResult);
+                break;
+              case "gap_fill_start":
+                setState("gap_filling");
+                setPhaseName("Filling Gaps");
+                break;
+              case "gap_fill_content":
+                fullContent += parsed.content || "";
+                setGuideContent(fullContent);
+                break;
+              case "gap_fill_complete":
+                break;
+              case "final_quality":
+                setQualityResult(parsed as QualityResult);
+                break;
+              case "criteria":
+                setExtractedCriteria(parsed.criteria);
+                break;
+              case "complete":
+                setState("complete");
+                setOverallProgress(100);
+                toast({ 
+                  title: "Guide generated", 
+                  description: `${parsed.wordCount?.toLocaleString()} words` 
+                });
+                break;
+              case "error":
+                toast({ title: "Error", description: parsed.message, variant: "destructive" });
+                break;
             }
           } catch {
-            // Incomplete JSON, wait for more data
             buffer = line + "\n" + buffer;
             break;
           }
         }
       }
 
-      // Notify parent of generated guide (empty qaContext since we removed Q&A)
       if (onGuideGenerated) {
         onGuideGenerated(fullContent, {});
       }
 
-      setState("complete");
-      toast({ title: "Guide generated", description: `${fullContent.length.toLocaleString()} characters` });
+      if (state !== "complete") {
+        setState("complete");
+      }
     } catch (err) {
       console.error('Guide generation error:', err);
       toast({ 
@@ -147,14 +193,12 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
 
   const applyExtracted = () => {
     if (!extractedCriteria) return;
-    
     onApply({
       sizeCriteria: extractedCriteria.sizeCriteria || "",
       serviceCriteria: extractedCriteria.serviceCriteria || "",
       geographyCriteria: extractedCriteria.geographyCriteria || "",
       buyerTypesCriteria: extractedCriteria.buyerTypesCriteria || "",
     });
-
     toast({ title: "Applied!", description: "Criteria added to form" });
   };
 
@@ -162,40 +206,36 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
     setState("idle");
     setGuideContent("");
     setExtractedCriteria(null);
-    setStreamProgress(0);
-    setCurrentSection("");
+    setOverallProgress(0);
+    setCurrentPhase(0);
+    setPhaseName("");
+    setQualityResult(null);
   };
 
   const downloadAsDoc = async () => {
     if (!guideContent) return;
-
-    // Parse markdown content into docx paragraphs
     const lines = guideContent.split('\n');
     const children: Paragraph[] = [];
 
     for (const line of lines) {
-      if (line.startsWith('## SECTION') || line.startsWith('# ')) {
-        // Main section headers
+      if (line.startsWith('## ') || line.startsWith('# ')) {
         children.push(new Paragraph({
           text: line.replace(/^#+\s*/, ''),
           heading: HeadingLevel.HEADING_1,
           spacing: { before: 400, after: 200 },
         }));
       } else if (line.startsWith('### ')) {
-        // Sub-headers
         children.push(new Paragraph({
           text: line.replace(/^###\s*/, ''),
           heading: HeadingLevel.HEADING_2,
           spacing: { before: 300, after: 100 },
         }));
-      } else if (line.startsWith('- ')) {
-        // Bullet points
+      } else if (line.startsWith('- ') || line.startsWith('* ')) {
         children.push(new Paragraph({
-          children: [new TextRun(line.replace(/^-\s*/, '• '))],
+          children: [new TextRun(line.replace(/^[-*]\s*/, '• '))],
           spacing: { before: 100 },
         }));
       } else if (line.trim()) {
-        // Regular paragraphs - handle bold text
         const parts = line.split(/(\*\*[^*]+\*\*)/g);
         const runs: TextRun[] = parts.map(part => {
           if (part.startsWith('**') && part.endsWith('**')) {
@@ -205,23 +245,18 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
         });
         children.push(new Paragraph({ children: runs, spacing: { before: 100 } }));
       } else {
-        // Empty line
         children.push(new Paragraph({ text: '' }));
       }
     }
 
-    const doc = new Document({
-      sections: [{
-        properties: {},
-        children,
-      }],
-    });
-
+    const doc = new Document({ sections: [{ properties: {}, children }] });
     const blob = await Packer.toBlob(doc);
     const fileName = `${industryName.replace(/[^a-zA-Z0-9]/g, '_')}_MA_Guide.docx`;
     saveAs(blob, fileName);
     toast({ title: "Downloaded", description: fileName });
   };
+
+  const isGenerating = state === "generating" || state === "quality_check" || state === "gap_filling";
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -234,7 +269,7 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
                 <div>
                   <CardTitle className="text-base">AI Industry Research</CardTitle>
                   <CardDescription className="text-sm">
-                    Generate a comprehensive M&A guide for this industry
+                    Generate a comprehensive 35+ page M&A guide
                   </CardDescription>
                 </div>
               </div>
@@ -252,7 +287,6 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
 
         <CollapsibleContent>
           <CardContent className="space-y-4 pt-0">
-            {/* State: Idle */}
             {state === "idle" && (
               <div className="text-center py-6">
                 <Sparkles className="w-10 h-10 text-primary mx-auto mb-3 opacity-50" />
@@ -260,11 +294,7 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
                   Generate a comprehensive M&A guide with buyer types, valuation benchmarks, and fit criteria for{" "}
                   <span className="font-medium text-foreground">{industryName || "this industry"}</span>.
                 </p>
-                <Button 
-                  onClick={generateGuide} 
-                  disabled={!industryName.trim()}
-                  className="gap-2"
-                >
+                <Button onClick={generateGuide} disabled={!industryName.trim()} className="gap-2">
                   <Sparkles className="w-4 h-4" />
                   Generate M&A Guide
                 </Button>
@@ -274,19 +304,30 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
               </div>
             )}
 
-            {/* State: Generating */}
-            {state === "generating" && (
+            {isGenerating && (
               <div className="space-y-4">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Generating guide...
+                      {state === "quality_check" ? "Checking quality..." : 
+                       state === "gap_filling" ? "Filling missing sections..." :
+                       `Phase ${currentPhase}/3: ${phaseName}`}
                     </span>
-                    <span className="font-medium">{Math.round(streamProgress)}%</span>
+                    <span className="font-medium">{Math.round(overallProgress)}%</span>
                   </div>
-                  <Progress value={streamProgress} className="h-2" />
-                  <p className="text-xs text-muted-foreground">{currentSection}</p>
+                  <Progress value={overallProgress} className="h-2" />
+                  <div className="flex gap-2">
+                    {[1, 2, 3].map(p => (
+                      <Badge 
+                        key={p} 
+                        variant={p < currentPhase ? "default" : p === currentPhase ? "secondary" : "outline"}
+                        className="text-xs"
+                      >
+                        {p === 1 ? "Fundamentals" : p === 2 ? "Attractiveness" : "Application"}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
 
                 <ScrollArea className="h-[300px] rounded-lg border bg-background p-4" ref={scrollRef}>
@@ -297,25 +338,55 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
               </div>
             )}
 
-            {/* State: Complete */}
             {state === "complete" && (
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-green-600">
-                  <Check className="w-5 h-5" />
-                  <span className="font-medium">M&A Guide Generated</span>
-                  <span className="text-xs text-muted-foreground">
-                    ({guideContent.length.toLocaleString()} characters)
-                  </span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-green-600">
+                    <CheckCircle2 className="w-5 h-5" />
+                    <span className="font-medium">M&A Guide Generated</span>
+                  </div>
+                  {qualityResult && (
+                    <Badge variant={qualityResult.passed ? "default" : "secondary"}>
+                      Quality Score: {qualityResult.score}/100
+                    </Badge>
+                  )}
                 </div>
 
-                {/* Preview of guide */}
-                <ScrollArea className="h-[200px] rounded-lg border bg-background p-4">
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <pre className="whitespace-pre-wrap text-xs font-mono">{guideContent.slice(0, 2000)}...</pre>
+                {qualityResult && (
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="p-2 bg-muted rounded">
+                      <div className="text-muted-foreground">Words</div>
+                      <div className="font-medium">{qualityResult.wordCount.toLocaleString()}</div>
+                    </div>
+                    <div className="p-2 bg-muted rounded">
+                      <div className="text-muted-foreground">Sections</div>
+                      <div className="font-medium">{qualityResult.sectionsFound.length}</div>
+                    </div>
+                    <div className="p-2 bg-muted rounded">
+                      <div className="text-muted-foreground">Tables</div>
+                      <div className="font-medium">{qualityResult.tableCount}</div>
+                    </div>
                   </div>
+                )}
+
+                {qualityResult?.issues && qualityResult.issues.length > 0 && (
+                  <div className="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                    <div className="flex items-center gap-2 text-yellow-600 text-sm mb-1">
+                      <AlertTriangle className="w-4 h-4" />
+                      Quality Notes
+                    </div>
+                    <ul className="text-xs text-muted-foreground list-disc list-inside">
+                      {qualityResult.issues.slice(0, 3).map((issue, i) => (
+                        <li key={i}>{issue}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <ScrollArea className="h-[200px] rounded-lg border bg-background p-4">
+                  <pre className="whitespace-pre-wrap text-xs font-mono">{guideContent.slice(0, 3000)}...</pre>
                 </ScrollArea>
 
-                {/* Extracted Criteria */}
                 {extractedCriteria && (
                   <div className="space-y-3">
                     <Label className="text-sm font-medium">Extracted Buyer Fit Criteria</Label>
@@ -326,7 +397,7 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
                             <DollarSign className="w-3 h-3" />
                             Size Criteria
                           </div>
-                          <p className="text-sm whitespace-pre-line">{extractedCriteria.sizeCriteria}</p>
+                          <p className="text-sm whitespace-pre-line line-clamp-4">{extractedCriteria.sizeCriteria}</p>
                         </div>
                       )}
                       {extractedCriteria.serviceCriteria && (
@@ -335,7 +406,7 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
                             <Briefcase className="w-3 h-3" />
                             Service Mix
                           </div>
-                          <p className="text-sm whitespace-pre-line">{extractedCriteria.serviceCriteria}</p>
+                          <p className="text-sm whitespace-pre-line line-clamp-4">{extractedCriteria.serviceCriteria}</p>
                         </div>
                       )}
                       {extractedCriteria.geographyCriteria && (
@@ -344,7 +415,7 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
                             <MapPin className="w-3 h-3" />
                             Geography
                           </div>
-                          <p className="text-sm whitespace-pre-line">{extractedCriteria.geographyCriteria}</p>
+                          <p className="text-sm whitespace-pre-line line-clamp-4">{extractedCriteria.geographyCriteria}</p>
                         </div>
                       )}
                       {extractedCriteria.buyerTypesCriteria && (
@@ -353,7 +424,7 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
                             <Users className="w-3 h-3" />
                             Buyer Types
                           </div>
-                          <p className="text-sm whitespace-pre-line">{extractedCriteria.buyerTypesCriteria}</p>
+                          <p className="text-sm whitespace-pre-line line-clamp-4">{extractedCriteria.buyerTypesCriteria}</p>
                         </div>
                       )}
                     </div>
