@@ -720,10 +720,76 @@ export default function TrackerDetail() {
   
 
   const startEditingFitCriteria = () => {
-    setEditedSizeCriteria(tracker?.fit_criteria_size || "");
-    setEditedServiceCriteria(tracker?.fit_criteria_service || "");
-    setEditedGeographyCriteria(tracker?.fit_criteria_geography || "");
-    setEditedBuyerTypesCriteria(tracker?.fit_criteria_buyer_types || "");
+    // For Size Criteria - check text field first, then convert from JSONB
+    let sizeText = tracker?.fit_criteria_size || "";
+    if (!sizeText && tracker?.size_criteria) {
+      const sc = tracker.size_criteria as any;
+      const parts: string[] = [];
+      if (sc.min_revenue) parts.push(`Min Revenue: ${sc.min_revenue}`);
+      if (sc.max_revenue) parts.push(`Max Revenue: ${sc.max_revenue}`);
+      if (sc.min_ebitda) parts.push(`Min EBITDA: ${sc.min_ebitda}`);
+      if (sc.max_ebitda) parts.push(`Max EBITDA: ${sc.max_ebitda}`);
+      if (sc.location_count) parts.push(`Locations: ${sc.location_count}`);
+      if (sc.min_square_footage) parts.push(`Min Square Footage: ${sc.min_square_footage}`);
+      if (sc.other?.length) parts.push(`Other: ${sc.other.join(', ')}`);
+      sizeText = parts.join('\n');
+    }
+    setEditedSizeCriteria(sizeText);
+
+    // For Service Criteria - check text field first, then convert from JSONB
+    let serviceText = tracker?.fit_criteria_service || "";
+    if (!serviceText && tracker?.service_criteria) {
+      const svc = tracker.service_criteria as any;
+      const parts: string[] = [];
+      if (svc.required_services?.length) parts.push(`Required: ${svc.required_services.join(', ')}`);
+      if (svc.preferred_services?.length) parts.push(`Preferred: ${svc.preferred_services.join(', ')}`);
+      if (svc.excluded_services?.length) parts.push(`Excluded: ${svc.excluded_services.join(', ')}`);
+      if (svc.business_model) parts.push(`Business Model: ${svc.business_model}`);
+      if (svc.customer_profile) parts.push(`Customer Profile: ${svc.customer_profile}`);
+      if (svc.other?.length) parts.push(`Other: ${svc.other.join(', ')}`);
+      serviceText = parts.join('\n');
+    }
+    setEditedServiceCriteria(serviceText);
+
+    // For Geography Criteria - check text field first, then convert from JSONB
+    let geoText = tracker?.fit_criteria_geography || "";
+    if (!geoText && tracker?.geography_criteria) {
+      const geo = tracker.geography_criteria as any;
+      const parts: string[] = [];
+      if (geo.required_regions?.length) parts.push(`Required Regions: ${geo.required_regions.join(', ')}`);
+      if (geo.preferred_regions?.length) parts.push(`Preferred Regions: ${geo.preferred_regions.join(', ')}`);
+      if (geo.excluded_regions?.length) parts.push(`Excluded Regions: ${geo.excluded_regions.join(', ')}`);
+      if (geo.coverage_type) parts.push(`Coverage: ${geo.coverage_type}`);
+      if (geo.hq_requirements) parts.push(`HQ Requirements: ${geo.hq_requirements}`);
+      if (geo.other?.length) parts.push(`Other: ${geo.other.join(', ')}`);
+      geoText = parts.join('\n');
+    }
+    setEditedGeographyCriteria(geoText);
+
+    // For Buyer Types - check text field first, then convert from JSONB
+    let buyerTypesText = tracker?.fit_criteria_buyer_types || "";
+    if (!buyerTypesText && tracker?.buyer_types_criteria) {
+      const btc = tracker.buyer_types_criteria as any;
+      if (btc.buyer_types?.length) {
+        buyerTypesText = btc.buyer_types.map((bt: any, idx: number) => {
+          const parts: string[] = [`Priority ${bt.priority || idx + 1}: ${bt.type_name || 'Buyer Type'}`];
+          if (bt.description) parts.push(`  Description: ${bt.description}`);
+          if (bt.min_locations || bt.max_locations) {
+            const locRange = bt.min_locations && bt.max_locations 
+              ? `${bt.min_locations} - ${bt.max_locations}`
+              : bt.min_locations ? `${bt.min_locations}+` : `up to ${bt.max_locations}`;
+            parts.push(`  Locations: ${locRange}`);
+          }
+          if (bt.min_revenue_per_location) parts.push(`  Revenue/Location: ${bt.min_revenue_per_location}`);
+          if (bt.min_square_footage) parts.push(`  Min Sq Ft: ${bt.min_square_footage}`);
+          if (bt.geographic_requirements) parts.push(`  Geography: ${bt.geographic_requirements}`);
+          if (bt.deal_requirements) parts.push(`  Deal Requirements: ${bt.deal_requirements}`);
+          return parts.join('\n');
+        }).join('\n\n');
+      }
+    }
+    setEditedBuyerTypesCriteria(buyerTypesText);
+
     setIsEditingFitCriteria(true);
   };
 
