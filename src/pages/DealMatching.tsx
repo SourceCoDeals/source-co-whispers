@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
+import { EngagementSignalsBadge } from "@/components/EngagementSignalsBadge";
 import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle, XCircle, ThumbsUp, ThumbsDown, Eye, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -671,6 +672,9 @@ export default function DealMatching() {
                     <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/30">
                       <FileCheck className="w-3 h-3 mr-1" />Fee Agreement
                     </Badge>
+                  )}
+                  {buyer.aiScore?.engagementSignals && (
+                    <EngagementSignalsBadge signals={buyer.aiScore.engagementSignals} variant="compact" />
                   )}
                 </div>
                 

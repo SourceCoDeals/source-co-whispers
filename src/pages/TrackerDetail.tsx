@@ -9,6 +9,7 @@ import { CSVImport } from "@/components/CSVImport";
 import { DealCSVImport } from "@/components/DealCSVImport";
 import { StructuredCriteriaPanel } from "@/components/StructuredCriteriaPanel";
 import { KPIConfigPanel } from "@/components/KPIConfigPanel";
+import { ScoringBehaviorPanel } from "@/components/ScoringBehaviorPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload, TrendingUp, ArrowUp, ArrowDown, Filter } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -1137,6 +1138,24 @@ export default function TrackerDetail() {
           </div>
           <Button onClick={() => navigate(`/trackers/${id}/deals/new`)}><Plus className="w-4 h-4 mr-2" />List New Deal</Button>
         </div>
+
+        {/* Scoring Behavior Configuration */}
+        <ScoringBehaviorPanel
+          scoringBehavior={tracker.scoring_behavior}
+          industryName={tracker.industry_name}
+          onSave={async (behavior) => {
+            const { error } = await supabase
+              .from("industry_trackers")
+              .update({ scoring_behavior: behavior as any, updated_at: new Date().toISOString() })
+              .eq("id", id);
+            if (error) {
+              toast({ title: "Error", description: "Failed to save scoring configuration", variant: "destructive" });
+            } else {
+              setTracker({ ...tracker, scoring_behavior: behavior });
+              toast({ title: "Scoring configuration saved" });
+            }
+          }}
+        />
 
         {/* Fit Criteria Section */}
         <div className="bg-card rounded-lg border p-4">

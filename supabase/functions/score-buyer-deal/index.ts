@@ -197,6 +197,56 @@ interface Buyer {
   target_business_model: string | null;
 }
 
+interface ScoringBehavior {
+  geography: {
+    strictness: 'strict' | 'moderate' | 'relaxed';
+    single_location_rule: 'same_state' | 'adjacent_states' | 'regional' | 'national';
+    multi_location_rule: 'adjacent_states' | 'regional' | 'national';
+    proximity_miles: number;
+    allow_national_for_attractive_deals: boolean;
+  };
+  size: {
+    strictness: 'strict' | 'moderate' | 'relaxed';
+    below_minimum_behavior: 'disqualify' | 'penalize' | 'ignore';
+    single_location_penalty: boolean;
+  };
+  services: {
+    matching_mode: 'semantic' | 'keyword' | 'hybrid';
+    require_primary_focus_match: boolean;
+    excluded_services_are_dealbreakers: boolean;
+  };
+  engagement: {
+    override_geography: boolean;
+    override_size: boolean;
+    weight_multiplier: number;
+  };
+}
+
+const DEFAULT_SCORING_BEHAVIOR: ScoringBehavior = {
+  geography: {
+    strictness: 'moderate',
+    single_location_rule: 'adjacent_states',
+    multi_location_rule: 'regional',
+    proximity_miles: 100,
+    allow_national_for_attractive_deals: true,
+  },
+  size: {
+    strictness: 'strict',
+    below_minimum_behavior: 'penalize',
+    single_location_penalty: true,
+  },
+  services: {
+    matching_mode: 'semantic',
+    require_primary_focus_match: true,
+    excluded_services_are_dealbreakers: true,
+  },
+  engagement: {
+    override_geography: true,
+    override_size: false,
+    weight_multiplier: 1.0,
+  },
+};
+
 interface Tracker {
   id: string;
   industry_name: string;
@@ -254,6 +304,7 @@ interface Tracker {
       fit_notes?: string;
     }>;
   } | null;
+  scoring_behavior: ScoringBehavior | null;
 }
 
 interface CategoryScore {
@@ -435,64 +486,133 @@ function analyzeEngagementSignals(callIntelligence: any[] | null): EngagementSig
 }
 
 // Determine if a buyer operates at a "national" or "large platform" scale
-// Uses buyer data rather than hardcoded thresholds when possible
-function determineBuyerScale(buyer: Buyer): boolean {
-  // Check geographic footprint
+// Now uses tracker's buyer_types_criteria when available
+function determineBuyerScale(buyer: Buyer, tracker: Tracker): { isNational: boolean; buyerType: string | null } {
+  // First, try to match buyer against tracker's defined buyer types
+  const buyerTypes = tracker.buyer_types_criteria?.buyer_types || [];
+  
+  for (const buyerType of buyerTypes) {
+    // Check if buyer matches this type based on geographic_scope
+    const scope = buyerType.geographic_scope?.toLowerCase() || '';
+    
+    if (scope.includes('national') || scope.includes('nationwide')) {
+      // Check if buyer's data suggests national scope
+      const hasNationalPresence = 
+        (buyer.target_geographies && buyer.target_geographies.length > 5) ||
+        (buyer.geographic_footprint && buyer.geographic_footprint.length > 5);
+      
+      const isActiveAcquirer = buyer.total_acquisitions && buyer.total_acquisitions > 5;
+      
+      if (hasNationalPresence || isActiveAcquirer) {
+        return { isNational: true, buyerType: buyerType.type_name };
+      }
+    }
+    
+    if (scope.includes('regional')) {
+      const hasRegionalPresence = 
+        (buyer.target_geographies && buyer.target_geographies.length >= 3) ||
+        (buyer.geographic_footprint && buyer.geographic_footprint.length >= 3);
+      
+      if (hasRegionalPresence) {
+        return { isNational: false, buyerType: buyerType.type_name };
+      }
+    }
+  }
+  
+  // Fallback to heuristic-based detection
   const hasNationalPresence = 
     (buyer.target_geographies && buyer.target_geographies.length > 3) ||
     (buyer.geographic_footprint && buyer.geographic_footprint.length > 3);
   
-  // Check acquisition history
   const isActiveAcquirer = buyer.total_acquisitions && buyer.total_acquisitions > 5;
   
-  // Check if buyer specifically mentions national/regional scope
   const mentionsNational = [
     buyer.thesis_summary,
     buyer.acquisition_appetite,
     buyer.services_offered
   ].some(text => text?.toLowerCase().includes('national') || text?.toLowerCase().includes('nationwide'));
   
-  return hasNationalPresence || isActiveAcquirer || mentionsNational;
+  return { 
+    isNational: hasNationalPresence || isActiveAcquirer || mentionsNational, 
+    buyerType: null 
+  };
+}
+
+// Get scoring behavior from tracker or use defaults
+function getScoringBehavior(tracker: Tracker): ScoringBehavior {
+  const behavior = tracker.scoring_behavior || DEFAULT_SCORING_BEHAVIOR;
+  return {
+    geography: { ...DEFAULT_SCORING_BEHAVIOR.geography, ...behavior.geography },
+    size: { ...DEFAULT_SCORING_BEHAVIOR.size, ...behavior.size },
+    services: { ...DEFAULT_SCORING_BEHAVIOR.services, ...behavior.services },
+    engagement: { ...DEFAULT_SCORING_BEHAVIOR.engagement, ...behavior.engagement },
+  };
 }
 
 // Score SIZE category - SIZE IS A GATING FACTOR
 // When deal is too small for buyer, it should significantly limit the overall score
 // Even if geography and services are perfect, a too-small deal is rarely a fit
-function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore & { sizeMultiplier: number } {
+// Now uses tracker's scoring_behavior for industry-specific rules
+function scoreSizeCategory(deal: Deal, buyer: Buyer, tracker: Tracker): CategoryScore & { sizeMultiplier: number } {
   const dealRevenue = deal.revenue || 0;
   const dealLocations = deal.location_count || 1;
+  const behavior = getScoringBehavior(tracker);
   
   // Calculate a "size multiplier" that will be applied to the final composite score
   // This enforces the rule that size matters more than other factors when it's wrong
   let sizeMultiplier = 1.0;
   
+  // Apply strictness based on tracker config
+  const strictnessMultiplier = 
+    behavior.size.strictness === 'strict' ? 1.0 :
+    behavior.size.strictness === 'moderate' ? 0.7 :
+    0.4; // relaxed
+  
   // STRICT: Hard disqualify if deal revenue is significantly below buyer's minimum (more than 30% below)
   if (buyer.min_revenue && dealRevenue < buyer.min_revenue * 0.7) {
     const percentBelow = ((buyer.min_revenue - dealRevenue) / buyer.min_revenue * 100).toFixed(0);
-    return {
-      score: 0,
-      reasoning: `Deal revenue ($${dealRevenue}M) is ${percentBelow}% below buyer minimum ($${buyer.min_revenue}M) - too small`,
-      isDisqualified: true,
-      disqualificationReason: `Revenue ($${dealRevenue}M) significantly below minimum ($${buyer.min_revenue}M)`,
-      confidence: 'high',
-      sizeMultiplier: 0
-    };
+    
+    // Check behavior - should we disqualify or just penalize?
+    if (behavior.size.below_minimum_behavior === 'disqualify') {
+      return {
+        score: 0,
+        reasoning: `Deal revenue ($${dealRevenue}M) is ${percentBelow}% below buyer minimum ($${buyer.min_revenue}M) - too small`,
+        isDisqualified: true,
+        disqualificationReason: `Revenue ($${dealRevenue}M) significantly below minimum ($${buyer.min_revenue}M)`,
+        confidence: 'high',
+        sizeMultiplier: 0
+      };
+    } else if (behavior.size.below_minimum_behavior === 'penalize') {
+      return {
+        score: 15,
+        reasoning: `Deal revenue ($${dealRevenue}M) is ${percentBelow}% below buyer minimum ($${buyer.min_revenue}M) - significant size mismatch`,
+        isDisqualified: false,
+        disqualificationReason: null,
+        confidence: 'high',
+        sizeMultiplier: 0.3 * strictnessMultiplier
+      };
+    }
+    // 'ignore' - continue scoring without penalty
   }
   
   // Soft disqualification: Below minimum but within 30% - apply heavy penalty multiplier
   if (buyer.min_revenue && dealRevenue < buyer.min_revenue) {
     const percentBelow = ((buyer.min_revenue - dealRevenue) / buyer.min_revenue * 100);
-    // If 20% below, multiplier = 0.5; if 10% below, multiplier = 0.65; etc.
-    sizeMultiplier = 0.35 + (1 - percentBelow / 30) * 0.35; // Range from 0.35 to 0.70
     
-    return {
-      score: Math.round(25 + (30 - percentBelow)), // Score between 25-55
-      reasoning: `Deal revenue ($${dealRevenue}M) is ${percentBelow.toFixed(0)}% below buyer minimum ($${buyer.min_revenue}M) - challenging fit`,
-      isDisqualified: false, // Not hard-disqualified, but heavily penalized
-      disqualificationReason: null,
-      confidence: 'high',
-      sizeMultiplier
-    };
+    if (behavior.size.below_minimum_behavior !== 'ignore') {
+      // If 20% below, multiplier = 0.5; if 10% below, multiplier = 0.65; etc.
+      sizeMultiplier = 0.35 + (1 - percentBelow / 30) * 0.35; // Range from 0.35 to 0.70
+      sizeMultiplier *= strictnessMultiplier + (1 - strictnessMultiplier); // Adjust by strictness
+      
+      return {
+        score: Math.round(25 + (30 - percentBelow)), // Score between 25-55
+        reasoning: `Deal revenue ($${dealRevenue}M) is ${percentBelow.toFixed(0)}% below buyer minimum ($${buyer.min_revenue}M) - challenging fit`,
+        isDisqualified: false,
+        disqualificationReason: null,
+        confidence: 'high',
+        sizeMultiplier
+      };
+    }
   }
   
   if (buyer.max_revenue && dealRevenue > buyer.max_revenue * 1.5) {
@@ -508,18 +628,18 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer): CategoryScore & { sizeMult
   
   // Check if this is a single-location deal against a buyer that needs larger scale
   // Use tracker's buyer_types_criteria if available to determine what "national platform" means
-  const buyerIsNationalPlatform = determineBuyerScale(buyer);
+  const { isNational: buyerIsNationalPlatform, buyerType } = determineBuyerScale(buyer, tracker);
     
-  // Single-location deals are penalized for national platforms  
-  if (dealLocations === 1 && buyerIsNationalPlatform) {
+  // Single-location deals are penalized for national platforms (if penalty enabled)
+  if (dealLocations === 1 && buyerIsNationalPlatform && behavior.size.single_location_penalty) {
     // If they're also below the sweet spot, it's a double penalty
     if (buyer.revenue_sweet_spot && dealRevenue < buyer.revenue_sweet_spot * 0.6) {
       sizeMultiplier = Math.min(sizeMultiplier, 0.45);
       return {
         score: 20,
-        reasoning: `Single-location deal ($${dealRevenue}M) significantly below platform's sweet spot ($${buyer.revenue_sweet_spot}M)`,
-        isDisqualified: true,
-        disqualificationReason: `Single location + small revenue unlikely to attract platform buyer`,
+        reasoning: `Single-location deal ($${dealRevenue}M) significantly below ${buyerType || 'platform'}'s sweet spot ($${buyer.revenue_sweet_spot}M)`,
+        isDisqualified: behavior.size.strictness === 'strict',
+        disqualificationReason: behavior.size.strictness === 'strict' ? `Single location + small revenue unlikely to attract platform buyer` : null,
         confidence: 'high',
         sizeMultiplier
       };
@@ -1380,10 +1500,10 @@ serve(async (req) => {
 
     console.log(`Scoring deal ${dealId}...`);
 
-    // Fetch deal with tracker (including service_criteria, kpi_scoring_config, and buyer_types_criteria)
+    // Fetch deal with tracker (including service_criteria, kpi_scoring_config, buyer_types_criteria, and scoring_behavior)
     const { data: deal, error: dealError } = await supabase
       .from("deals")
-      .select("*, industry_trackers!inner(id, industry_name, fit_criteria, geography_weight, service_mix_weight, size_weight, owner_goals_weight, service_criteria, size_criteria, kpi_scoring_config, buyer_types_criteria)")
+      .select("*, industry_trackers!inner(id, industry_name, fit_criteria, geography_weight, service_mix_weight, size_weight, owner_goals_weight, service_criteria, size_criteria, kpi_scoring_config, buyer_types_criteria, scoring_behavior)")
       .eq("id", dealId)
       .single();
 
@@ -1461,7 +1581,7 @@ serve(async (req) => {
       const buyerCalls = callsByBuyer[buyer.id] || [];
       const engagementSignals = analyzeEngagementSignals(buyerCalls);
       
-      const sizeScore = scoreSizeCategory(deal as Deal, buyer as Buyer);
+      const sizeScore = scoreSizeCategory(deal as Deal, buyer as Buyer, tracker);
       const geographyScore = scoreGeographyCategory(deal as Deal, buyer as Buyer, dealAttractiveness, engagementSignals);
       
       // Try AI service scoring first, fallback to keyword matching
