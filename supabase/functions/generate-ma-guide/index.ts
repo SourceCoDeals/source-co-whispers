@@ -8,483 +8,398 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// EXECUTION-FOCUSED Master Prompt - Tells AI to DO, not TEACH
-const EXECUTION_WRAPPER = `YOU ARE EXECUTING A RESEARCH TASK, NOT TEACHING.
+// System prompt that forces detailed execution
+const SYSTEM_PROMPT = `You are an M&A industry research expert creating a comprehensive buyer intelligence guide.
 
-CRITICAL RULES:
-1. DO NOT explain "How to research" - ACTUALLY DO the research
-2. DO NOT use placeholders like "X%", "$XM", "[Value]", "[Industry]" - USE REAL NUMBERS
-3. DO NOT give ranges like "10-20%" - GIVE SPECIFIC BENCHMARKS with context
-4. DO NOT say "varies by company" - STATE THE TYPICAL VALUE with top/median/bottom quartiles
+CRITICAL REQUIREMENTS:
+1. You must provide REAL, SPECIFIC data - never use placeholders like "X%", "$XM", or "[Value]"
+2. Every section must have multiple detailed data tables with actual numbers
+3. You are writing for professional M&A advisors who need actionable intelligence
+4. Minimum content requirements are strictly enforced - write EXTENSIVELY
+5. Include specific company names, transaction examples, and market data where possible
 
-QUALITY BENCHMARKS TO MATCH:
-- The Veterinary industry guide has: NAICS 541940, specific EBITDA margins (15-25%), actual PE firms (NVA, VetCor, BluePearl), specific multiples (6-10x)
-- The HVAC industry guide has: specific KPIs (Revenue per tech: $150-250K), named consolidators (Wrench Group, Apex Service Partners), actual deal values
+OUTPUT QUALITY STANDARDS:
+- Every KPI must have specific benchmark numbers with quartile breakdowns
+- Every table must have at least 5-7 rows of real data
+- Include named PE firms, platforms, and strategic buyers active in the industry
+- Provide specific geographic market analysis with named metros
+- Reference actual NAICS codes with exact 6-digit numbers
 
-YOUR OUTPUT MUST HAVE:
-✓ Actual 6-digit NAICS code(s)
-✓ At least 15 data tables with real numbers
-✓ Named PE firms and platforms active in this industry
-✓ Specific dollar thresholds (not ranges)
-✓ Actual percentage benchmarks for each KPI
-✓ Real transaction examples if known
-✓ Industry-specific terminology (25+ terms minimum)`;
+You will be penalized for:
+- Using placeholder values (X%, $XM, [Value], etc.)
+- Being generic instead of industry-specific  
+- Short sections that lack detail
+- Missing tables or benchmarks
+- Vague recommendations without specific criteria`;
 
-// Streamlined, execution-focused phase prompts
+// Enhanced phase prompts with word count enforcement
 const PHASE_PROMPTS = {
   phase1: {
     name: "Industry Fundamentals",
-    instruction: `GENERATE PART 1: INDUSTRY FUNDAMENTALS
+    minWords: 8000,
+    instruction: `CREATE COMPREHENSIVE INDUSTRY FUNDAMENTALS GUIDE
 
-OUTPUT EXACTLY THESE SECTIONS:
+You MUST write AT LEAST 8,000 words for this section. This is a strict minimum requirement.
 
-## 1. INDUSTRY DEFINITION
-- NAICS Code: [Actual 6-digit code] 
-- Official Name: [Exact name from census.gov]
-- Revenue Size: $X billion industry
-- Company Count: X,XXX companies
-- What's INCLUDED: [Specific services/products]
-- What's EXCLUDED: [Adjacent industries NOT included]
-- KEY SUBSEGMENTS TABLE:
-| Subsegment | % of Industry | Avg Company Size | Typical Margin | PE Interest |
-| [Name] | XX% | $X.XM | XX% | High/Med/Low |
-(Include 5-7 subsegments)
+REQUIRED SECTIONS (complete all with extensive detail):
 
-## 2. INDUSTRY TERMINOLOGY GLOSSARY
-Create TABLE with 25+ terms:
-| Term | Definition | M&A Relevance | Benchmark |
-| [Term] | [Definition] | [Why it matters] | [Specific number if applicable] |
+## 1. INDUSTRY DEFINITION & SCOPE
+- **NAICS Code**: Provide the actual 6-digit NAICS code(s)
+- **Industry Size**: Total US market size in dollars, number of businesses, employment
+- **Growth Rate**: Historical and projected CAGR with specific percentages
+- **Included vs Excluded Services**: Comprehensive list of what's in/out of scope
 
-Must include: Revenue terms, pricing terms, KPIs, customer types, regulatory terms.
+CREATE TABLE: Market Segmentation
+| Segment | % of Market | Avg Revenue | EBITDA Margin | PE Activity |
+(Include 6-8 segments with real data)
 
-## 3. BUSINESS MODELS
-DELIVERY MODELS TABLE:
-| Model | Description | Revenue/Unit | Margin | Scalability | Buyer Preference |
-| [Model A] | [How it works] | $XXX | XX% | High/Med/Low | [Why] |
-(3-5 models)
+## 2. TERMINOLOGY & JARGON GLOSSARY
+CREATE TABLE: 30+ Industry Terms
+| Term | Definition | M&A Significance | Typical Benchmark |
+(Must include: revenue metrics, operational KPIs, customer types, regulatory terms, technology terms, service categories)
 
-REVENUE MODELS TABLE:
-| Model | % of Businesses | Predictability | Valuation Impact |
-| Recurring/Subscription | XX% | High | +X.Xx multiple |
-| Repeat Transaction | XX% | Medium | Baseline |
-| Project-Based | XX% | Low | -X.Xx multiple |
+## 3. BUSINESS MODELS IN DEPTH
+For each business model, provide:
+- Revenue structure and pricing norms
+- Cost structure breakdown
+- Typical margins
+- Scalability characteristics
+- Buyer preferences
 
-## 4. INDUSTRY ECOSYSTEM
-STAKEHOLDER MAP:
-- Customers: [Who, demographics, buying frequency]
-- Payers: [If different - insurance, govt, etc.]
-- Suppliers: [Key categories, concentration risks]
-- Referral Sources: [Who sends business]
-- Regulators: [Governing bodies, key licenses]
+CREATE TABLE: Business Model Comparison
+| Model Type | Description | Revenue/Unit | Gross Margin | EBITDA Margin | Scalability | PE Interest |
+(Include 4-6 models)
 
-SUPPLIER CONCENTRATION TABLE:
-| % from Top Supplier | Risk Level | Multiple Impact |
-| <30% | Low | None |
-| 30-50% | Moderate | -0.25x |
-| 50-70% | High | -0.5x |
-| >70% | Critical | -1.0x |
+CREATE TABLE: Revenue Model Impact on Valuation
+| Revenue Type | % of Businesses | Predictability | Multiple Premium/Discount |
+(Recurring, Repeat, Project-based, etc.)
 
-## 5. INDUSTRY ECONOMICS
-COST STRUCTURE TABLE:
-| Category | % of Revenue | Range | Notes |
-| COGS | XX% | XX-XX% | [Industry specifics] |
-| Labor | XX% | XX-XX% | [Wage norms] |
-| Occupancy | XX% | XX-XX% | |
-| Marketing | XX% | XX-XX% | |
-| G&A | XX% | XX-XX% | |
-| EBITDA | XX% | XX-XX% | |
+## 4. INDUSTRY ECOSYSTEM MAP
+Detail every stakeholder:
+- **Customers**: Demographics, buying behavior, lifetime value
+- **Payers**: If different from customers (insurance, B2B, government)
+- **Suppliers**: Categories, concentration risks, switching costs
+- **Referral Sources**: Who drives business
+- **Regulators**: Licensing bodies, compliance requirements
+- **Technology Vendors**: Key software/equipment providers
 
-UNIT ECONOMICS EXAMPLE:
-- Revenue per [unit]: $X,XXX
-- Variable cost: $X,XXX  
-- Contribution margin: $XXX (XX%)
-- Breakeven: X units
+CREATE TABLE: Supplier Concentration Risk Matrix
+| Concentration Level | Risk Rating | Multiple Impact | Mitigation |
 
-SCALE ECONOMICS TABLE:
-| Revenue Level | EBITDA Margin | G&A per Location | Notes |
-| <$2M | X% | $XXX,XXX | Owner-operator |
-| $2-5M | X% | $XXX,XXX | |
-| $5-10M | X% | $XXX,XXX | |
-| $10M+ | X% | $XXX,XXX | Platform scale |
+CREATE TABLE: Regulatory Requirements
+| Requirement | Type | Cost | Renewal | Risk of Non-Compliance |
 
-## 6. COMPETITIVE LANDSCAPE
-CONSOLIDATION STATUS:
-- Stage: Early/Mid/Late (with evidence)
-- Top 10 market share: XX%
-- Number of PE platforms: XX
-- Average platform size: $XXM revenue
+## 5. INDUSTRY ECONOMICS DEEP DIVE
 
-ACTIVE ACQUIRERS TABLE:
-| Buyer Name | Type | Strategy | Target Size | Geographic Focus |
-| [Name] | PE Platform | Add-on | $X-XM EBITDA | [Regions] |
-(List 5-10 active buyers - use real names if known)
+CREATE TABLE: Detailed Cost Structure
+| Category | % of Revenue (Low) | % of Revenue (Median) | % of Revenue (High) | Notes |
+(Include: COGS, Labor, Occupancy, Equipment, Marketing, Insurance, G&A, Owner Comp, EBITDA)
 
-BARRIERS TO ENTRY TABLE:
-| Barrier | Strength | Description | Value Impact |
-| Licensing | High/Med/Low | [Requirements] | [Impact] |
-| Capital | | | |
-| Expertise | | | |
-| Relationships | | | |
-| Brand | | | |
+CREATE TABLE: Unit Economics Example
+| Metric | Value | Calculation |
+(Build out complete unit economics for typical transaction)
 
-TARGET: 12,000+ words. Every metric needs a specific number.`
+CREATE TABLE: Scale Economics Curve
+| Revenue Level | EBITDA % | G&A % | Owner Draw | Management Layer |
+($0-500K, $500K-1M, $1-2M, $2-5M, $5-10M, $10M+)
+
+CREATE TABLE: Seasonality Impact (if applicable)
+| Month | % of Annual Revenue | Capacity Utilization |
+
+## 6. COMPETITIVE LANDSCAPE & CONSOLIDATION
+
+Provide comprehensive analysis of:
+- Market fragmentation level
+- Top 10 player market share
+- Number of PE-backed platforms
+- Recent platform formation activity
+- Strategic buyer activity
+
+CREATE TABLE: Active Acquirers in This Industry
+| Buyer Name | Type | PE Sponsor (if any) | Target Size | Geographic Focus | Est. Acquisitions |
+(List 10-15 known active buyers)
+
+CREATE TABLE: Recent Notable Transactions
+| Date | Acquirer | Target | Revenue | EBITDA | Multiple | Deal Type |
+(List 5-10 recent deals if known)
+
+CREATE TABLE: Barriers to Entry Analysis
+| Barrier Type | Strength | Description | Defensibility |
+
+REMEMBER: You must write AT LEAST 8,000 words. Be thorough and specific.`
   },
 
   phase2: {
-    name: "Acquisition Attractiveness",
-    instruction: `GENERATE PART 2: WHAT MAKES COMPANIES ATTRACTIVE
+    name: "Acquisition Attractiveness Factors",
+    minWords: 8000,
+    instruction: `CREATE COMPREHENSIVE ACQUISITION ATTRACTIVENESS GUIDE
 
-OUTPUT EXACTLY THESE SECTIONS:
+You MUST write AT LEAST 8,000 words for this section. This is a strict minimum requirement.
 
-## 7. FINANCIAL ATTRACTIVENESS
+REQUIRED SECTIONS:
 
-EBITDA SIZE MATRIX:
-| EBITDA Range | Buyer Type | Multiple | Deal Type | Competition Level |
-| <$500K | Individual/Search | 2.5-3.5x SDE | Asset | Low |
-| $500K-$1M | Sm. PE/Indep Sponsor | 3.5-4.5x | Equity | Moderate |
-| $1M-$3M | Add-on Platforms | 4.5-6.0x | Add-on | High |
-| $3M-$5M | Platform/Add-on | 5.5-7.0x | Either | Very High |
-| $5M-$10M | Large PE | 6.0-8.0x | Platform | Competitive |
-| $10M+ | Strategic/Large PE | 7.0-10x+ | Platform | Very Competitive |
+## 7. FINANCIAL ATTRACTIVENESS DEEP DIVE
 
-PE THRESHOLD for this industry: $X EBITDA minimum (explain why)
+CREATE TABLE: EBITDA Size & Buyer Type Matrix
+| EBITDA Range | Primary Buyer Type | Typical Multiple | Deal Structure | Competition Level | Notes |
+(<$250K, $250-500K, $500K-1M, $1-2M, $2-3M, $3-5M, $5-10M, $10M+)
 
-EBITDA MARGIN BENCHMARKS:
+CREATE TABLE: EBITDA Margin Benchmarks
 | Percentile | EBITDA Margin | What It Signals | Multiple Impact |
-| Top 5% | >XX% | Best-in-class ops | +1.0-1.5x |
-| Top Quartile | XX-XX% | Strong operator | +0.5x |
-| Median | XX-XX% | Industry normal | Baseline |
-| Bottom Quartile | XX-XX% | Improvement needed | -0.5x |
-| Bottom 10% | <XX% | Operational issues | -1.0x or pass |
+(Top 5%, Top 10%, Top Quartile, Median, Bottom Quartile, Bottom 10%)
 
-CONCENTRATION RISK MATRIX:
-| Top Customer % | Risk | Multiple Impact | Buyer Response |
-| <5% | Minimal | None | Very attractive |
-| 5-10% | Low | None | Proceed |
-| 10-20% | Moderate | -0.25x | Questions |
-| 20-30% | Elevated | -0.5x | Concern |
-| 30-40% | High | -1.0x | Serious concern |
-| 40-50% | Very High | -1.5x | Often pass |
-| >50% | Critical | N/A | Almost always pass |
+CREATE TABLE: Revenue Quality Analysis
+| Characteristic | Premium | Baseline | Discount |
+(Recurring %, Growth rate, Concentration, Predictability)
 
-REVENUE QUALITY PREMIUM TABLE:
-| Recurring % | Valuation Premium | Buyer Enthusiasm |
-| >80% | +1.5-2.0x | Highly competitive |
-| 60-80% | +0.75-1.0x | Very attractive |
-| 40-60% | +0.25-0.5x | Attractive |
-| 20-40% | Baseline | Normal interest |
-| <20% | -0.5x | Less interest |
+CREATE TABLE: Customer Concentration Impact
+| Top Customer % | Risk Level | Multiple Impact | Buyer Response |
+(0-5%, 5-10%, 10-15%, 15-20%, 20-30%, 30-40%, 40-50%, 50%+)
+
+CREATE TABLE: Financial Health Indicators
+| Metric | Excellent | Good | Acceptable | Concerning | Deal Killer |
 
 ## 8. OPERATIONAL ATTRACTIVENESS
 
-TOP 7 KPIs FOR THIS INDUSTRY:
-| KPI | Excellent | Good | Average | Below Avg | Poor | Weight |
-| [KPI 1] | [value] | [value] | [value] | [value] | [value] | XX% |
-| [KPI 2] | | | | | | XX% |
-| [KPI 3] | | | | | | XX% |
-| [KPI 4] | | | | | | XX% |
-| [KPI 5] | | | | | | XX% |
-| [KPI 6] | | | | | | XX% |
-| [KPI 7] | | | | | | XX% |
+CREATE TABLE: Top 10 Industry-Specific KPIs
+| KPI | Definition | Top 10% | Top Quartile | Median | Bottom Quartile | Weight in Scoring |
+(Include industry-specific metrics like revenue per tech, utilization rate, etc.)
 
-OPERATIONAL VALUE FACTORS:
-| Factor | Premium (+value) | Baseline | Discount (-value) |
-| Management | Professional GM: +20% | Some depth | Owner-dependent: -25% |
-| Technology | Cloud/modern: +10% | Current | Paper/outdated: -15% |
-| SOPs | Documented: +15% | Partial | None: -20% |
-| Facilities | Excellent: +10% | Good | Deferred maint: -15% |
-| Reputation | 4.5+ stars: +10% | 4.0+ | <3.5 stars: -15% |
+CREATE TABLE: Management & Team Assessment
+| Factor | Premium (5) | Strong (4) | Adequate (3) | Weak (2) | Concerning (1) |
+(Management depth, Key person dependency, Tenure, Training programs)
 
-OWNER DEPENDENCY ASSESSMENT:
-| Owner Hours/Week | Critical Functions | Risk Level | Value Impact |
-| <20 | None | Low | None |
-| 20-30 | 1-2 | Moderate | -10% |
-| 30-40 | 2-3 | Elevated | -15% |
-| 40-50 | 3+ | High | -25% |
-| 50+ | All | Critical | -30% to unsellable |
+CREATE TABLE: Technology & Systems Maturity
+| Area | Modern/Best Practice | Current | Dated | Legacy | Paper-Based |
+(CRM, ERP, Scheduling, Marketing, Financial, Operations)
+
+CREATE TABLE: Owner Dependency Assessment
+| Owner Hours/Week | Critical Functions Held | Risk Level | Value Impact | Transition Needs |
+
+CREATE TABLE: Workforce Analysis
+| Metric | Excellent | Good | Average | Below Avg | Poor |
+(Turnover, Tenure, Licensing, Training, Compensation vs market)
 
 ## 9. STRATEGIC ATTRACTIVENESS
 
-GEOGRAPHIC VALUE:
-| Market Type | Characteristics | PE Interest | Premium |
-| Tier 1 | Pop 1M+, growing, high income | Very High | +0.5-1.0x |
-| Tier 2 | Pop 500K-1M, stable | High | +0.25-0.5x |
-| Tier 3 | Pop 250K-500K | Moderate | Baseline |
-| Tier 4 | Pop <250K, declining | Low | -0.5-1.0x |
+CREATE TABLE: Geographic Market Value
+| Market Tier | Characteristics | Population | Growth | PE Interest | Multiple Premium |
+(Tier 1, 2, 3, 4 markets with specific criteria)
 
-HOT MARKETS for this industry: [List 5-10 specific MSAs]
-COLD MARKETS to avoid: [List reasons]
+CREATE TABLE: High-Value Markets for This Industry
+| Metro/Region | Population | Growth Rate | Why Attractive | Active Buyers |
+(List 10-15 specific metros)
 
-COMPETITIVE MOATS:
-| Moat Type | Example in This Industry | Sustainability | Value Impact |
-| Licensing/Regulatory | [Specific] | High | +X% |
-| Customer Lock-in | [Specific] | Medium | +X% |
-| Exclusive Contracts | [Specific] | Medium | +X% |
-| Brand/Reputation | [Specific] | High | +X% |
-| Scale Economics | [Specific] | High | +X% |
+CREATE TABLE: Markets to Avoid
+| Market Type | Characteristics | Why Unattractive | Discount |
 
-CERTIFICATIONS VALUE TABLE:
-| Certification | Required? | Cost | Time | Value Impact |
-| [Cert 1] | Yes/No | $X,XXX | X months | [Impact] |
-(List 5-10 relevant certifications)
+CREATE TABLE: Competitive Moat Assessment
+| Moat Type | Example in Industry | Sustainability | Value Impact |
+(Licenses, Relationships, Contracts, Brand, Scale, Geographic density)
+
+CREATE TABLE: Certification & Credential Value
+| Certification/License | Required? | Cost to Obtain | Time Required | Value Impact |
+(List all relevant industry certifications)
 
 ## 10. DEAL KILLERS & RED FLAGS
 
-ABSOLUTE DEAL KILLERS:
-❌ Revenue decline >XX% for 2+ years
-❌ Customer concentration >50%
-❌ Owner-operator who can't transition
-❌ Pending litigation >$XXX,XXX exposure
-❌ Regulatory violations/suspended license
-❌ Environmental contamination
-❌ <X years remaining on critical lease
+CREATE TABLE: Absolute Deal Killers
+| Issue | Threshold | Why It Kills Deals | Frequency |
 
-FINANCIAL RED FLAGS TABLE:
-| Issue | Threshold | Impact | Recoverable? |
-| Revenue decline | >X% YoY | -1.0x to pass | Rarely |
-| Margin decline | >X pts/year | -0.5x | Sometimes |
-| Add-backs >30% | >30% of EBITDA | Scrutiny | Depends |
-| AR aging | >X days | -0.25x | Yes |
-| Inventory issues | >X months | -0.25x | Yes |
+CREATE TABLE: Financial Red Flags
+| Issue | Yellow Flag | Red Flag | Deal Killer | Recovery Possible? |
+(Revenue decline, Margin erosion, Concentration, Add-backs, AR issues)
 
-OPERATIONAL RED FLAGS TABLE:
-| Issue | How to Identify | Impact | Fix Timeline |
-| Owner dependency | >40 hrs critical work | -25% to pass | 12-24 months |
-| High turnover | >XX% annual | -15% | 12 months |
-| Tech debt | Paper/legacy systems | -15% | 6-12 months |
-| Deferred maintenance | CapEx needed | Subtract from value | Immediate |
+CREATE TABLE: Operational Red Flags  
+| Issue | Warning Signs | Impact | Remediation Time |
+(Owner dependency, Turnover, Compliance, Technology, Reputation)
 
-TARGET: 12,000+ words. Be specific - no ranges without context.`
+CREATE TABLE: Legal & Regulatory Red Flags
+| Issue | How Identified | Impact | Mitigation |
+
+REMEMBER: You must write AT LEAST 8,000 words. Be thorough with specific data.`
   },
 
   phase3: {
-    name: "Application & Buyer Fit",
-    instruction: `GENERATE PART 3: PRACTICAL APPLICATION
+    name: "Buyer Matching & Valuation",
+    minWords: 8000,
+    instruction: `CREATE COMPREHENSIVE BUYER MATCHING & VALUATION GUIDE
 
-OUTPUT EXACTLY THESE SECTIONS:
+You MUST write AT LEAST 8,000 words for this section. This is a strict minimum requirement.
 
-## 11. SELLER EVALUATION FRAMEWORK
+REQUIRED SECTIONS:
 
-FINANCIAL SCORECARD:
-| Metric | 5 (Excellent) | 4 (Good) | 3 (Average) | 2 (Below) | 1 (Poor) | Weight |
-| EBITDA | >$XM | $X-XM | $X-XM | $X-XK | <$XK | 25% |
-| Margin | >XX% | XX-XX% | XX-XX% | XX-XX% | <XX% | 20% |
-| Growth | >XX% | XX-XX% | X-X% | 0-X% | Negative | 15% |
-| Concentration | <X% | X-XX% | XX-XX% | XX-XX% | >XX% | 20% |
-| Recurring % | >XX% | XX-XX% | XX-XX% | XX-XX% | <XX% | 20% |
+## 11. SELLER EVALUATION SCORECARDS
 
-OPERATIONAL SCORECARD:
-| Metric | 5 | 4 | 3 | 2 | 1 | Weight |
-| [Industry KPI 1] | [val] | [val] | [val] | [val] | [val] | XX% |
-| [Industry KPI 2] | [val] | [val] | [val] | [val] | [val] | XX% |
-| [Industry KPI 3] | [val] | [val] | [val] | [val] | [val] | XX% |
-| Management | Prof GM | Strong #2 | Some depth | Minimal | Owner-only | XX% |
-| Technology | Modern | Current | Dated | Legacy | Paper | XX% |
-| SOPs | Complete | Mostly | Some | Few | None | XX% |
+CREATE TABLE: Financial Scorecard
+| Metric | Score 5 | Score 4 | Score 3 | Score 2 | Score 1 | Weight |
+(EBITDA amount, EBITDA margin, Revenue growth, Concentration, Recurring %)
+Include specific dollar/percentage thresholds for each score level.
 
-STRATEGIC SCORECARD:
-| Factor | 5 | 4 | 3 | 2 | 1 | Weight |
-| Market | Tier 1 | Tier 2 | Tier 3 | Tier 4 | Declining | 30% |
-| Moats | Multiple | 2+ | 1 | Weak | None | 30% |
-| Certs | Premium | Required+ | Required | Gaps | Missing | 20% |
-| Growth Runway | Large | Good | Moderate | Limited | None | 20% |
+CREATE TABLE: Operational Scorecard  
+| Metric | Score 5 | Score 4 | Score 3 | Score 2 | Score 1 | Weight |
+(Use industry-specific KPIs identified earlier)
 
-SCORE INTERPRETATION:
-| Overall | Rating | Recommendation | Expected Outcome |
-| 4.0-5.0 | Excellent | Aggressive pursuit | Competitive process |
-| 3.5-4.0 | Good | Strong interest | Multiple offers likely |
-| 3.0-3.5 | Acceptable | Proceed with diligence | Selective interest |
-| 2.5-3.0 | Marginal | Only if strategic fit | 1-2 buyers maybe |
-| <2.5 | Poor | Pass or restructure | Difficult to sell |
+CREATE TABLE: Strategic Scorecard
+| Factor | Score 5 | Score 4 | Score 3 | Score 2 | Score 1 | Weight |
+(Market quality, Competitive moats, Growth runway, Certifications)
 
-## 12. BUYER MATCHING CRITERIA
+CREATE TABLE: Score Interpretation
+| Total Score Range | Rating | Buyer Interest Level | Expected Process |
 
-**SIZE CRITERIA:**
-| Metric | Minimum | Preferred | Optimal | Notes |
-| Revenue | $XM | $X-XM | $X-XXM | Below min = no PE |
-| EBITDA | $XK | $X-XM | $X-XM | Sweet spot for add-ons |
-| Employees | X | XX-XX | XX-XXX | Scale indicator |
-| Locations | X | X-X | X+ | Density matters |
-| Years | X | X+ | X+ | Track record |
+## 12. BUYER MATCHING CRITERIA (CRITICAL SECTION)
 
-**SERVICE CRITERIA:**
-| Service Type | Required | Preferred | Neutral | Avoid |
-| [Service A] | ✓ | | | |
-| [Service B] | | ✓ | | |
-| [Service C] | | | ✓ | |
-| [Service D] | | | | ✓ |
+This section is used to automatically match deals with buyers. Be extremely specific.
 
-Service Mix Notes:
-- Ideal: XX% [service A], XX% [service B]
-- Minimum recurring: XX%
-- Premium for: [specific specializations]
-- Avoid: [specific low-margin services]
+### SIZE CRITERIA
+CREATE TABLE: Size Thresholds
+| Metric | Minimum | Preferred Range | Optimal | Maximum | Notes |
+| Revenue | $X.XM | $X.XM - $XXM | $XM - $XM | $XXM+ | Explanation |
+| EBITDA | $XXXK | $XXXK - $X.XM | $XM - $XM | N/A | Explanation |
+| Employees | XX | XX-XXX | XXX-XXX | N/A | Explanation |
+| Locations | X | X-X | X-XX | N/A | Explanation |
+| Years Operating | X | X+ | X+ | N/A | Explanation |
 
-**GEOGRAPHY CRITERIA:**
-Target Regions (High Priority):
-1. [Region] - [Why, which buyers active]
-2. [Region] - [Why, which buyers active]
-3. [Region] - [Why, which buyers active]
+TEXT SUMMARY:
+- Minimum revenue threshold: $X.XM (specific number)
+- Preferred revenue range: $X.XM to $XXM
+- Minimum EBITDA: $XXXK
+- Preferred EBITDA: $XXXK to $X.XM
+- Employee count preference: XX to XXX
+- Location preference: X to XX
 
-Target MSAs (Specific):
-- [City, State] - Pop X.XM, [why attractive]
-- [City, State] - Pop X.XM, [why attractive]
-- [City, State] - Pop X.XM, [why attractive]
+### SERVICE CRITERIA
+CREATE TABLE: Service Type Prioritization
+| Service Category | Priority Level | Explanation |
+(List 10+ service types with Required/Preferred/Neutral/Avoid designations)
 
-Avoid:
-- [Region/type] - [Why]
+TEXT SUMMARY:
+- Required services: [List specific services that must be offered]
+- Preferred services: [List services that add value]
+- Acceptable services: [List neutral services]
+- Services to avoid: [List services that reduce attractiveness]
+- Ideal service mix: XX% [Type A], XX% [Type B], XX% [Type C]
+- Minimum recurring revenue: XX%
 
-**BUYER TYPES:**
+### GEOGRAPHY CRITERIA
+CREATE TABLE: Priority Regions
+| Region | Priority | Population Req | Why Attractive | Active Buyers |
+(List specific regions/states with criteria)
 
-PE PLATFORMS ACTIVE IN THIS INDUSTRY:
-| Platform | PE Sponsor | Strategy | Size Target | Geography |
-| [Name] | [PE Firm] | [Add-on/Platform] | $X-XM EBITDA | [Regions] |
-| [Name] | | | | |
-| [Name] | | | | |
-| [Name] | | | | |
-| [Name] | | | | |
-(List as many as you can identify - 5-15 if possible)
+CREATE TABLE: Target Metros
+| Metro | State | Population | Growth | Priority | Notes |
+(List 15-20 specific cities)
 
-STRATEGIC BUYERS:
-| Type | What They Want | Size Range | Typical Multiple |
-| National strategic | [Criteria] | $XM+ rev | X-Xx |
-| Regional strategic | [Criteria] | $XM+ rev | X-Xx |
-| Adjacent industry | [Criteria] | Varies | X-Xx |
+TEXT SUMMARY:
+- Priority regions: [List top 5-7 regions/states]
+- Priority metros: [List top 10 cities]
+- Minimum market population: XXX,XXX
+- Geographic density preference: [Single-market dense vs multi-market]
+- Regions to avoid: [List with reasons]
 
-RECENT TRANSACTIONS (if known):
-| Date | Acquirer | Target | Size | Multiple |
-| [Year] | [Buyer] | [Seller] | $XM | X.Xx |
+### BUYER TYPES
+CREATE TABLE: PE Platforms Active in Industry
+| Platform Name | PE Sponsor | Strategy | Size Target (EBITDA) | Geography | Notes |
+(List 10-20 actual or archetypal platforms)
+
+CREATE TABLE: Strategic Buyer Profiles
+| Buyer Type | What They Seek | Size Range | Typical Multiple | Integration Plan |
+
+TEXT SUMMARY:
+- Primary buyer type: [PE add-on / PE platform / Strategic / Individual]
+- Active PE platforms: [List names or archetypes]
+- Strategic buyer categories: [List types]
+- Ideal buyer profile: [Describe the perfect buyer for deals in this industry]
 
 ## 13. VALUATION BENCHMARKS
 
-MULTIPLE RANGES BY QUALITY:
-| Tier | EBITDA Multiple | Characteristics |
-| Premium (Top 10%) | X.X-X.Xx | [What earns premium] |
-| Above Average | X.X-X.Xx | [Characteristics] |
-| Average | X.X-X.Xx | [Standard deal] |
-| Below Average | X.X-X.Xx | [Issues present] |
-| Distressed | X.X-X.Xx | [Significant issues] |
+CREATE TABLE: Multiple Ranges by Quality Tier
+| Quality Tier | EBITDA Multiple Range | Revenue Multiple | Characteristics |
+(Premium, Above Average, Average, Below Average, Distressed)
 
-PREMIUM FACTORS:
-| Factor | Multiple Impact | Evidence Required |
-| Recurring >60% | +0.5-1.0x | Contracts, history |
-| Professional mgmt | +0.5x | Org chart, tenure |
-| Strong growth >15% | +0.5-1.0x | 3yr financials |
-| Clustering value | +0.25-0.5x | Buyer location analysis |
-| Premium certs | +0.25-0.5x | Documentation |
-| Strong brand | +0.25x | Reviews, reputation |
+CREATE TABLE: Premium Factors & Impact
+| Factor | Multiple Impact | Evidence Required | Stacking Rules |
 
-DISCOUNT FACTORS:
-| Factor | Multiple Impact | Mitigation |
-| Concentration >20% | -0.5-1.5x | Customer contracts, diversification |
-| Owner dependency | -1.0-2.0x | Extended transition, earnout |
-| Below-avg margins | -0.25-0.5x | Improvement plan |
-| Technology debt | -0.25-0.5x | Upgrade budget |
-| Declining revenue | -1.0x+ | Turnaround evidence |
+CREATE TABLE: Discount Factors & Impact
+| Factor | Multiple Impact | Mitigation Possible | Timeline |
 
-DEAL STRUCTURE NORMS:
-| Component | Typical Range | Notes |
-| Cash at close | XX-XX% | Higher for premium deals |
-| Seller note | X-XX% | X-year term, X% rate |
-| Earnout | 0-XX% | X-year, tied to [metric] |
-| Equity rollover | XX-XX% | Standard for PE |
+CREATE TABLE: Deal Structure Norms
+| Component | Typical % | Range | Negotiation Factors |
+(Cash, Seller Note, Earnout, Equity Rollover)
+
+CREATE TABLE: Working Capital Expectations
+| WC Metric | Industry Norm | Peg Calculation |
 
 ## 14. COMPLETE EVALUATION EXAMPLE
 
-**SAMPLE COMPANY:**
-- Industry: [This industry]
-- Location: [Specific MSA]
-- Revenue: $X.XM
-- EBITDA: $XXX,XXX (XX% margin)
-- Growth: X% 3-year CAGR
-- Employees: XX
-- Locations: X
-- Top customer: X% of revenue
-- Recurring revenue: XX%
-- Owner hours/week: XX (X% critical)
-- Management: [Description]
-- Technology: [Description]
-- Online reputation: X.X stars, XXX reviews
-- Years in business: XX
-- Certifications: [List]
+Create a detailed example for a realistic company in this industry:
 
-**FINANCIAL SCORE:**
-| Metric | Value | Score | Weight | Weighted |
-| EBITDA | $XXX,XXX | X | 25% | X.XX |
-| Margin | XX% | X | 20% | X.XX |
-| Growth | X% | X | 15% | X.XX |
-| Concentration | X% | X | 20% | X.XX |
-| Recurring | XX% | X | 20% | X.XX |
-| **Subtotal** | | | **100%** | **X.XX** |
+**SAMPLE COMPANY PROFILE:**
+(Include 15+ specific data points)
 
-**OPERATIONAL SCORE:**
-[Same detailed format]
-**Subtotal: X.XX**
+**FINANCIAL SCORECARD WALKTHROUGH:**
+(Score each metric with explanation)
 
-**STRATEGIC SCORE:**
-[Same detailed format]
-**Subtotal: X.XX**
+**OPERATIONAL SCORECARD WALKTHROUGH:**
+(Score each KPI with explanation)
 
-**OVERALL SCORE: X.XX**
-**RATING: [Excellent/Good/Acceptable/Marginal/Poor]**
+**STRATEGIC SCORECARD WALKTHROUGH:**
+(Score each factor with explanation)
 
-**ANALYSIS:**
-Strengths:
-- [Strength 1 with specific data]
-- [Strength 2 with specific data]
-- [Strength 3 with specific data]
-
-Concerns:
-- [Concern 1 with impact]
-- [Concern 2 with impact]
-
-**LIKELY BUYERS:**
-1. [Buyer type] - Because [specific reason]
-2. [Buyer type] - Because [specific reason]
-
-**EXPECTED VALUATION:**
-- Base multiple: X.Xx
-- Premiums: +X.Xx for [reasons]
-- Discounts: -X.Xx for [reasons]
-- Net multiple: X.Xx
-- Enterprise value: $X.X-X.XM
+**OVERALL ASSESSMENT:**
+- Composite score: X.XX/5.00
+- Rating: [Rating]
+- Likely buyer types: [List]
+- Expected multiple: X.X-X.Xx EBITDA
+- Expected enterprise value: $X.XM - $X.XM
+- Key value drivers: [List]
+- Key value detractors: [List]
+- Recommended positioning: [Strategy]
 
 ---
 
 ## BUYER FIT CRITERIA SUMMARY
 
+This summary is used for automated buyer matching. Be extremely specific with numbers.
+
 **SIZE CRITERIA:**
 - Minimum revenue: $X.XM
-- Preferred revenue: $X-XXM
+- Preferred revenue range: $X.XM to $XXM  
+- Optimal revenue: $XM to $XM
 - Minimum EBITDA: $XXXK
-- Preferred EBITDA: $X-XM
+- Preferred EBITDA: $XXXK to $X.XM
 - Minimum employees: XX
+- Preferred employees: XX to XXX
 - Minimum locations: X
-- Minimum years: X
+- Preferred locations: X to XX
+- Minimum years in business: X years
 
 **SERVICE CRITERIA:**
-- Required services: [List]
-- Preferred services: [List]
-- Avoid services: [List]
-- Minimum recurring: XX%
-- Service mix: XX% [type A], XX% [type B]
+- Required services: [List 3-5 core services]
+- Preferred services: [List 3-5 value-add services]
+- Premium services: [List specialty services that command higher multiples]
+- Services to avoid: [List 2-3 low-value or problematic services]
+- Minimum recurring revenue: XX%
+- Ideal service mix: XX% [Type], XX% [Type], XX% [Type]
 
 **GEOGRAPHY CRITERIA:**
-- Priority regions: [List]
-- Priority MSAs: [List cities]
-- Avoid: [List]
-- Minimum market size: XXX,XXX population
+- Priority regions: [List top 5-7 states or regions]
+- Priority metros: [List top 10-15 specific cities]
+- Minimum market population: XXX,XXX
+- Geographic preference: [Dense single-market OR regional multi-market]
+- Regions to avoid: [List 2-3 with reasons]
 
 **BUYER TYPES:**
-- PE platforms: [List names or archetypes]
-- Strategic buyers: [Describe profiles]
-- Ideal fit: [Describe perfect buyer]
+- Primary buyer category: [PE Add-on / PE Platform / Strategic / Individual]
+- Active PE platforms: [List 5-10 names or archetypes]  
+- Strategic buyer types: [List 3-5 categories]
+- Ideal buyer profile: [2-3 sentence description]
+- Deal structure preference: [Describe typical structure]
 
-TARGET: 10,000+ words. Every number must be specific.`
+REMEMBER: You must write AT LEAST 8,000 words. The BUYER FIT CRITERIA SUMMARY section is critical for the system to work properly.`
   }
 };
 
-// Enhanced quality validation with placeholder detection
 interface QualityResult {
   passed: boolean;
   score: number;
@@ -496,30 +411,30 @@ interface QualityResult {
   industryMentions: number;
   dataRowCount: number;
   issues: string[];
+  hasCriteria: boolean;
 }
 
 function validateQuality(content: string, industryName: string): QualityResult {
   const wordCount = content.split(/\s+/).length;
   
-  // Count tables (lines with |...|)
+  // Count tables
   const tableLines = (content.match(/\|.*\|/g) || []);
   const tableCount = Math.floor(tableLines.length / 3);
-  
-  // Count data rows (table rows with numbers)
   const dataRowCount = tableLines.filter(line => /\d+[%$]?/.test(line)).length;
   
-  // Detect placeholders
+  // Detect placeholders (more aggressive patterns)
   const placeholderPatterns = [
-    /\bX%/gi,
-    /\$X[MK]?/gi,
+    /\bX%\b/gi,
+    /\$X[MKB]?\b/gi,
     /\[Value\]/gi,
     /\[Industry\]/gi,
     /\[Name\]/gi,
     /\[Specific\]/gi,
-    /X-X%/gi,
-    /\$X-X/gi,
-    /XX-XX%/gi,
-    /\bX\b(?=\s*(months?|years?|days?|hours?|employees?|locations?))/gi,
+    /\bX\.X[MK]?\b/gi,
+    /\bXX-XX%/gi,
+    /\bX-X%/gi,
+    /\bXXX,XXX\b/g, // Placeholder population
+    /\$XXX[K]?\b/gi,
   ];
   
   let placeholderCount = 0;
@@ -528,20 +443,21 @@ function validateQuality(content: string, industryName: string): QualityResult {
     placeholderCount += matches.length;
   }
   
-  // Count industry name mentions
+  // Count industry mentions
   const industryRegex = new RegExp(industryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
   const industryMentions = (content.match(industryRegex) || []).length;
+  
+  // Check for buyer fit criteria section
+  const hasCriteria = /BUYER FIT CRITERIA SUMMARY/i.test(content) && 
+                      /SIZE CRITERIA/i.test(content) &&
+                      /SERVICE CRITERIA/i.test(content) &&
+                      /GEOGRAPHY CRITERIA/i.test(content);
   
   const requiredElements = [
     "NAICS",
     "EBITDA",
     "KPI",
-    "SIZE CRITERIA",
-    "SERVICE CRITERIA", 
-    "GEOGRAPHY CRITERIA",
-    "BUYER TYPES",
     "SCORECARD",
-    "BENCHMARK",
     "VALUATION"
   ];
   
@@ -557,9 +473,9 @@ function validateQuality(content: string, industryName: string): QualityResult {
     "STRATEGIC ATTRACTIVENESS",
     "DEAL KILLER",
     "RED FLAG",
-    "EVALUATION FRAMEWORK",
+    "SELLER EVALUATION",
     "BUYER MATCHING",
-    "VALUATION BENCHMARK"
+    "BUYER FIT CRITERIA"
   ];
   
   const contentUpper = content.toUpperCase();
@@ -568,8 +484,8 @@ function validateQuality(content: string, industryName: string): QualityResult {
   
   const issues: string[] = [];
   
-  if (wordCount < 30000) {
-    issues.push(`Word count ${wordCount.toLocaleString()} below target 30,000`);
+  if (wordCount < 15000) {
+    issues.push(`Word count ${wordCount.toLocaleString()} below minimum 15,000`);
   }
   if (tableCount < 15) {
     issues.push(`Table count ${tableCount} below target 15`);
@@ -578,30 +494,31 @@ function validateQuality(content: string, industryName: string): QualityResult {
     issues.push(`Only ${sectionsFound.length}/14 key sections found`);
   }
   if (missingElements.length > 0) {
-    issues.push(`Missing: ${missingElements.join(", ")}`);
+    issues.push(`Missing elements: ${missingElements.join(", ")}`);
   }
-  if (placeholderCount > 10) {
-    issues.push(`${placeholderCount} placeholders detected (target <10)`);
+  if (placeholderCount > 20) {
+    issues.push(`${placeholderCount} placeholders detected (target <20)`);
   }
-  if (industryMentions < 30) {
-    issues.push(`Industry mentioned only ${industryMentions} times (target 30+)`);
+  if (industryMentions < 20) {
+    issues.push(`Industry mentioned only ${industryMentions} times (target 20+)`);
   }
-  if (dataRowCount < 50) {
-    issues.push(`Only ${dataRowCount} data rows with numbers (target 50+)`);
+  if (!hasCriteria) {
+    issues.push("Missing BUYER FIT CRITERIA SUMMARY section");
   }
   
-  // Calculate score
+  // Calculate score (100 point scale)
   let score = 0;
-  score += Math.min(25, (wordCount / 40000) * 25);
-  score += Math.min(20, (sectionsFound.length / 14) * 20);
-  score += Math.min(15, (tableCount / 20) * 15);
+  score += Math.min(25, (wordCount / 25000) * 25);
+  score += Math.min(15, (sectionsFound.length / 14) * 15);
+  score += Math.min(15, (tableCount / 25) * 15);
   score += Math.min(10, ((requiredElements.length - missingElements.length) / requiredElements.length) * 10);
-  score += Math.min(10, Math.max(0, (20 - placeholderCount) / 20) * 10);
-  score += Math.min(10, (industryMentions / 50) * 10);
+  score += Math.min(10, Math.max(0, (30 - placeholderCount) / 30) * 10);
+  score += Math.min(10, (industryMentions / 30) * 10);
   score += Math.min(10, (dataRowCount / 100) * 10);
+  score += hasCriteria ? 5 : 0;
   
   return {
-    passed: score >= 70 && missingElements.length <= 2 && placeholderCount < 20,
+    passed: score >= 60 && hasCriteria && missingElements.length <= 1,
     score: Math.round(score),
     wordCount,
     sectionsFound,
@@ -610,82 +527,12 @@ function validateQuality(content: string, industryName: string): QualityResult {
     placeholderCount,
     industryMentions,
     dataRowCount,
-    issues
+    issues,
+    hasCriteria
   };
 }
 
-// Enhanced gap filling with context
-async function fillGaps(
-  content: string,
-  missingElements: string[],
-  issues: string[],
-  industryName: string,
-  attempt: number = 1
-): Promise<string> {
-  if (missingElements.length === 0 && issues.length === 0) return "";
-  
-  // Use last 8000 chars of content as context
-  const contextSnippet = content.slice(-8000);
-  
-  const gapPrompt = `You are improving an M&A guide for the "${industryName}" industry.
-
-CURRENT ISSUES TO FIX:
-${issues.map(i => `- ${i}`).join('\n')}
-
-MISSING ELEMENTS: ${missingElements.join(', ') || 'None'}
-
-CONTEXT (Last section of guide):
-${contextSnippet.slice(0, 2000)}...
-
-GENERATE COMPREHENSIVE CONTENT to address these issues:
-1. If missing sections, create them with full detail
-2. Replace any remaining placeholders with actual numbers
-3. Add more industry-specific examples and data
-4. Include at least 3 new data tables with real numbers
-
-REQUIREMENTS:
-- Use ACTUAL numbers, not placeholders like X% or $XM
-- Be SPECIFIC to ${industryName}
-- Include data tables with benchmarks
-- Minimum 2,000 words per major missing element
-
-${attempt > 1 ? `This is attempt ${attempt}. Be more specific with numbers and examples.` : ''}`;
-
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          { 
-            role: 'system', 
-            content: `${EXECUTION_WRAPPER}\n\nYou are filling gaps in an M&A guide. Be extremely specific with numbers and examples. NO PLACEHOLDERS.` 
-          },
-          { role: 'user', content: gapPrompt }
-        ],
-        max_tokens: 8000,
-        temperature: 0.7,
-      }),
-    });
-
-    if (!response.ok) {
-      console.error('Gap fill API error:', response.status);
-      return "";
-    }
-
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || "";
-  } catch (error) {
-    console.error('Gap fill error:', error);
-    return "";
-  }
-}
-
-// Extract buyer fit criteria
+// Enhanced criteria extraction with more flexible patterns
 function extractCriteria(content: string): {
   sizeCriteria?: string;
   serviceCriteria?: string;
@@ -699,54 +546,153 @@ function extractCriteria(content: string): {
     buyerTypesCriteria?: string;
   } = {};
 
-  // Try to find the summary section first
-  const summaryMatch = content.match(/BUYER FIT CRITERIA SUMMARY([\s\S]*?)(?:---|\n##\s[^#]|\n#\s|$)/i);
-  if (summaryMatch) {
-    const summaryText = summaryMatch[1];
+  // Try summary section first
+  const summaryMatch = content.match(/BUYER FIT CRITERIA SUMMARY([\s\S]*?)(?:---|\n#\s[^#]|$)/i);
+  const searchText = summaryMatch ? summaryMatch[1] : content;
 
-    const sizeMatch = summaryText.match(/\*?\*?SIZE CRITERIA:?\*?\*?\s*([\s\S]*?)(?:\*?\*?SERVICE CRITERIA|\*?\*?GEOGRAPHY CRITERIA|\*?\*?BUYER TYPES|$)/i);
-    if (sizeMatch) {
-      criteria.sizeCriteria = sizeMatch[1].trim().replace(/^[-*•]\s*/gm, '').substring(0, 2000);
-    }
-
-    const serviceMatch = summaryText.match(/\*?\*?SERVICE CRITERIA:?\*?\*?\s*([\s\S]*?)(?:\*?\*?SIZE CRITERIA|\*?\*?GEOGRAPHY CRITERIA|\*?\*?BUYER TYPES|$)/i);
-    if (serviceMatch) {
-      criteria.serviceCriteria = serviceMatch[1].trim().replace(/^[-*•]\s*/gm, '').substring(0, 2000);
-    }
-
-    const geoMatch = summaryText.match(/\*?\*?GEOGRAPHY CRITERIA:?\*?\*?\s*([\s\S]*?)(?:\*?\*?SIZE CRITERIA|\*?\*?SERVICE CRITERIA|\*?\*?BUYER TYPES|$)/i);
-    if (geoMatch) {
-      criteria.geographyCriteria = geoMatch[1].trim().replace(/^[-*•]\s*/gm, '').substring(0, 2000);
-    }
-
-    const buyerMatch = summaryText.match(/\*?\*?BUYER TYPES:?\*?\*?\s*([\s\S]*?)(?:\*?\*?SIZE CRITERIA|\*?\*?SERVICE CRITERIA|\*?\*?GEOGRAPHY CRITERIA|$)/i);
-    if (buyerMatch) {
-      criteria.buyerTypesCriteria = buyerMatch[1].trim().replace(/^[-*•]\s*/gm, '').substring(0, 2000);
+  // Size criteria - multiple patterns
+  const sizePatterns = [
+    /\*?\*?SIZE CRITERIA:?\*?\*?\s*([\s\S]*?)(?=\*?\*?SERVICE CRITERIA|\*?\*?GEOGRAPHY|\*?\*?BUYER TYPE|\n##|\n---)/i,
+    /#{2,3}\s*SIZE CRITERIA\s*([\s\S]*?)(?=#{2,3}|\n---)/i,
+    /Size Thresholds[:\s]*([\s\S]*?)(?=Service|Geography|Buyer|##)/i
+  ];
+  
+  for (const pattern of sizePatterns) {
+    const match = searchText.match(pattern);
+    if (match && match[1].trim().length > 50) {
+      criteria.sizeCriteria = match[1].trim().substring(0, 3000);
+      break;
     }
   }
 
-  // Fallback extraction from sections
-  if (!criteria.sizeCriteria) {
-    const sizeMatch = content.match(/###?\s*\*?\*?SIZE CRITERIA\*?\*?([\s\S]*?)(?:\n###|\n##|SERVICE CRITERIA|$)/i);
-    if (sizeMatch) criteria.sizeCriteria = sizeMatch[1].trim().substring(0, 2000);
+  // Service criteria
+  const servicePatterns = [
+    /\*?\*?SERVICE CRITERIA:?\*?\*?\s*([\s\S]*?)(?=\*?\*?SIZE CRITERIA|\*?\*?GEOGRAPHY|\*?\*?BUYER TYPE|\n##|\n---)/i,
+    /#{2,3}\s*SERVICE CRITERIA\s*([\s\S]*?)(?=#{2,3}|\n---)/i,
+    /Service Type Prioritization[:\s]*([\s\S]*?)(?=Size|Geography|Buyer|##)/i
+  ];
+  
+  for (const pattern of servicePatterns) {
+    const match = searchText.match(pattern);
+    if (match && match[1].trim().length > 50) {
+      criteria.serviceCriteria = match[1].trim().substring(0, 3000);
+      break;
+    }
   }
 
-  if (!criteria.serviceCriteria) {
-    const serviceMatch = content.match(/###?\s*\*?\*?SERVICE CRITERIA\*?\*?([\s\S]*?)(?:\n###|\n##|GEOGRAPHY CRITERIA|$)/i);
-    if (serviceMatch) criteria.serviceCriteria = serviceMatch[1].trim().substring(0, 2000);
+  // Geography criteria
+  const geoPatterns = [
+    /\*?\*?GEOGRAPHY CRITERIA:?\*?\*?\s*([\s\S]*?)(?=\*?\*?SIZE CRITERIA|\*?\*?SERVICE|\*?\*?BUYER TYPE|\n##|\n---)/i,
+    /#{2,3}\s*GEOGRAPHY CRITERIA\s*([\s\S]*?)(?=#{2,3}|\n---)/i,
+    /Priority Regions[:\s]*([\s\S]*?)(?=Size|Service|Buyer|##)/i
+  ];
+  
+  for (const pattern of geoPatterns) {
+    const match = searchText.match(pattern);
+    if (match && match[1].trim().length > 50) {
+      criteria.geographyCriteria = match[1].trim().substring(0, 3000);
+      break;
+    }
   }
 
-  if (!criteria.geographyCriteria) {
-    const geoMatch = content.match(/###?\s*\*?\*?GEOGRAPHY CRITERIA\*?\*?([\s\S]*?)(?:\n###|\n##|BUYER TYPES|$)/i);
-    if (geoMatch) criteria.geographyCriteria = geoMatch[1].trim().substring(0, 2000);
-  }
-
-  if (!criteria.buyerTypesCriteria) {
-    const buyerMatch = content.match(/###?\s*\*?\*?BUYER TYPES\*?\*?([\s\S]*?)(?:\n###|\n##|$)/i);
-    if (buyerMatch) criteria.buyerTypesCriteria = buyerMatch[1].trim().substring(0, 2000);
+  // Buyer types
+  const buyerPatterns = [
+    /\*?\*?BUYER TYPES?:?\*?\*?\s*([\s\S]*?)(?=\*?\*?SIZE CRITERIA|\*?\*?SERVICE|\*?\*?GEOGRAPHY|\n##|\n---)/i,
+    /#{2,3}\s*BUYER TYPES?\s*([\s\S]*?)(?=#{2,3}|\n---)/i,
+    /PE Platforms Active[:\s]*([\s\S]*?)(?=Size|Service|Geography|##|Valuation)/i
+  ];
+  
+  for (const pattern of buyerPatterns) {
+    const match = searchText.match(pattern);
+    if (match && match[1].trim().length > 50) {
+      criteria.buyerTypesCriteria = match[1].trim().substring(0, 3000);
+      break;
+    }
   }
 
   return criteria;
+}
+
+// Supplemental content generator for missing sections
+async function generateSupplementalContent(
+  existingContent: string,
+  issues: string[],
+  industryName: string
+): Promise<string> {
+  const supplementPrompt = `You are adding supplemental content to an M&A guide for the "${industryName}" industry.
+
+ISSUES TO ADDRESS:
+${issues.map(i => `- ${i}`).join('\n')}
+
+EXISTING CONTENT LENGTH: ${existingContent.split(/\s+/).length} words
+
+${issues.some(i => i.includes('BUYER FIT CRITERIA')) ? `
+CRITICAL: Generate the complete BUYER FIT CRITERIA SUMMARY section:
+
+## BUYER FIT CRITERIA SUMMARY
+
+**SIZE CRITERIA:**
+- Minimum revenue: [specific dollar amount]
+- Preferred revenue range: [specific range]
+- Minimum EBITDA: [specific dollar amount]
+- Preferred EBITDA: [specific range]
+- Employee count: [specific numbers]
+- Location requirements: [specific numbers]
+
+**SERVICE CRITERIA:**
+- Required services: [list specific services for ${industryName}]
+- Preferred services: [list value-add services]
+- Services to avoid: [list problematic services]
+- Minimum recurring revenue: [specific percentage]
+
+**GEOGRAPHY CRITERIA:**
+- Priority regions: [list specific states/regions]
+- Priority metros: [list 10+ specific cities with populations]
+- Minimum market size: [specific population number]
+- Geographic preferences: [dense vs distributed]
+
+**BUYER TYPES:**
+- Primary buyers: [PE platform, strategic, etc.]
+- Active platforms: [list 5-10 specific or archetypal names]
+- Strategic buyers: [describe categories]
+- Ideal buyer: [2-3 sentence profile]
+` : ''}
+
+REQUIREMENTS:
+- Use SPECIFIC numbers, not placeholders
+- Be specific to ${industryName}
+- Include detailed tables where appropriate
+- Write at least 2,000 words`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openAIApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: supplementPrompt }
+        ],
+        max_tokens: 8000,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Supplemental content API error:', response.status);
+      return "";
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || "";
+  } catch (error) {
+    console.error('Supplemental content error:', error);
+    return "";
+  }
 }
 
 serve(async (req) => {
@@ -792,15 +738,16 @@ serve(async (req) => {
               phaseName: phase.name
             });
 
-            const userPrompt = `Generate a COMPREHENSIVE M&A guide for the "${industryName}" industry.
+            const userPrompt = `Generate comprehensive M&A industry intelligence for: ${industryName}
 
 ${phase.instruction}
 
-REMEMBER: 
-- NO PLACEHOLDERS - Use actual numbers (research if needed)
-- SPECIFIC to ${industryName} - not generic advice
-- TABLES with real data - at minimum 5 tables per section
-- This is used by professional M&A advisors - be thorough`;
+CRITICAL REMINDERS:
+- You MUST write at least ${phase.minWords.toLocaleString()} words for this section
+- NO PLACEHOLDERS - use real numbers throughout
+- This is for professional M&A advisors - be thorough and specific
+- Every table must have real data, not template values
+- Reference ${industryName} specifically throughout`;
 
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
               method: 'POST',
@@ -811,7 +758,7 @@ REMEMBER:
               body: JSON.stringify({
                 model: 'gpt-4o',
                 messages: [
-                  { role: 'system', content: EXECUTION_WRAPPER },
+                  { role: 'system', content: SYSTEM_PROMPT },
                   { role: 'user', content: userPrompt }
                 ],
                 stream: true,
@@ -862,7 +809,7 @@ REMEMBER:
                     phaseContent += content;
                     fullContent += content;
                     
-                    const phaseProgress = Math.min(100, (phaseContent.length / 50000) * 100);
+                    const phaseProgress = Math.min(100, (phaseContent.length / 40000) * 100);
                     const overallProgress = ((i * 100) + phaseProgress) / 3;
                     
                     sendEvent({
@@ -890,13 +837,13 @@ REMEMBER:
               phaseWordCount
             });
 
-            // Add separator between phases
+            // Add separator
             if (i < phases.length - 1) {
               fullContent += "\n\n---\n\n";
             }
           }
 
-          // Quality check
+          // Quality validation
           console.log('Running quality validation...');
           sendEvent({ type: 'quality_check_start' });
           
@@ -908,64 +855,54 @@ REMEMBER:
             ...quality
           });
 
-          // Improvement loop - up to 2 attempts
-          let attempt = 1;
-          while (!quality.passed && attempt <= 2 && (quality.missingElements.length > 0 || quality.issues.length > 0)) {
-            console.log(`Gap filling attempt ${attempt}...`);
+          // If missing buyer criteria, generate supplemental content
+          if (!quality.hasCriteria || quality.issues.length > 0) {
+            console.log('Generating supplemental content for missing criteria...');
             sendEvent({ 
               type: 'gap_fill_start',
-              attempt,
-              missingElements: quality.missingElements,
+              attempt: 1,
               issues: quality.issues
             });
             
-            const gapContent = await fillGaps(
+            const supplemental = await generateSupplementalContent(
               fullContent,
-              quality.missingElements,
-              quality.issues.filter(i => !i.includes('Word count')), // Don't try to fix word count directly
-              industryName,
-              attempt
+              quality.issues,
+              industryName
             );
             
-            if (gapContent) {
-              fullContent += "\n\n---\n\n# SUPPLEMENTAL CONTENT\n\n" + gapContent;
+            if (supplemental) {
+              fullContent += "\n\n---\n\n" + supplemental;
               
               sendEvent({
                 type: 'gap_fill_content',
-                content: gapContent,
-                attempt
+                content: supplemental,
+                attempt: 1
               });
               
               // Re-validate
               quality = validateQuality(fullContent, industryName);
-              console.log(`Quality after attempt ${attempt}:`, quality);
+              console.log('Quality after supplemental:', quality);
               
               sendEvent({
                 type: 'quality_check_result',
                 ...quality,
-                afterGapFill: true,
-                attempt
+                afterGapFill: true
               });
             }
-            
-            attempt++;
           }
-
-          // Final quality report
-          sendEvent({
-            type: 'final_quality',
-            ...quality
-          });
 
           // Extract criteria
           const criteria = extractCriteria(fullContent);
-          console.log('Extracted criteria:', Object.keys(criteria).filter(k => criteria[k as keyof typeof criteria]));
+          const criteriaKeys = Object.keys(criteria).filter(k => criteria[k as keyof typeof criteria]);
+          console.log('Extracted criteria:', criteriaKeys);
           
           sendEvent({
             type: 'criteria',
-            criteria
+            criteria,
+            criteriaKeys
           });
 
+          // Final event
           sendEvent({
             type: 'complete',
             content: fullContent,
