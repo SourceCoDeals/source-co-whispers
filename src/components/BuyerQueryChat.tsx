@@ -13,6 +13,24 @@ interface Message {
 interface BuyerQueryChatProps {
   dealId: string;
   dealName: string;
+  onHighlightBuyers?: (buyerIds: string[]) => void;
+}
+
+// Extract buyer IDs from the hidden marker in AI response
+function extractBuyerIds(content: string): string[] {
+  const match = content.match(/<!-- BUYER_HIGHLIGHT: \[(.*?)\] -->/);
+  if (!match) return [];
+  try {
+    const idsStr = `[${match[1]}]`;
+    return JSON.parse(idsStr);
+  } catch {
+    return [];
+  }
+}
+
+// Remove the hidden marker from displayed content
+function cleanContent(content: string): string {
+  return content.replace(/<!-- BUYER_HIGHLIGHT: \[.*?\] -->/g, '').trim();
 }
 
 const EXAMPLE_QUERIES = [
@@ -22,7 +40,7 @@ const EXAMPLE_QUERIES = [
   "Which buyers have acquired similar companies?",
 ];
 
-export function BuyerQueryChat({ dealId, dealName }: BuyerQueryChatProps) {
+export function BuyerQueryChat({ dealId, dealName, onHighlightBuyers }: BuyerQueryChatProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -143,6 +161,13 @@ export function BuyerQueryChat({ dealId, dealName }: BuyerQueryChatProps) {
           }
         }
       }
+      // Extract and highlight buyer IDs after streaming completes
+      if (onHighlightBuyers && assistantContent) {
+        const buyerIds = extractBuyerIds(assistantContent);
+        if (buyerIds.length > 0) {
+          onHighlightBuyers(buyerIds);
+        }
+      }
     } catch (err) {
       console.error("Chat error:", err);
       setMessages((prev) => [
@@ -235,7 +260,7 @@ export function BuyerQueryChat({ dealId, dealName }: BuyerQueryChatProps) {
                       : "bg-muted"
                   )}
                 >
-                  <div className="whitespace-pre-wrap">{msg.content}</div>
+                  <div className="whitespace-pre-wrap">{cleanContent(msg.content)}</div>
                 </div>
               </div>
             ))}
