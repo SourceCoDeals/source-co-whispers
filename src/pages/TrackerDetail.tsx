@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { CSVImport } from "@/components/CSVImport";
 import { DealCSVImport } from "@/components/DealCSVImport";
+import { BulkProgressBar } from "@/components/BulkProgressBar";
 import { StructuredCriteriaPanel } from "@/components/StructuredCriteriaPanel";
 import { KPIConfigPanel } from "@/components/KPIConfigPanel";
 import { ScoringBehaviorPanel } from "@/components/ScoringBehaviorPanel";
@@ -53,6 +54,7 @@ export default function TrackerDetail() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [enrichingBuyers, setEnrichingBuyers] = useState<Set<string>>(new Set());
   const [isBulkEnriching, setIsBulkEnriching] = useState(false);
+  const [buyerEnrichmentProgress, setBuyerEnrichmentProgress] = useState({ current: 0, total: 0 });
   const [enrichingDeals, setEnrichingDeals] = useState<Set<string>>(new Set());
   const [isBulkEnrichingDeals, setIsBulkEnrichingDeals] = useState(false);
   const [dealEnrichmentProgress, setDealEnrichmentProgress] = useState({ current: 0, total: 0 });
@@ -334,7 +336,9 @@ export default function TrackerDetail() {
   };
 
   const enrichAllBuyers = async () => {
+    // Filter to buyers with websites that are NOT already enriched
     const buyersWithWebsites = buyers.filter((b) => b.platform_website || b.pe_firm_website);
+    const unenrichedBuyers = buyersWithWebsites.filter((b) => !isActuallyEnriched(b));
 
     if (buyersWithWebsites.length === 0) {
       toast({
@@ -345,7 +349,27 @@ export default function TrackerDetail() {
       return;
     }
 
+    if (unenrichedBuyers.length === 0) {
+      toast({
+        title: "All buyers already enriched",
+        description: `${buyersWithWebsites.length} buyers with websites are already enriched`,
+      });
+      return;
+    }
+
+    // Request wake lock to prevent browser throttling
+    let wakeLock: WakeLockSentinel | null = null;
+    try {
+      if ('wakeLock' in navigator) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        console.log('[enrichAllBuyers] Wake lock acquired');
+      }
+    } catch (err) {
+      console.log('[enrichAllBuyers] Wake lock not available:', err);
+    }
+
     setIsBulkEnriching(true);
+    setBuyerEnrichmentProgress({ current: 0, total: unenrichedBuyers.length });
 
     const enrichedBuyerIds = new Set<string>();
     const partialBuyerIds = new Set<string>();
@@ -353,15 +377,19 @@ export default function TrackerDetail() {
     const failureReasons = new Map<string, string>();
 
     try {
-      // Phase 1: Initial enrichment pass
+      // Phase 1: Initial enrichment pass (only unenriched buyers)
+      const skippedCount = buyersWithWebsites.length - unenrichedBuyers.length;
       toast({
         title: "Starting enrichment",
-        description: `Processing ${buyersWithWebsites.length} buyers...`,
+        description: skippedCount > 0 
+          ? `Processing ${unenrichedBuyers.length} buyers (${skippedCount} already enriched, skipping)...`
+          : `Processing ${unenrichedBuyers.length} buyers...`,
       });
 
-      for (let i = 0; i < buyersWithWebsites.length; i++) {
-        const buyer = buyersWithWebsites[i];
+      for (let i = 0; i < unenrichedBuyers.length; i++) {
+        const buyer = unenrichedBuyers[i];
         setEnrichingBuyers((prev) => new Set(prev).add(buyer.id));
+        setBuyerEnrichmentProgress({ current: i + 1, total: unenrichedBuyers.length });
 
         const result = await enrichSingleBuyerWithRetry(buyer, 1, MAX_ENRICHMENT_RETRIES);
 
@@ -379,7 +407,7 @@ export default function TrackerDetail() {
           return next;
         });
 
-        if (i < buyersWithWebsites.length - 1) {
+        if (i < unenrichedBuyers.length - 1) {
           await new Promise((resolve) => setTimeout(resolve, BETWEEN_BUYER_DELAY_MS));
         }
       }
@@ -395,7 +423,7 @@ export default function TrackerDetail() {
 
         await new Promise((resolve) => setTimeout(resolve, delay));
 
-        const buyersToRetry = buyersWithWebsites.filter((b) => failedBuyerIds.has(b.id));
+        const buyersToRetry = unenrichedBuyers.filter((b) => failedBuyerIds.has(b.id));
 
         for (const buyer of buyersToRetry) {
           setEnrichingBuyers((prev) => new Set(prev).add(buyer.id));
@@ -472,7 +500,7 @@ export default function TrackerDetail() {
       await loadData();
 
       // Summary
-      const failed = buyersWithWebsites
+      const failed = unenrichedBuyers
         .filter((b) => failedBuyerIds.has(b.id))
         .map((b) => ({
           id: b.id,
@@ -490,8 +518,18 @@ export default function TrackerDetail() {
 
       toast({ title: "Bulk enrichment complete", description });
     } finally {
+      // Release wake lock
+      if (wakeLock) {
+        try {
+          await wakeLock.release();
+          console.log('[enrichAllBuyers] Wake lock released');
+        } catch (err) {
+          console.log('[enrichAllBuyers] Error releasing wake lock:', err);
+        }
+      }
       setIsBulkEnriching(false);
       setEnrichingBuyers(new Set());
+      setBuyerEnrichmentProgress({ current: 0, total: 0 });
     }
   };
 
@@ -1667,6 +1705,14 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
           <TabsList><TabsTrigger value="buyers"><Users className="w-4 h-4 mr-2" />Buyers ({buyers.length})</TabsTrigger><TabsTrigger value="deals"><FileText className="w-4 h-4 mr-2" />Deals ({deals.length})</TabsTrigger></TabsList>
           
           <TabsContent value="buyers" className="mt-4 space-y-4">
+            {/* Progress bar for bulk enrichment */}
+            <BulkProgressBar
+              current={buyerEnrichmentProgress.current}
+              total={buyerEnrichmentProgress.total}
+              label="Enriching buyers..."
+              isVisible={isBulkEnriching}
+            />
+            
             {/* Bulk action bar when buyers are highlighted or selected */}
             {(highlightedBuyerIds.size > 0 || selectedBuyerIds.size > 0) && (
               <div className="flex items-center gap-3 p-3 bg-primary/5 border border-primary/20 rounded-lg">
