@@ -69,6 +69,7 @@ export default function TrackerDetail() {
   const [isUploadingDocs, setIsUploadingDocs] = useState(false);
   const [isExtractingFromGuide, setIsExtractingFromGuide] = useState(false);
   const docFileInputRef = useRef<HTMLInputElement>(null);
+  const autoExtractAttemptedRef = useRef(false);
   
   // Deal scoring state
   const [isScoringAll, setIsScoringAll] = useState(false);
@@ -80,6 +81,70 @@ export default function TrackerDetail() {
   
 
   useEffect(() => { loadData(); }, [id]);
+  
+  // Auto-extract criteria from M&A guide if guide exists but criteria are empty
+  useEffect(() => {
+    if (!tracker || autoExtractAttemptedRef.current || isExtractingFromGuide) return;
+    
+    const hasGuide = !!tracker.ma_guide_content;
+    const hasStructuredCriteria = tracker.size_criteria || tracker.service_criteria || 
+                                   tracker.geography_criteria || tracker.buyer_types_criteria;
+    
+    if (hasGuide && !hasStructuredCriteria) {
+      console.log('[TrackerDetail] Auto-extracting criteria from M&A guide...');
+      autoExtractAttemptedRef.current = true;
+      
+      // Auto-trigger extraction
+      (async () => {
+        setIsExtractingFromGuide(true);
+        try {
+          const { data, error } = await supabase.functions.invoke('parse-fit-criteria', {
+            body: { fit_criteria: tracker.ma_guide_content }
+          });
+
+          if (error || !data?.success) {
+            console.error('[TrackerDetail] Auto-extraction failed:', error || data?.error);
+            toast({ 
+              title: "Criteria auto-extraction failed", 
+              description: "You can manually extract using the button in Buyer Fit Criteria section",
+              variant: "destructive" 
+            });
+            return;
+          }
+
+          const { error: updateError } = await supabase
+            .from("industry_trackers")
+            .update({
+              size_criteria: data.size_criteria,
+              service_criteria: data.service_criteria,
+              geography_criteria: data.geography_criteria,
+              buyer_types_criteria: data.buyer_types_criteria,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", id);
+
+          if (!updateError) {
+            setTracker((prev: any) => ({
+              ...prev,
+              size_criteria: data.size_criteria,
+              service_criteria: data.service_criteria,
+              geography_criteria: data.geography_criteria,
+              buyer_types_criteria: data.buyer_types_criteria
+            }));
+
+            toast({ 
+              title: "Criteria auto-extracted", 
+              description: "Buyer fit criteria populated from M&A guide" 
+            });
+          }
+        } catch (err) {
+          console.error('[TrackerDetail] Auto-extraction error:', err);
+        } finally {
+          setIsExtractingFromGuide(false);
+        }
+      })();
+    }
+  }, [tracker, id, isExtractingFromGuide]);
 
   const loadData = async () => {
     const [trackerRes, buyersRes, dealsRes] = await Promise.all([

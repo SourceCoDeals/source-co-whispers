@@ -191,6 +191,39 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
                       primaryFocusServices: criteria.primaryFocusServices || [],
                       excludedServices: criteria.excludedServices || [],
                     });
+                    
+                    // For EXISTING trackers (trackerId provided), save criteria directly to database
+                    if (trackerId) {
+                      console.log('[AIResearchSection] Saving criteria to database for tracker:', trackerId);
+                      const criteriaText = `Size Criteria: ${criteria.sizeCriteria || ''}\n\nService/Product Criteria: ${criteria.serviceCriteria || ''}\n\nGeography Criteria: ${criteria.geographyCriteria || ''}\n\nBuyer Types: ${criteria.buyerTypesCriteria || ''}`;
+                      
+                      supabase.functions.invoke('parse-fit-criteria', {
+                        body: { fit_criteria: criteriaText }
+                      }).then(async ({ data: parsedData, error: parseError }) => {
+                        if (parseError || !parsedData?.success) {
+                          console.error('[AIResearchSection] Failed to parse criteria for DB:', parseError || parsedData?.error);
+                          return;
+                        }
+                        
+                        const { error: updateError } = await supabase
+                          .from("industry_trackers")
+                          .update({
+                            size_criteria: parsedData.size_criteria,
+                            service_criteria: parsedData.service_criteria,
+                            geography_criteria: parsedData.geography_criteria,
+                            buyer_types_criteria: parsedData.buyer_types_criteria,
+                            updated_at: new Date().toISOString()
+                          })
+                          .eq("id", trackerId);
+                          
+                        if (!updateError) {
+                          console.log('[AIResearchSection] Criteria saved to database successfully');
+                          toast({ title: "Criteria saved", description: "Buyer fit criteria stored in database" });
+                        } else {
+                          console.error('[AIResearchSection] Failed to save criteria:', updateError);
+                        }
+                      });
+                    }
                   }
                 }
                 break;
