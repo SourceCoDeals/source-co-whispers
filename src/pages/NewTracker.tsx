@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, DollarSign, Briefcase, MapPin, Users, Check, AlertTriangle } from "lucide-react";
 import { TrackerNotesSection } from "@/components/TrackerNotesSection";
 import { DocumentUploadSection, UploadedDoc } from "@/components/DocumentUploadSection";
-import { AIResearchSection } from "@/components/AIResearchSection";
+import { AIResearchSection, UploadedGuideDoc } from "@/components/AIResearchSection";
 
 interface ExtractedCriteria {
   sizeCriteria: string;
@@ -65,6 +65,15 @@ export default function NewTracker() {
 
   const handleGuideGenerated = (guide: string, qaContext: Record<string, string>) => {
     setPendingGuide({ content: guide, qaContext });
+  };
+
+  const handleGuideDocumentUploaded = (doc: UploadedGuideDoc) => {
+    // Add the uploaded guide to the documents list
+    setUploadedDocs(prev => [...prev, doc]);
+    toast({ 
+      title: "Guide saved as document", 
+      description: `${doc.name} added to supporting documents` 
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -243,6 +252,7 @@ export default function NewTracker() {
               industryName={name}
               onApply={handleApplyCriteria}
               onGuideGenerated={handleGuideGenerated}
+              onGuideDocumentUploaded={handleGuideDocumentUploaded}
             />
           </div>
 
