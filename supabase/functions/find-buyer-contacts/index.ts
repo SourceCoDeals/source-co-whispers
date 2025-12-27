@@ -20,42 +20,7 @@ interface ExtractionResult {
   source_url: string;
 }
 
-const PE_ROLE_PRIORITIES: Record<string, { priority: number; category: Contact['role_category'] }> = {
-  // Deal team keywords
-  'managing director': { priority: 1, category: 'deal_team' },
-  'managing partner': { priority: 1, category: 'deal_team' },
-  'partner': { priority: 1, category: 'deal_team' },
-  'senior partner': { priority: 1, category: 'deal_team' },
-  
-  // Business development
-  'business development': { priority: 2, category: 'business_dev' },
-  'bd director': { priority: 2, category: 'business_dev' },
-  'deal sourcing': { priority: 2, category: 'business_dev' },
-  'origination': { priority: 2, category: 'business_dev' },
-  
-  // Junior investment team
-  'associate': { priority: 3, category: 'junior_investment' },
-  'senior associate': { priority: 3, category: 'junior_investment' },
-  'principal': { priority: 3, category: 'junior_investment' },
-  'vice president': { priority: 3, category: 'junior_investment' },
-  'vp': { priority: 3, category: 'junior_investment' },
-  'director': { priority: 3, category: 'junior_investment' },
-};
-
-const PLATFORM_ROLE_PRIORITIES: Record<string, { priority: number; category: Contact['role_category'] }> = {
-  // CFO priority
-  'cfo': { priority: 1, category: 'executive' },
-  'chief financial officer': { priority: 1, category: 'executive' },
-  
-  // Corporate development
-  'corporate development': { priority: 2, category: 'corp_dev' },
-  'corp dev': { priority: 2, category: 'corp_dev' },
-  'm&a': { priority: 2, category: 'corp_dev' },
-  'mergers and acquisitions': { priority: 2, category: 'corp_dev' },
-  'strategic acquisitions': { priority: 2, category: 'corp_dev' },
-  'strategy': { priority: 2, category: 'corp_dev' },
-  'business development': { priority: 2, category: 'corp_dev' },
-};
+// Role priority mappings are handled by AI extraction
 
 // Keywords for scoring team page URLs
 const POSITIVE_KEYWORDS = ['team', 'leadership', 'executive', 'management', 'people', 'board', 'officers', 'directors', 'staff', 'who-we-are', 'about-us'];
