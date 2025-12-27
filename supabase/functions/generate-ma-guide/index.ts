@@ -818,19 +818,30 @@ The following sections are MISSING or INCOMPLETE: ${missingElements.join(', ')}
 
 Generate ONLY the missing content. Be specific with real numbers, no placeholders.
 
-If PRIMARY_FOCUS_SERVICES is missing, generate:
+If PRIMARY_FOCUS_SERVICES is missing, generate a list in this exact format:
 PRIMARY_FOCUS_SERVICES:
-- [List 3-5 primary services for ${industryName} industry]
+- Commercial ${industryName} Services
+- Residential ${industryName} Services
+- Emergency/24-Hour Services
+- Recurring Maintenance Contracts
+- Installation Services
 
+Generate exactly 3-5 primary services that are specific to ${industryName}. Use actual service names, not brackets or placeholders.
+
+If EXCLUDED_SERVICES is missing, generate:
 EXCLUDED_SERVICES:
-- [List 2-4 services buyers avoid]
+- New Construction Only (no service revenue)
+- One-Time Project Work (non-recurring)
+- Equipment Sales Only (no service component)
 
-If SIZE CRITERIA is missing, generate complete size thresholds with specific numbers.
-If GEOGRAPHY CRITERIA is missing, list specific regions and cities.
-If BUYER TYPES is missing, list 5 buyer categories with priority order.
+Generate exactly 2-4 excluded services with actual names.
+
+If SIZE CRITERIA is missing, generate complete size thresholds with specific dollar amounts like "$1.5M-$5M revenue".
+If GEOGRAPHY CRITERIA is missing, list specific regions like "Southeast US", "Texas", "Sun Belt states".
+If BUYER TYPES is missing, list 5 buyer categories with priority order and specific criteria.
 
 Generate ONLY the missing sections, formatted consistently with an M&A guide.
-NO PLACEHOLDERS - use real, specific values.`;
+CRITICAL: NO PLACEHOLDERS like [X], [List...], [Value] - use real, specific values only.`;
 
   try {
     const response = await fetch(LOVABLE_AI_URL, {

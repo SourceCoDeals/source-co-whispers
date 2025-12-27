@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, DollarSign, Briefcase, MapPin, Users, Check } from "lucide-react";
+import { Loader2, ArrowLeft, DollarSign, Briefcase, MapPin, Users, Check, AlertTriangle } from "lucide-react";
 import { TrackerNotesSection } from "@/components/TrackerNotesSection";
 import { DocumentUploadSection, UploadedDoc } from "@/components/DocumentUploadSection";
 import { AIResearchSection } from "@/components/AIResearchSection";
@@ -117,7 +117,23 @@ export default function NewTracker() {
       return; 
     }
 
-    // Parse fit criteria into structured JSONB fields
+    // DIRECT SAVE: If we have primaryFocusServices from AI extraction, save them directly
+    // This avoids double-parsing which can lose data
+    if (extractedCriteria.primaryFocusServices?.length) {
+      console.log('[NewTracker] Saving primaryFocusServices directly:', extractedCriteria.primaryFocusServices);
+      
+      await supabase
+        .from("industry_trackers")
+        .update({
+          service_criteria: {
+            primary_focus: extractedCriteria.primaryFocusServices,
+            excluded_services: extractedCriteria.excludedServices || [],
+          },
+        })
+        .eq("id", data.id);
+    }
+
+    // Parse remaining text criteria into structured JSONB fields
     const hasCriteria = extractedCriteria.sizeCriteria.trim() || extractedCriteria.serviceCriteria.trim() || extractedCriteria.geographyCriteria.trim() || extractedCriteria.buyerTypesCriteria.trim();
     if (hasCriteria) {
       try {
@@ -127,15 +143,18 @@ export default function NewTracker() {
         });
 
         if (parsedData?.success) {
-          // Merge parsed service_criteria with directly extracted primaryFocusServices
+          // Merge parsed service_criteria BUT preserve directly extracted primaryFocusServices
+          const existingPrimaryFocus = extractedCriteria.primaryFocusServices || [];
+          const existingExcluded = extractedCriteria.excludedServices || [];
+          
           const serviceCriteria = {
             ...parsedData.service_criteria,
-            // Prefer directly extracted primaryFocusServices if available
-            primary_focus: extractedCriteria.primaryFocusServices?.length 
-              ? extractedCriteria.primaryFocusServices 
+            // CRITICAL: Prefer directly extracted values over re-parsed ones
+            primary_focus: existingPrimaryFocus.length > 0 
+              ? existingPrimaryFocus 
               : (parsedData.service_criteria?.primary_focus || []),
-            excluded_services: extractedCriteria.excludedServices?.length
-              ? [...new Set([...(parsedData.service_criteria?.excluded_services || []), ...extractedCriteria.excludedServices])]
+            excluded_services: existingExcluded.length > 0
+              ? existingExcluded
               : (parsedData.service_criteria?.excluded_services || []),
           };
           
@@ -149,27 +168,20 @@ export default function NewTracker() {
             })
             .eq("id", data.id);
             
-          console.log('[NewTracker] Saved service_criteria with primary_focus:', serviceCriteria.primary_focus);
+          console.log('[NewTracker] Saved merged service_criteria with primary_focus:', serviceCriteria.primary_focus);
+          
+          // Validation check: warn if primary_focus is still empty
+          if (!serviceCriteria.primary_focus?.length) {
+            toast({ 
+              title: "Warning: Missing Primary Focus", 
+              description: "No primary services defined. Deal scoring may be inaccurate. Consider editing criteria.",
+              variant: "destructive"
+            });
+          }
         }
       } catch (err) {
         console.error('[NewTracker] Failed to parse criteria:', err);
         // Silently continue - structured criteria is optional
-      }
-    } else if (extractedCriteria.primaryFocusServices?.length) {
-      // Even without text criteria, save primaryFocusServices if we have them
-      try {
-        await supabase
-          .from("industry_trackers")
-          .update({
-            service_criteria: {
-              primary_focus: extractedCriteria.primaryFocusServices,
-              excluded_services: extractedCriteria.excludedServices || [],
-            },
-          })
-          .eq("id", data.id);
-        console.log('[NewTracker] Saved primaryFocusServices directly:', extractedCriteria.primaryFocusServices);
-      } catch (err) {
-        console.error('[NewTracker] Failed to save primaryFocusServices:', err);
       }
     }
 
@@ -285,6 +297,33 @@ export default function NewTracker() {
                 <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50 dark:bg-green-950/30 px-3 py-2 rounded-lg">
                   <Check className="w-3 h-3" />
                   M&A Guide will be saved with this universe
+                </div>
+              )}
+              
+              {/* Primary Focus Services Preview */}
+              {extractedCriteria.primaryFocusServices.length > 0 && (
+                <div className="p-3 bg-green-50 dark:bg-green-950/30 rounded-lg border border-green-200 dark:border-green-900">
+                  <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400 mb-2">
+                    <Check className="w-3 h-3" />
+                    Primary Focus Services ({extractedCriteria.primaryFocusServices.length})
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {extractedCriteria.primaryFocusServices.map((service, idx) => (
+                      <span key={idx} className="text-xs bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300 px-2 py-1 rounded">
+                        {service}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Warning if no primary focus extracted */}
+              {hasCriteria && extractedCriteria.primaryFocusServices.length === 0 && (
+                <div className="p-3 bg-yellow-50 dark:bg-yellow-950/30 rounded-lg border border-yellow-200 dark:border-yellow-900">
+                  <div className="flex items-center gap-2 text-xs text-yellow-700 dark:text-yellow-400">
+                    <AlertTriangle className="w-3 h-3" />
+                    No primary focus services extracted. Deal scoring may be less accurate.
+                  </div>
                 </div>
               )}
             </div>
