@@ -10,115 +10,139 @@ const corsHeaders = {
 const LOVABLE_AI_URL = 'https://ai.gateway.lovable.dev/v1/chat/completions';
 const DEFAULT_MODEL = 'google/gemini-2.5-pro';
 
-const SYSTEM_PROMPT = `You are an elite M&A industry research analyst creating THE DEFINITIVE intelligence guide for private equity and investment banking professionals.
+// =============================================================================
+// MASTER PROMPT - Comprehensive M&A Intelligence Framework
+// =============================================================================
+const MASTER_SYSTEM_PROMPT = `You are an elite M&A industry research analyst creating THE DEFINITIVE intelligence guide for private equity and investment banking professionals.
+
+## YOUR MISSION
+Create exhaustive, actionable M&A intelligence that enables accurate matching between sellers and buyers.
 
 ## CRITICAL OUTPUT REQUIREMENTS
 
 ### WORD COUNT
-- Each sub-phase must generate 4,000-6,000 words minimum
-- Use extensive detail, specific examples, and real data
+- Generate 3,000-4,500 words per sub-phase
+- TOTAL guide should exceed 30,000 words across all phases
 - Do NOT summarize - provide COMPLETE, ACTIONABLE intelligence
 
-### NO PLACEHOLDERS ALLOWED
+### ABSOLUTELY NO PLACEHOLDERS
 You are FORBIDDEN from outputting:
 - "[X]", "$X", "X%", "[Value]", "[Name]", "[City]", "[Industry]"
 - "typically", "varies", "depends" without specific ranges
-- Any template markers or unfilled brackets
+- Any template markers, unfilled brackets, or generic fillers
+- "XX,XXX" or similar placeholder numbers
 
 Instead, ALWAYS use:
-- Specific dollar amounts: "$2.5M", "$500K-$1.5M"
-- Specific percentages: "18-22%", "3-5x"
+- Specific dollar amounts: "$2.5M", "$500K-$1.5M", "$750,000"
+- Specific percentages: "18-22%", "3-5x", "12%"
 - Real city names: "Phoenix, AZ (5.1M metro)", "Dallas-Fort Worth, TX"
-- Named examples where applicable
+- Real company examples when relevant
+- Actual market data and benchmarks
 
 ### TABLE REQUIREMENTS
-- Every table must have 6-10 rows of real data
-- Include actual numbers, not placeholders
-- Tables are critical for scoring system integration
+- Every table must have 6-10 rows of REAL data
+- All cells must contain specific values, never placeholders
+- Tables should provide actionable benchmarks for scoring
 
 ### RESEARCH STANDARDS
 - Cite specific industry benchmarks
-- Include regional variations where relevant
+- Include regional variations
 - Provide buyer-specific intelligence (what PE firms look for)
-- Include valuation implications for every factor`;
+- Include valuation implications for every factor
+- Be specific to the exact industry being analyzed`;
 
-// SUB-PHASE PROMPTS - Each generates focused, high-quality content
+// =============================================================================
+// SUB-PHASES - 12 phases for comprehensive coverage
+// =============================================================================
 const SUB_PHASES = [
   {
     id: "1a",
     name: "Industry Definition & Classification",
     prompt: `# PHASE 1A: INDUSTRY DEFINITION & CLASSIFICATION
 
-Generate comprehensive industry definition content (4,000+ words).
+Generate comprehensive industry definition content (3,000-4,000 words).
 
 ## REQUIRED CONTENT:
 
 ### 1. NAICS CLASSIFICATION
-- Primary 6-digit NAICS code with description
-- Related NAICS codes (list 3-5)
+- Primary 6-digit NAICS code with full description
+- Related NAICS codes (list 3-5 with descriptions)
 - SIC code equivalents
-- How classification affects M&A data availability
+- How classification affects M&A data availability and sourcing
 
 ### 2. INDUSTRY SCOPE & BOUNDARIES
 CREATE TABLE: Industry Segmentation
-| Segment | Description | % of Market | Avg Revenue | EBITDA Margin | PE Interest |
-(Include 6-8 distinct segments with REAL percentages and dollar amounts)
+| Segment | Description | % of Market | Avg Revenue | EBITDA Margin | PE Interest Level |
+(Include 6-8 distinct segments with REAL percentages and dollar amounts - NO PLACEHOLDERS)
+
+Example format:
+| Commercial Services | B2B focus, larger contracts | 35% | $4.2M | 18-22% | Very High |
 
 ### 3. MARKET SIZE & GROWTH
-- Total addressable market (specific $ amount)
-- Number of businesses in the industry
-- 5-year historical CAGR with source
-- Projected 5-year growth rate
-- Key growth drivers (list 4-5 specific factors)
+- Total addressable market (specific $ amount, e.g., "$47.3 billion")
+- Number of businesses in the industry (specific count)
+- 5-year historical CAGR (specific %)
+- Projected 5-year growth rate (specific %)
+- Key growth drivers (list 4-5 specific factors with data)
 
 ### 4. INDUSTRY EVOLUTION
-- Major consolidation waves (dates and impacts)
-- Technology disruptions
+- Major consolidation waves (specific dates and impacts)
+- Technology disruptions (specific examples)
 - Regulatory changes affecting M&A
-- Current M&A activity level (deals per year estimate)`
+- Current M&A activity level (estimated deals per year)
+
+REMEMBER: NO PLACEHOLDERS. Use real numbers for this specific industry.`
   },
   {
     id: "1b",
     name: "Terminology & Business Models",
     prompt: `# PHASE 1B: TERMINOLOGY & BUSINESS MODELS
 
-Generate comprehensive terminology and business model analysis (4,000+ words).
+Generate comprehensive terminology and business model analysis (3,000-4,000 words).
 
 ## REQUIRED CONTENT:
 
 ### 1. INDUSTRY TERMINOLOGY GLOSSARY
-CREATE TABLE: Essential Industry Terms (25+ terms)
+CREATE TABLE: Essential Industry Terms (25+ terms minimum)
 | Term | Definition | M&A Relevance | Typical Benchmark |
-(Include financial metrics, operational KPIs, service terms, regulatory terms)
+
+Include:
+- Financial metrics specific to this industry
+- Operational KPIs
+- Service-specific terminology
+- Regulatory terms
+- Customer-facing terms
 
 ### 2. BUSINESS MODEL DEEP DIVE
-For each major business model in this industry:
-
 CREATE TABLE: Business Model Comparison
 | Model | Revenue Structure | Gross Margin | EBITDA Margin | Scalability | PE Preference | Multiple Impact |
-(Include 4-6 models with specific margin percentages)
+
+Include 4-6 business models with:
+- Specific margin percentages (e.g., "22-28%", not "varies")
+- Clear PE preference ratings
+- Concrete multiple impacts (+0.5x, -1.0x, etc.)
 
 ### 3. REVENUE MODEL ANALYSIS
 CREATE TABLE: Revenue Model Impact on Valuation
-| Revenue Type | % Recurring | Predictability | Contract Length | Multiple Premium/Discount |
-- Subscription/Recurring
-- Repeat Customer
-- Project-Based
-- Transaction-Based
-- Hybrid
+| Revenue Type | % Recurring | Predictability | Typical Contract | Multiple Premium/Discount |
+| Subscription | 85-95% | Very High | 12-24 months | +1.5-2.5x |
+| Service Contracts | 60-80% | High | 6-12 months | +1.0-1.5x |
+(Continue with 5-6 revenue types)
 
 ### 4. CUSTOMER SEGMENT MODELS
-- B2C vs B2B vs B2G dynamics
-- Customer acquisition costs by segment
-- Lifetime value by segment
-- Concentration patterns`
+- B2C dynamics with specific CAC/LTV metrics
+- B2B dynamics with specific contract values
+- B2G dynamics if applicable
+- Concentration patterns typical for each
+
+NO PLACEHOLDERS - use real numbers throughout.`
   },
   {
     id: "1c",
     name: "Industry Economics & Cost Structure",
     prompt: `# PHASE 1C: INDUSTRY ECONOMICS & COST STRUCTURE
 
-Generate comprehensive economics analysis (4,000+ words).
+Generate comprehensive economics analysis (3,000-4,000 words).
 
 ## REQUIRED CONTENT:
 
@@ -126,50 +150,52 @@ Generate comprehensive economics analysis (4,000+ words).
 CREATE TABLE: P&L Benchmarks by Percentile
 | Line Item | Bottom Quartile | Median | Top Quartile | Top Decile | Key Drivers |
 | Revenue | 100% | 100% | 100% | 100% | - |
-| COGS | ?% | ?% | ?% | ?% | [Specific drivers] |
-| Labor | ?% | ?% | ?% | ?% | [Components included] |
-| Occupancy | ?% | ?% | ?% | ?% | [Rent, utilities, etc.] |
-| Marketing | ?% | ?% | ?% | ?% | [Channels used] |
-| Insurance | ?% | ?% | ?% | ?% | [Coverage types] |
-| G&A | ?% | ?% | ?% | ?% | [Components] |
-| Owner Comp | ?% | ?% | ?% | ?% | [Market replacement] |
-| EBITDA | ?% | ?% | ?% | ?% | [Target for buyers] |
+| COGS | 45% | 38% | 32% | 28% | Materials, subcontractors |
+| Labor | 35% | 30% | 26% | 22% | Utilization, efficiency |
+| Occupancy | 8% | 6% | 5% | 4% | Real estate strategy |
+| Marketing | 5% | 4% | 3% | 2% | Referral vs paid |
+| Insurance | 3% | 2.5% | 2% | 1.5% | Claims history |
+| G&A | 10% | 8% | 6% | 5% | Scale efficiencies |
+| Owner Comp | 15% | 10% | 8% | 5% | Market replacement |
+| EBITDA | 8% | 15% | 22% | 28% | Target for buyers |
+
+CRITICAL: Use actual percentages based on this industry - NOT placeholders!
 
 ### 2. UNIT ECONOMICS BY SCALE
 CREATE TABLE: Unit Economics Analysis
 | Revenue Level | Revenue/Employee | Revenue/Location | EBITDA % | Owner Hours | Management Depth |
-| <$1M | | | | | |
-| $1-2M | | | | | |
-| $2-5M | | | | | |
-| $5-10M | | | | | |
-| $10-25M | | | | | |
-| $25M+ | | | | | |
+| <$1M | $85K | $750K | 8-12% | 60+ | None |
+| $1-2M | $95K | $900K | 12-16% | 50 | Minimal |
+| $2-5M | $110K | $1.2M | 15-20% | 40 | 1-2 managers |
+| $5-10M | $125K | $1.5M | 18-24% | 30 | Department heads |
+| $10-25M | $140K | $2M | 20-28% | 20 | Full team |
+| $25M+ | $160K+ | $2.5M+ | 22-30% | <20 | Professional CEO |
 
 ### 3. ECONOMIES OF SCALE
 Specific cost savings at scale:
-- Procurement leverage (% savings by size tier)
-- Back-office efficiency (fixed cost absorption)
+- Procurement leverage (specific % savings by tier)
+- Back-office efficiency (specific examples)
 - Marketing leverage (CAC by company size)
 - Technology cost per location
 
 ### 4. CAPITAL REQUIREMENTS
-- Startup costs
-- Working capital needs
-- CapEx cycles
-- Maintenance vs growth CapEx`
+- Startup costs (specific $$ ranges)
+- Working capital needs (as % of revenue)
+- CapEx cycles (frequency and cost)
+- Maintenance vs growth CapEx breakdown`
   },
   {
     id: "1d",
     name: "Ecosystem & Competitive Landscape",
     prompt: `# PHASE 1D: ECOSYSTEM & COMPETITIVE LANDSCAPE
 
-Generate comprehensive ecosystem and competitive analysis (4,000+ words).
+Generate comprehensive ecosystem and competitive analysis (3,000-4,000 words).
 
 ## REQUIRED CONTENT:
 
 ### 1. CUSTOMER ANALYSIS
 CREATE TABLE: Customer Segmentation
-| Customer Type | % of Revenue | LTV | CAC | Switching Cost | Concentration Risk |
+| Customer Type | % of Revenue | Avg LTV | Typical CAC | Switching Cost | Concentration Risk |
 (Include 5-6 customer types with specific values)
 
 ### 2. SUPPLIER DYNAMICS
@@ -184,24 +210,27 @@ CREATE TABLE: Licensing & Compliance Requirements
 
 ### 4. ACTIVE ACQUIRERS
 CREATE TABLE: Known Active Buyers (10+ entries)
-| Buyer Name | Type | PE Sponsor | Platform Name | Target Size | Geographic Focus | Est. Acquisitions |
-(Include real or archetypal buyer names)
+| Buyer Name/Type | PE Sponsor Example | Platform Example | Target EBITDA | Geographic Focus | Est. Acquisitions/Year |
+| Large PE Platform | TSG Consumer Partners | [Platform Name] | $2M+ | National | 8-12 |
+| Regional PE | Shore Capital | [Platform Name] | $750K-2M | Southeast | 4-6 |
+(Continue for 10+ buyer types - use real or realistic examples)
 
-### 5. RECENT TRANSACTIONS
-CREATE TABLE: Notable Transactions (5+ entries)
-| Date | Acquirer | Target | Est. Revenue | Multiple (if known) | Strategic Rationale |
+### 5. RECENT TRANSACTION TRENDS
+CREATE TABLE: Transaction Activity
+| EBITDA Range | Buyer Type | Typical Multiple | Deal Structure | Timeline |
+(5-6 rows with specific data)
 
 ### 6. BARRIERS TO ENTRY
 CREATE TABLE: Competitive Moat Analysis
 | Moat Type | Strength (1-10) | How It Works | Value Impact |
-(Include 6+ moat types)`
+(Include 6+ moat types with specific valuations)`
   },
   {
     id: "2a",
     name: "Financial Attractiveness Criteria",
     prompt: `# PHASE 2A: FINANCIAL ATTRACTIVENESS CRITERIA
 
-Generate comprehensive financial evaluation criteria (4,000+ words).
+Generate comprehensive financial evaluation criteria (3,500-4,500 words).
 
 ## REQUIRED CONTENT:
 
@@ -220,108 +249,132 @@ CREATE TABLE: EBITDA-to-Buyer Matrix
 ### 2. EBITDA MARGIN BENCHMARKS
 CREATE TABLE: Margin Quality Assessment
 | EBITDA Margin | Percentile | Quality Signal | Multiple Impact | Buyer Reaction |
-(Include 6+ margin tiers with specific impacts)
+| >28% | Top 5% | Exceptional | +1.5-2.0x | Aggressive pursuit |
+| 22-28% | Top Quartile | Strong | +0.5-1.0x | Strong interest |
+| 16-22% | Above Median | Good | Baseline | Active interest |
+| 12-16% | Median | Average | -0.25x | Cautious |
+| 8-12% | Below Median | Concerns | -0.5-1.0x | Needs story |
+| <8% | Bottom Quartile | Distressed | -1.0-2.0x | Turnaround only |
 
 ### 3. REVENUE QUALITY FACTORS
 CREATE TABLE: Revenue Quality Assessment
 | Factor | Premium Indicator | Baseline | Discount Indicator | Value Impact |
-| Recurring % | | | | |
-| Growth Rate | | | | |
-| Concentration | | | | |
-| Seasonality | | | | |
-| Contract Length | | | | |
+| Recurring % | >70% | 30-50% | <20% | +/- 1.0x |
+| Growth Rate | >20% YoY | 5-10% | Declining | +/- 1.5x |
+| Concentration | <5% top customer | 10-15% | >30% | +/- 0.5x |
+| Seasonality | <20% variance | 30-40% | >60% | +/- 0.25x |
+| Contract Length | >24 months avg | 6-12 months | Month-to-month | +/- 0.5x |
 
 ### 4. CUSTOMER CONCENTRATION MATRIX
 CREATE TABLE: Concentration Risk Assessment
-| Top Customer % | Top 5 % | Risk Level | Multiple Impact | Mitigation Options |
-(Include 6 concentration tiers)`
+| Top Customer % | Top 5 % | Top 10 % | Risk Level | Multiple Impact |
+| <5% | <15% | <25% | Minimal | None |
+| 5-10% | 15-25% | 25-40% | Low | None |
+| 10-15% | 25-35% | 40-55% | Moderate | -0.25x |
+| 15-25% | 35-50% | 55-70% | Elevated | -0.5x |
+| 25-35% | 50-65% | 70-85% | High | -0.75-1.0x |
+| >35% | >65% | >85% | Severe | -1.0-1.5x or DQ |`
   },
   {
     id: "2b",
     name: "Operational Attractiveness Criteria",
     prompt: `# PHASE 2B: OPERATIONAL ATTRACTIVENESS CRITERIA
 
-Generate comprehensive operational evaluation criteria (4,000+ words).
+Generate comprehensive operational evaluation criteria (3,500-4,500 words).
 
 ## REQUIRED CONTENT:
 
 ### 1. INDUSTRY-SPECIFIC KPIs
 CREATE TABLE: Critical KPIs for This Industry (10+ KPIs)
 | KPI | Definition | Bottom Quartile | Median | Top Quartile | Top Decile | Weight in Scoring |
-(Include KPIs specific to this industry with real benchmarks)
+
+CRITICAL: Include 10+ KPIs specific to THIS industry with real benchmarks.
+Examples of KPI types to include:
+- Revenue efficiency metrics
+- Customer metrics (retention, acquisition, LTV)
+- Operational metrics (utilization, capacity, throughput)
+- Quality metrics (NPS, satisfaction, ratings)
+- Employee metrics (productivity, turnover, tenure)
 
 ### 2. MANAGEMENT TEAM EVALUATION
 CREATE TABLE: Management Assessment Framework
 | Factor | Score 5 | Score 4 | Score 3 | Score 2 | Score 1 |
-| Depth | Full C-suite | Most filled | Key roles | Gaps | Owner-only |
-| Tenure | 10+ years | 5-10 years | 3-5 years | 1-3 years | <1 year |
-| Succession | Ready | Planned | Identified | Early | None |
-| Expertise | Deep | Strong | Relevant | Some | Limited |
+| Depth | Full C-suite | Most filled | Key roles only | Major gaps | Owner-only |
+| Tenure | 10+ years avg | 5-10 years | 3-5 years | 1-3 years | <1 year |
+| Succession | Ready now | 6-month plan | Identified | Early stage | None |
+| Expertise | Deep industry | Strong | Relevant | Some | Limited |
+| Autonomy | Fully autonomous | Mostly | Moderate | Some | Dependent |
 
 ### 3. TECHNOLOGY MATURITY
 CREATE TABLE: Technology Assessment
 | System Area | Modern (5) | Current (4) | Adequate (3) | Dated (2) | Legacy (1) |
-| ERP/Accounting | | | | | |
-| CRM/Sales | | | | | |
-| Operations | | | | | |
-| Scheduling | | | | | |
-| Customer Portal | | | | | |
+| ERP/Accounting | Cloud-based, integrated | Current version | Functional | Old version | Paper/basic |
+| CRM/Sales | Advanced automation | Standard CRM | Basic tracking | Spreadsheets | None |
+| Operations | Industry-specific | Scheduling system | Basic | Manual | Paper |
+| Customer Portal | Full self-service | Some features | Basic | None | None |
+| Analytics | Real-time dashboards | Regular reports | Ad-hoc | Minimal | None |
 
 ### 4. OWNER DEPENDENCY
 CREATE TABLE: Owner Dependency Impact
 | Dependency Level | Hours/Week | Critical Functions | Transition Time | Value Impact |
 | Minimal | <20 | Strategic only | 3-6 months | None |
 | Low | 20-30 | Key relationships | 6-12 months | None |
-| Moderate | 30-40 | Operations, sales | 12-18 months | -0.5x |
+| Moderate | 30-40 | Operations + sales | 12-18 months | -0.5x |
 | High | 40-50 | Most functions | 18-24 months | -1.0x |
-| Severe | 50+ | Everything | 24+ months | -1.5x or killer |
+| Severe | 50+ | Everything | 24+ months | -1.5x or DQ |
 
 ### 5. EMPLOYEE METRICS
 CREATE TABLE: Workforce Quality Indicators
 | Metric | Excellent | Good | Acceptable | Concerning | Red Flag |
-| Turnover Rate | | | | | |
-| Tenure Average | | | | | |
-| Training Programs | | | | | |
-| Certification % | | | | | |`
+| Turnover Rate | <15% | 15-25% | 25-35% | 35-45% | >45% |
+| Tenure Average | >5 years | 3-5 years | 2-3 years | 1-2 years | <1 year |
+| Training Programs | Formal, ongoing | Regular | Some | Minimal | None |
+| Certification % | >80% | 60-80% | 40-60% | 20-40% | <20% |`
   },
   {
     id: "2c",
     name: "Strategic & Geographic Criteria",
     prompt: `# PHASE 2C: STRATEGIC & GEOGRAPHIC CRITERIA
 
-Generate comprehensive strategic and geographic analysis (4,000+ words).
+Generate comprehensive strategic and geographic analysis (3,500-4,500 words).
 
 ## REQUIRED CONTENT:
 
 ### 1. GEOGRAPHIC MARKET TIERS
 CREATE TABLE: Market Tier Classification
 | Tier | Population Range | Characteristics | PE Interest | Multiple Premium |
-| Tier 1 | 2M+ metro | Major markets, deep talent | Very High | +0.5-1.0x |
+| Tier 1 | 2M+ metro | Major metros, deep talent pool | Very High | +0.5-1.0x |
 | Tier 2 | 500K-2M | Strong secondary markets | High | +0.25-0.5x |
 | Tier 3 | 200K-500K | Solid regional markets | Moderate | Baseline |
 | Tier 4 | <200K | Small markets | Lower | -0.25-0.5x |
 
 ### 2. PRIORITY MARKETS FOR THIS INDUSTRY
 CREATE TABLE: Top Markets (15+ metros)
-| Metro Area | State | Population | Growth Rate | Industry Density | Active Buyers | Why Priority |
-(Use REAL city names with actual population figures)
+| Metro Area | State | Population | Growth Rate | Industry Density | PE Activity | Why Priority |
+
+Use REAL city names with ACTUAL population figures. Example format:
+| Dallas-Fort Worth | TX | 7.9M | 1.8% | High | Very Active | Fast growth, PE HQs, business-friendly |
+| Phoenix-Mesa | AZ | 5.1M | 2.3% | High | Active | Sun Belt growth, lower costs |
+(Continue for 15+ cities with real data)
 
 ### 3. REGIONAL VARIATIONS
-- Northeast characteristics and buyer activity
-- Southeast characteristics and buyer activity
-- Midwest characteristics and buyer activity
-- Southwest characteristics and buyer activity
-- West Coast characteristics and buyer activity
+Provide detailed analysis for each region:
+- **Southeast** (FL, GA, NC, SC, TN, AL): Characteristics, buyer activity, typical multiples
+- **Texas**: Unique dynamics, active buyers, typical deal flow
+- **Southwest** (AZ, NV, CO): Market conditions, growth trends
+- **Northeast** (NY, NJ, PA, MA, CT): Market dynamics, buyer profiles
+- **Midwest** (IL, OH, MI, MN): Characteristics, consolidation status
+- **West Coast** (CA, WA, OR): Premium markets, unique factors
 
 ### 4. SUSTAINABLE COMPETITIVE ADVANTAGES
 CREATE TABLE: Competitive Moat Value
 | Moat Type | Industry Example | Durability | Value Impact |
-| Licenses/Certs | [Specific] | High | +0.5-1.0x |
-| Long-term Contracts | [Specific] | Medium-High | +0.5-1.5x |
-| Brand Recognition | [Specific] | Medium | +0.25-0.5x |
-| Geographic Density | [Specific] | High | +0.5-1.0x |
-| Proprietary Systems | [Specific] | Medium-High | +0.5-1.0x |
-| Supplier Relationships | [Specific] | Medium | +0.25x |
+| Licenses/Certs | [Specific to this industry] | High | +0.5-1.0x |
+| Long-term Contracts | [Specific example] | Medium-High | +0.5-1.5x |
+| Brand Recognition | [Specific example] | Medium | +0.25-0.5x |
+| Geographic Density | Route density, market share | High | +0.5-1.0x |
+| Proprietary Systems | [Specific to industry] | Medium-High | +0.5-1.0x |
+| Supplier Relationships | [Specific example] | Medium | +0.25x |
 
 ### 5. DEAL KILLERS & RED FLAGS
 CREATE TABLE: Absolute Deal Killers
@@ -329,7 +382,7 @@ CREATE TABLE: Absolute Deal Killers
 (Include 8+ deal killers with specific thresholds)
 
 CREATE TABLE: Yellow vs Red Flags
-| Issue | Yellow Flag | Red Flag | Deal Killer |
+| Issue | Yellow Flag (Concern) | Red Flag (Serious) | Deal Killer |
 (Include 8+ issues with escalation thresholds)`
   },
   {
@@ -337,7 +390,7 @@ CREATE TABLE: Yellow vs Red Flags
     name: "Seller Evaluation Scorecards",
     prompt: `# PHASE 3A: SELLER EVALUATION SCORECARDS
 
-Generate comprehensive scoring frameworks (4,000+ words).
+Generate comprehensive scoring frameworks (3,500-4,500 words).
 
 ## REQUIRED CONTENT:
 
@@ -348,13 +401,13 @@ CREATE TABLE: Financial Scoring Matrix
 | EBITDA Margin | 20% | >25% | 20-25% | 15-20% | 10-15% | <10% |
 | Revenue Growth | 15% | >15% | 10-15% | 5-10% | 0-5% | Declining |
 | Recurring % | 15% | >70% | 50-70% | 30-50% | 15-30% | <15% |
-| Concentration | 15% | <5% | 5-10% | 10-15% | 15-25% | >25% |
+| Concentration | 15% | <5% top | 5-10% | 10-15% | 15-25% | >25% |
 | Revenue Amount | 10% | >$15M | $8-15M | $3-8M | $1.5-3M | <$1.5M |
 
 ### 2. OPERATIONAL SCORECARD
-CREATE TABLE: Operational Scoring Matrix (use industry-specific KPIs)
+CREATE TABLE: Operational Scoring Matrix
 | KPI | Weight | Score 5 | Score 4 | Score 3 | Score 2 | Score 1 |
-(Include 6-8 industry-specific KPIs with thresholds)
+(Include 6-8 industry-specific KPIs with weight and threshold values)
 
 ### 3. STRATEGIC SCORECARD
 CREATE TABLE: Strategic Scoring Matrix
@@ -367,15 +420,15 @@ CREATE TABLE: Strategic Scoring Matrix
 
 ### 4. VALUATION BENCHMARKS
 CREATE TABLE: Multiple Ranges by Quality Tier
-| Quality Tier | EBITDA Multiple | Revenue Multiple | Characteristics |
-| Premium | 7.0-10.0x | 1.5-2.5x | Top quartile, recurring, growth |
-| Above Average | 5.5-7.0x | 1.0-1.5x | Strong metrics, growing |
-| Average | 4.0-5.5x | 0.7-1.0x | Median metrics, stable |
-| Below Average | 3.0-4.0x | 0.5-0.7x | Some concerns |
-| Distressed | 2.0-3.0x | 0.3-0.5x | Turnaround needed |
+| Quality Tier | Score Range | EBITDA Multiple | Revenue Multiple | Characteristics |
+| Premium | 4.5-5.0 | 7.0-10.0x | 1.5-2.5x | Top quartile everything |
+| Above Average | 4.0-4.4 | 5.5-7.0x | 1.0-1.5x | Strong metrics, growing |
+| Average | 3.0-3.9 | 4.0-5.5x | 0.7-1.0x | Median metrics, stable |
+| Below Average | 2.0-2.9 | 3.0-4.0x | 0.5-0.7x | Some concerns |
+| Distressed | <2.0 | 2.0-3.0x | 0.3-0.5x | Turnaround needed |
 
 CREATE TABLE: Multiple Adjustment Factors
-| Factor | Premium | Discount | Notes |
+| Factor | Typical Premium | Typical Discount | Notes |
 (Include 10+ adjustment factors with specific impacts)`
   },
   {
@@ -383,71 +436,70 @@ CREATE TABLE: Multiple Adjustment Factors
     name: "Buyer Fit Criteria - CRITICAL",
     prompt: `# PHASE 3B: BUYER FIT CRITERIA - CRITICAL FOR SCORING SYSTEM
 
-This section MUST follow EXACT formatting for automated parsing. This is the most important phase.
+THIS IS THE MOST CRITICAL SECTION. Follow the EXACT format below for automated parsing.
 
 ## BUYER FIT CRITERIA SUMMARY
 
 ### SIZE CRITERIA
 **Revenue Thresholds:**
-- Minimum revenue for PE interest: $X.XM (provide specific number)
-- Preferred revenue range: $XM to $XXM
-- Optimal revenue sweet spot: $XM to $XM
-- Maximum revenue before strategic-only: $XXM+
+- Minimum revenue for PE interest: $[SPECIFIC NUMBER, e.g., "$2.5M"]
+- Preferred revenue range: $[X]M to $[Y]M
+- Optimal revenue sweet spot: $[X]M to $[Y]M
+- Maximum revenue before strategic-only: $[X]M+
 
 **EBITDA Thresholds:**
-- Minimum EBITDA for PE interest: $XXXK (specific amount)
-- Preferred EBITDA range: $XXXK to $X.XM
-- Optimal EBITDA sweet spot: $X.XM to $XM
-- Add-on minimum EBITDA: $XXXK
+- Minimum EBITDA for PE interest: $[SPECIFIC, e.g., "$350,000"]
+- Preferred EBITDA range: $[X]K to $[Y]M
+- Optimal EBITDA sweet spot: $[X]M to $[Y]M
+- Add-on minimum EBITDA: $[SPECIFIC]
 
 **Other Size Metrics:**
-- Minimum employees: XX (specific number)
-- Preferred employee range: XX to XXX
-- Minimum locations: X
-- Preferred location count: X to XX
-- Revenue per location minimum: $X.XM
-- Square footage per location: X,XXX sq ft minimum
+- Minimum employees: [SPECIFIC NUMBER]
+- Preferred employee range: [X] to [Y]
+- Minimum locations: [SPECIFIC]
+- Preferred location count: [X] to [Y]
+- Revenue per location minimum: $[SPECIFIC]
 
 ### SERVICE CRITERIA
-**Primary Focus Services (REQUIRED - deals must have these):**
-- [Service 1] - Why it's core to buyer thesis
-- [Service 2] - Why it matters for margins
-- [Service 3] - Why it drives recurring revenue
+**Primary Focus Services (deals MUST have these):**
+OUTPUT THIS EXACT FORMAT:
+- [Service 1 name] - Why core to buyer thesis
+- [Service 2 name] - Why it matters for margins  
+- [Service 3 name] - Why it drives recurring revenue
 
 **Preferred Services (bonus points):**
-- [Service 1] - Why it adds value
+- [Service 1] - How it adds value
 - [Service 2] - How it complements core
 - [Service 3] - Growth opportunity
 
-**Services to Avoid (EXCLUDED - red flags):**
+**Services to Avoid (EXCLUDED - negative indicators):**
 - [Service 1] - Specific reason to avoid
 - [Service 2] - Specific issue
-- [Service 3] - Why problematic
+- [Service 3] - Why problematic for buyers
 
 **Business Model Requirements:**
-- Preferred model: B2B / B2C / Mixed (choose one)
-- Recurring revenue minimum: XX%
-- Contract preference: Long-term / Annual / As-needed
+- Preferred model: B2B / B2C / Mixed [choose one]
+- Recurring revenue minimum: [X]%
+- Contract preference: Long-term / Annual / Project-based
 
 ### GEOGRAPHY CRITERIA
 **Priority Regions (Highest Buyer Density):**
-1. [Region with specific states] - Why attractive for buyers
+1. [Region with specific states] - Why attractive
 2. [Region with specific states] - Why attractive
 3. [Region with specific states] - Why attractive
 4. [Region with specific states] - Why attractive
 5. [Region with specific states] - Why attractive
 
 **Priority Metros (Top 15):**
+CREATE TABLE:
 | Metro | State | Population | Growth Rate | Why Priority |
-| [City 1] | [ST] | [X.X]M | [X]% | [Reason] |
-| [City 2] | [ST] | [X.X]M | [X]% | [Reason] |
-(Continue for 15 cities minimum with REAL data)
+| [City 1] | [ST] | [X.X]M | [X]% | [Specific reason] |
+(Continue for 15 cities with REAL data)
 
 **Geographic Rules:**
-- Minimum market population: XXX,000
+- Minimum market population: [SPECIFIC]
 - Density preference: Dense single-market / Regional / National
-- Single location rule: Same state / Adjacent states / Regional
-- Multi-location rule: Adjacent states / Same region / National OK
+- Multi-location geographic rule: Adjacent states / Same region / National OK
 
 **Regions to Avoid:**
 - [Region 1] - Specific reason
@@ -458,112 +510,185 @@ This section MUST follow EXACT formatting for automated parsing. This is the mos
 
 **1. Large National Platforms (Priority 1)**
 - Ownership: Large PE-backed ($500M+ fund)
-- Target EBITDA: $1.5M+ 
-- Target Locations: 3+
-- Revenue per Location: $2M+
+- Target EBITDA: $1.5M+
+- Target Locations: 3+ preferred
 - Geographic scope: National footprint
-- Acquisition style: Multi-location preferred, single if exceptional
-- Examples: [List 3-5 real or archetypal platform names for this industry]
+- Acquisition style: Multi-location preferred
+- Estimated count: [X] active platforms
 
 **2. Regional Platforms (Priority 2)**
 - Ownership: Mid-market PE ($100-500M fund)
 - Target EBITDA: $500K-$2M
 - Target Locations: 2+
-- Geographic scope: Regional (adjacent states)
+- Geographic scope: Regional (2-5 state area)
 - Acquisition style: Tuck-ins within footprint
-- Examples: [List 3-5 names]
+- Estimated count: [X] active platforms
 
 **3. Emerging Platforms (Priority 3)**
 - Ownership: Lower-mid PE, family offices
 - Target EBITDA: $300K-$1M
-- Target Locations: Can be single
-- Geographic scope: State or metro level
-- Acquisition style: Platform formation or early add-ons
-- Examples: [List 3-5 names]
+- Target Locations: Single OK
+- Geographic scope: State/metro level
+- Acquisition style: Platform formation
+- Estimated count: [X] active
 
 **4. Strategic Acquirers (Priority 4)**
-- Ownership: Corporate, private, family-owned
-- Target EBITDA: Varies, often smaller
-- Geographic scope: Typically regional
-- Acquisition style: Horizontal or vertical integration
-- Categories: [List specific strategic buyer types for this industry]
+- Ownership: Corporate, family-owned
+- Target: Varies by strategic fit
+- Geographic scope: Regional
+- Acquisition style: Horizontal/vertical integration
 
 **5. Individual/Search Funds (Priority 5)**
 - Ownership: Individual operators, ETA
 - Target EBITDA: $250K-$750K
-- Target Locations: Single OK
-- Geographic scope: Local (specific metro)
-- Acquisition style: First acquisition, owner-operator
-- Best fit: Smaller deals with clean operations and strong cash flow`
+- Target Locations: Single
+- Geographic scope: Local metro
+- Acquisition style: First acquisition
+
+CRITICAL: All values must be SPECIFIC to this industry. NO PLACEHOLDERS.`
   },
   {
     id: "3c",
     name: "Example Evaluation & Application",
     prompt: `# PHASE 3C: EXAMPLE EVALUATION & APPLICATION
 
-Generate a complete worked example (4,000+ words).
+Generate a complete worked example (3,000-4,000 words).
 
 ## SAMPLE COMPANY EVALUATION
 
 ### Company Profile
-Create a realistic example company:
-- Company Name: [Fictional but realistic name]
-- Industry Segment: [Specific segment]
-- Revenue: $X.XM (specific amount)
-- EBITDA: $X.XM (XX% margin)
-- Locations: X
-- Employees: XX
-- Geography: [Specific metro]
-- Years in Business: XX
-- Ownership: [Current structure]
-- Service Mix: [Detailed breakdown]
+Create a REALISTIC example company with specific details:
+- Company Name: [Create a realistic but fictional name]
+- Industry Segment: [Specific segment within this industry]
+- Revenue: $[SPECIFIC, e.g., $4.7M]
+- EBITDA: $[SPECIFIC, e.g., $890K] ([X]% margin)
+- Locations: [SPECIFIC NUMBER]
+- Employees: [SPECIFIC NUMBER]
+- Geography: [Specific metro area, e.g., "Tampa, FL"]
+- Years in Business: [SPECIFIC]
+- Ownership: [Specific structure]
+- Service Mix: [Detailed breakdown with percentages]
 - Key Differentiators: [3-4 specific points]
 
 ### Financial Score Walkthrough
-Apply the financial scorecard:
-| Metric | Company Value | Score | Notes |
-| EBITDA Amount | | /5 | |
-| EBITDA Margin | | /5 | |
-| Revenue Growth | | /5 | |
-| Recurring % | | /5 | |
-| Concentration | | /5 | |
-| Revenue | | /5 | |
-**Weighted Financial Score: X.X/5.0**
+Apply the financial scorecard step-by-step:
+| Metric | Company Value | Score (1-5) | Weight | Weighted Score | Notes |
+| EBITDA Amount | $890K | 3 | 25% | 0.75 | Middle of range |
+(Complete all metrics)
+**Total Financial Score: X.XX/5.00**
 
 ### Operational Score Walkthrough
-Apply operational scorecard:
-(Score each operational KPI with specific reasoning)
-**Weighted Operational Score: X.X/5.0**
+Apply operational scorecard with industry KPIs:
+| KPI | Company Value | Benchmark | Score | Weight | Weighted |
+(Complete with specific KPIs for this industry)
+**Total Operational Score: X.XX/5.00**
 
 ### Strategic Score Walkthrough
-Apply strategic scorecard:
-(Score each strategic factor with specific reasoning)
-**Weighted Strategic Score: X.X/5.0**
+| Factor | Assessment | Score | Weight | Weighted |
+(Complete all strategic factors)
+**Total Strategic Score: X.XX/5.00**
 
 ### Composite Rating
-- Overall Score: X.X/5.0
-- Rating: Premium / Above Average / Average / Below Average
-- Expected Multiple: X.X-X.Xx EBITDA
+- Overall Composite Score: X.XX/5.00
+- Rating: [Premium / Above Average / Average / Below Average]
+- Expected Multiple Range: X.X-X.Xx EBITDA
 - Enterprise Value Range: $X.XM - $X.XM
 
 ### Buyer Matching
 Based on this company profile:
-1. **Most Likely Buyer Type:** [From buyer types] - Why
+1. **Most Likely Buyer Type:** [From buyer types] - Specific reasons
 2. **Secondary Buyer Type:** [Alternative] - Why
 3. **Unlikely Fits:** [Which buyers won't be interested] - Why
-4. **Recommended Process:** Targeted / Broad / Full Auction
+4. **Recommended Process:** Targeted / Broad / Auction
 5. **Expected Timeline:** X-X months
-6. **Key Selling Points:** [List 4-5]
-7. **Potential Concerns to Address:** [List 3-4]
+6. **Key Selling Points:** [List 4-5 specific points]
+7. **Concerns to Address:** [List 3-4 specific issues]
 
 ### Value Enhancement Recommendations
-What could increase value:
-1. [Specific improvement] - Expected impact: +$XK-$XK
-2. [Specific improvement] - Expected impact: +X.X multiple
-(Continue with 5-6 specific recommendations)`
+Specific improvements with quantified impact:
+1. [Improvement] - Expected impact: +$[X]K or +[X]x multiple
+2. [Improvement] - Expected impact
+(Continue with 5-6 recommendations)`
+  },
+  {
+    id: "4",
+    name: "Structured Criteria Output - CRITICAL",
+    prompt: `# PHASE 4: STRUCTURED CRITERIA OUTPUT
+
+This final phase must output buyer fit criteria in a PRECISE, PARSEABLE format.
+This section is CRITICAL for the scoring system.
+
+## PRIMARY_FOCUS_SERVICES
+
+Based on all analysis in this guide, identify the PRIMARY services that buyers in this industry target.
+These should be the core services that define "on-thesis" vs "off-thesis" deals.
+
+OUTPUT THE FOLLOWING STRUCTURED DATA:
+
+### PRIMARY FOCUS SERVICES (ARRAY FORMAT)
+List the 3-5 PRIMARY services buyers require. These will be used for deal scoring.
+Format as a simple bulleted list that can be parsed:
+
+PRIMARY_FOCUS_SERVICES:
+- [Service 1 - the single most important service]
+- [Service 2 - second most important]
+- [Service 3 - third most important]
+- [Service 4 - if applicable]
+- [Service 5 - if applicable]
+
+### EXCLUDED SERVICES (ARRAY FORMAT)
+List services that are RED FLAGS or would exclude a deal:
+
+EXCLUDED_SERVICES:
+- [Excluded service 1]
+- [Excluded service 2]
+- [Excluded service 3]
+
+### SIZE THRESHOLDS (NUMBERS)
+MINIMUM_REVENUE: $[X.X]M
+PREFERRED_REVENUE_MIN: $[X.X]M
+PREFERRED_REVENUE_MAX: $[X.X]M
+MINIMUM_EBITDA: $[X.X]M
+PREFERRED_EBITDA_MIN: $[X.X]M
+PREFERRED_EBITDA_MAX: $[X.X]M
+MINIMUM_LOCATIONS: [X]
+PREFERRED_LOCATIONS_MIN: [X]
+PREFERRED_LOCATIONS_MAX: [X]
+
+### PRIORITY REGIONS (ARRAY FORMAT)
+PRIORITY_REGIONS:
+- Southeast (FL, GA, NC, SC, TN)
+- Texas
+- Southwest (AZ, NV, CO)
+- [Add appropriate regions for this industry]
+
+### BUYER TYPES SUMMARY
+For each buyer type, provide key metrics:
+
+BUYER_TYPE_1:
+- Name: [Large National Platforms]
+- Priority: 1
+- Min_EBITDA: $[X.X]M
+- Min_Locations: [X]
+- Geographic_Scope: National
+
+BUYER_TYPE_2:
+- Name: [Regional Platforms]
+- Priority: 2
+- Min_EBITDA: $[X]K
+- Min_Locations: [X]
+- Geographic_Scope: Regional
+
+(Continue for all buyer types)
+
+IMPORTANT: This structured output is parsed by the scoring system.
+Use exact formatting. No placeholders. All values must be specific.`
   }
 ];
 
+// =============================================================================
+// QUALITY VALIDATION
+// =============================================================================
 interface QualityResult {
   passed: boolean;
   score: number;
@@ -578,15 +703,19 @@ interface QualityResult {
   hasCriteria: boolean;
   hasBuyerTypes: boolean;
   hasPrimaryFocus: boolean;
+  afterGapFill?: boolean;
+  attempt?: number;
 }
 
 function validateQuality(content: string, industryName: string): QualityResult {
-  const wordCount = content.split(/\s+/).length;
+  const wordCount = content.split(/\s+/).filter(w => w.length > 0).length;
   
+  // Count tables
   const tableLines = (content.match(/\|.*\|/g) || []);
   const tableCount = Math.floor(tableLines.length / 3);
-  const dataRowCount = tableLines.filter(line => /\d+[%$]?/.test(line)).length;
+  const dataRowCount = tableLines.filter(line => /\d+[%$KM]?/.test(line)).length;
   
+  // Count placeholders - be thorough
   const placeholderPatterns = [
     /\[X+\]/gi,
     /\$X+[MKB]?\b/gi,
@@ -597,50 +726,60 @@ function validateQuality(content: string, industryName: string): QualityResult {
     /\[Name\]/gi,
     /\[City\]/gi,
     /\bXX+,XXX\b/g,
+    /\[ST\]/gi,
+    /\[Platform Name\]/gi,
+    /\[Specific to/gi,
   ];
   
   let placeholderCount = 0;
   for (const pattern of placeholderPatterns) {
-    placeholderCount += (content.match(pattern) || []).length;
+    const matches = content.match(pattern) || [];
+    placeholderCount += matches.length;
   }
   
+  // Count industry mentions
   const industryRegex = new RegExp(industryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
   const industryMentions = (content.match(industryRegex) || []).length;
   
-  const hasCriteria = /BUYER FIT CRITERIA SUMMARY/i.test(content);
+  // Check for critical sections
+  const hasCriteria = /## BUYER FIT CRITERIA SUMMARY/i.test(content);
   const hasBuyerTypes = /### BUYER TYPES/i.test(content) && /Priority \d/i.test(content);
-  const hasPrimaryFocus = /Primary Focus Services/i.test(content);
+  const hasPrimaryFocus = /PRIMARY_FOCUS_SERVICES:|Primary Focus Services/i.test(content);
   
-  const requiredSections = ["NAICS", "EBITDA", "SIZE CRITERIA", "SERVICE CRITERIA", "GEOGRAPHY CRITERIA", "BUYER TYPES", "SCORECARD"];
+  // Check for required sections
+  const requiredSections = ["NAICS", "EBITDA", "SIZE CRITERIA", "SERVICE CRITERIA", "GEOGRAPHY CRITERIA", "BUYER TYPES", "SCORECARD", "PRIMARY_FOCUS"];
   const sectionsToFind = [
     "INDUSTRY DEFINITION", "TERMINOLOGY", "BUSINESS MODEL", "ECONOMICS",
     "COMPETITIVE LANDSCAPE", "FINANCIAL ATTRACTIVENESS", "OPERATIONAL ATTRACTIVENESS",
-    "DEAL KILLER", "SELLER EVALUATION", "BUYER FIT CRITERIA"
+    "DEAL KILLER", "SELLER EVALUATION", "BUYER FIT CRITERIA", "EXAMPLE"
   ];
   
   const contentUpper = content.toUpperCase();
   const sectionsFound = sectionsToFind.filter(s => contentUpper.includes(s));
   const missingElements = requiredSections.filter(e => !contentUpper.includes(e));
   
+  // Compile issues
   const issues: string[] = [];
   
   if (wordCount < 25000) issues.push(`Word count ${wordCount.toLocaleString()} below target 25,000`);
-  if (tableCount < 25) issues.push(`Table count ${tableCount} below target 25`);
-  if (placeholderCount > 15) issues.push(`${placeholderCount} placeholders detected`);
-  if (industryMentions < 40) issues.push(`Industry mentioned only ${industryMentions} times`);
+  if (tableCount < 20) issues.push(`Table count ${tableCount} below target 20`);
+  if (placeholderCount > 10) issues.push(`${placeholderCount} placeholders detected - too many!`);
+  if (industryMentions < 30) issues.push(`Industry "${industryName}" mentioned only ${industryMentions} times`);
   if (!hasCriteria) issues.push("MISSING: BUYER FIT CRITERIA SUMMARY section");
   if (!hasBuyerTypes) issues.push("MISSING: BUYER TYPES with priority ordering");
-  if (!hasPrimaryFocus) issues.push("MISSING: Primary Focus Services");
-  if (dataRowCount < 100) issues.push(`Only ${dataRowCount} data rows (target 100+)`);
+  if (!hasPrimaryFocus) issues.push("MISSING: PRIMARY_FOCUS_SERVICES section");
+  if (dataRowCount < 80) issues.push(`Only ${dataRowCount} data rows (target 80+)`);
+  if (missingElements.length > 0) issues.push(`Missing sections: ${missingElements.join(', ')}`);
   
+  // Calculate score
   let score = 0;
   score += Math.min(25, (wordCount / 30000) * 25);
-  score += Math.min(15, (sectionsFound.length / 10) * 15);
-  score += Math.min(15, (tableCount / 30) * 15);
+  score += Math.min(15, (sectionsFound.length / 11) * 15);
+  score += Math.min(15, (tableCount / 25) * 15);
   score += Math.min(10, ((requiredSections.length - missingElements.length) / requiredSections.length) * 10);
-  score += Math.min(10, Math.max(0, (20 - placeholderCount) / 20) * 10);
-  score += Math.min(10, (industryMentions / 50) * 10);
-  score += Math.min(5, (dataRowCount / 120) * 5);
+  score += Math.min(10, Math.max(0, (15 - placeholderCount) / 15) * 10);
+  score += Math.min(10, (industryMentions / 40) * 10);
+  score += Math.min(5, (dataRowCount / 100) * 5);
   score += hasCriteria ? 4 : 0;
   score += hasBuyerTypes ? 4 : 0;
   score += hasPrimaryFocus ? 2 : 0;
@@ -662,30 +801,97 @@ function validateQuality(content: string, industryName: string): QualityResult {
   };
 }
 
-// AI-based criteria extraction using tool calling
+// =============================================================================
+// GAP FILLING
+// =============================================================================
+async function generateGapFillContent(
+  content: string,
+  missingElements: string[],
+  industryName: string,
+  apiKey: string
+): Promise<string> {
+  console.log(`[generate-ma-guide] Gap filling for: ${missingElements.join(', ')}`);
+  
+  const gapPrompt = `You are filling gaps in an M&A guide for the ${industryName} industry.
+
+The following sections are MISSING or INCOMPLETE: ${missingElements.join(', ')}
+
+Generate ONLY the missing content. Be specific with real numbers, no placeholders.
+
+If PRIMARY_FOCUS_SERVICES is missing, generate:
+PRIMARY_FOCUS_SERVICES:
+- [List 3-5 primary services for ${industryName} industry]
+
+EXCLUDED_SERVICES:
+- [List 2-4 services buyers avoid]
+
+If SIZE CRITERIA is missing, generate complete size thresholds with specific numbers.
+If GEOGRAPHY CRITERIA is missing, list specific regions and cities.
+If BUYER TYPES is missing, list 5 buyer categories with priority order.
+
+Generate ONLY the missing sections, formatted consistently with an M&A guide.
+NO PLACEHOLDERS - use real, specific values.`;
+
+  try {
+    const response = await fetch(LOVABLE_AI_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash', // Use faster model for gap fill
+        messages: [
+          { role: 'system', content: MASTER_SYSTEM_PROMPT },
+          { role: 'user', content: gapPrompt }
+        ],
+        stream: false,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('[generate-ma-guide] Gap fill request failed:', response.status);
+      return "";
+    }
+
+    const data = await response.json();
+    const gapContent = data.choices?.[0]?.message?.content || "";
+    
+    console.log(`[generate-ma-guide] Gap fill generated ${gapContent.split(/\s+/).length} words`);
+    return "\n\n" + gapContent;
+  } catch (error) {
+    console.error('[generate-ma-guide] Gap fill error:', error);
+    return "";
+  }
+}
+
+// =============================================================================
+// CRITERIA EXTRACTION
+// =============================================================================
 async function extractCriteriaWithAI(content: string, apiKey: string): Promise<{
   sizeCriteria?: string;
   serviceCriteria?: string;
   geographyCriteria?: string;
   buyerTypesCriteria?: string;
+  primaryFocusServices?: string[];
+  excludedServices?: string[];
 }> {
   // First try regex extraction
   const regexCriteria = extractCriteriaWithRegex(content);
   
-  // Check if regex extraction found substantial content
+  // Check if regex found substantial content
   const hasSubstantialContent = 
     (regexCriteria.sizeCriteria?.length || 0) > 200 &&
     (regexCriteria.serviceCriteria?.length || 0) > 200 &&
-    (regexCriteria.geographyCriteria?.length || 0) > 200 &&
-    (regexCriteria.buyerTypesCriteria?.length || 0) > 500;
+    (regexCriteria.buyerTypesCriteria?.length || 0) > 400;
   
-  if (hasSubstantialContent) {
-    console.log('[generate-ma-guide] Regex extraction successful');
+  if (hasSubstantialContent && regexCriteria.primaryFocusServices && regexCriteria.primaryFocusServices.length > 0) {
+    console.log('[generate-ma-guide] Regex extraction successful with primary_focus');
     return regexCriteria;
   }
   
   // Fall back to AI extraction
-  console.log('[generate-ma-guide] Using AI extraction as fallback');
+  console.log('[generate-ma-guide] Using AI extraction for structured criteria');
   
   try {
     const response = await fetch(LOVABLE_AI_URL, {
@@ -699,31 +905,41 @@ async function extractCriteriaWithAI(content: string, apiKey: string): Promise<{
         messages: [
           {
             role: 'system',
-            content: `You extract buyer fit criteria from M&A guides. Return the EXACT text for each criteria section.`
+            content: `Extract buyer fit criteria from M&A guides into structured data. Return EXACT text for each section, plus arrays for primary_focus_services and excluded_services.`
           },
           {
             role: 'user',
-            content: `Extract the buyer fit criteria sections from this M&A guide. Return the exact text for each section:\n\n${content.slice(-30000)}`
+            content: `Extract the buyer fit criteria sections from this M&A guide:\n\n${content.slice(-40000)}`
           }
         ],
         tools: [{
           type: 'function',
           function: {
-            name: 'extract_criteria_sections',
-            description: 'Extract buyer fit criteria sections',
+            name: 'extract_all_criteria',
+            description: 'Extract all buyer fit criteria sections',
             parameters: {
               type: 'object',
               properties: {
                 sizeCriteria: { type: 'string', description: 'Complete SIZE CRITERIA section text' },
                 serviceCriteria: { type: 'string', description: 'Complete SERVICE CRITERIA section text' },
                 geographyCriteria: { type: 'string', description: 'Complete GEOGRAPHY CRITERIA section text' },
-                buyerTypesCriteria: { type: 'string', description: 'Complete BUYER TYPES section text' }
+                buyerTypesCriteria: { type: 'string', description: 'Complete BUYER TYPES section text' },
+                primaryFocusServices: { 
+                  type: 'array', 
+                  items: { type: 'string' },
+                  description: 'Array of 3-5 primary focus service names that buyers require'
+                },
+                excludedServices: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Array of services that are red flags/excluded'
+                }
               },
-              required: ['sizeCriteria', 'serviceCriteria', 'geographyCriteria', 'buyerTypesCriteria']
+              required: ['sizeCriteria', 'serviceCriteria', 'geographyCriteria', 'buyerTypesCriteria', 'primaryFocusServices']
             }
           }
         }],
-        tool_choice: { type: 'function', function: { name: 'extract_criteria_sections' } }
+        tool_choice: { type: 'function', function: { name: 'extract_all_criteria' } }
       }),
     });
 
@@ -737,11 +953,15 @@ async function extractCriteriaWithAI(content: string, apiKey: string): Promise<{
     
     if (toolCall?.function?.arguments) {
       const extracted = JSON.parse(toolCall.function.arguments);
+      console.log('[generate-ma-guide] AI extracted primary_focus_services:', extracted.primaryFocusServices);
+      
       return {
         sizeCriteria: extracted.sizeCriteria || regexCriteria.sizeCriteria,
         serviceCriteria: extracted.serviceCriteria || regexCriteria.serviceCriteria,
         geographyCriteria: extracted.geographyCriteria || regexCriteria.geographyCriteria,
-        buyerTypesCriteria: extracted.buyerTypesCriteria || regexCriteria.buyerTypesCriteria
+        buyerTypesCriteria: extracted.buyerTypesCriteria || regexCriteria.buyerTypesCriteria,
+        primaryFocusServices: extracted.primaryFocusServices || regexCriteria.primaryFocusServices,
+        excludedServices: extracted.excludedServices || regexCriteria.excludedServices
       };
     }
   } catch (error) {
@@ -756,17 +976,23 @@ function extractCriteriaWithRegex(content: string): {
   serviceCriteria?: string;
   geographyCriteria?: string;
   buyerTypesCriteria?: string;
+  primaryFocusServices?: string[];
+  excludedServices?: string[];
 } {
   const criteria: {
     sizeCriteria?: string;
     serviceCriteria?: string;
     geographyCriteria?: string;
     buyerTypesCriteria?: string;
+    primaryFocusServices?: string[];
+    excludedServices?: string[];
   } = {};
 
+  // Find the BUYER FIT CRITERIA SUMMARY section
   const summaryMatch = content.match(/## BUYER FIT CRITERIA SUMMARY([\s\S]*?)(?=## [A-Z]|# PHASE|$)/i);
   const searchText = summaryMatch ? summaryMatch[1] : content;
 
+  // Extract each section
   const sizeMatch = searchText.match(/### SIZE CRITERIA([\s\S]*?)(?=### SERVICE|### GEOGRAPHY|### BUYER|## )/i);
   if (sizeMatch) criteria.sizeCriteria = sizeMatch[1].trim().substring(0, 5000);
 
@@ -779,9 +1005,70 @@ function extractCriteriaWithRegex(content: string): {
   const buyerMatch = searchText.match(/### BUYER TYPES([\s\S]*?)(?=### SIZE|### SERVICE|### GEOGRAPHY|## [A-Z]|# PHASE)/i);
   if (buyerMatch) criteria.buyerTypesCriteria = buyerMatch[1].trim().substring(0, 8000);
 
+  // Extract PRIMARY_FOCUS_SERVICES as array
+  const primaryFocusMatch = content.match(/PRIMARY_FOCUS_SERVICES:\s*((?:[-•]\s*.+\n?)+)/i);
+  if (primaryFocusMatch) {
+    const lines = primaryFocusMatch[1].split('\n')
+      .map(line => line.replace(/^[-•]\s*/, '').trim())
+      .filter(line => line.length > 0 && !line.startsWith('['))
+      .map(line => line.split(' - ')[0].trim()); // Get just the service name
+    
+    if (lines.length > 0) {
+      criteria.primaryFocusServices = lines;
+      console.log('[generate-ma-guide] Extracted primary_focus via regex:', lines);
+    }
+  }
+  
+  // Fallback: try to extract from "Primary Focus Services" section
+  if (!criteria.primaryFocusServices || criteria.primaryFocusServices.length === 0) {
+    const altMatch = content.match(/\*\*Primary Focus Services[^*]*\*\*[:\s]*((?:[-•]\s*.+\n?)+)/i);
+    if (altMatch) {
+      const lines = altMatch[1].split('\n')
+        .map(line => line.replace(/^[-•]\s*/, '').trim())
+        .filter(line => line.length > 0 && !line.startsWith('['))
+        .map(line => line.split(' - ')[0].trim());
+      
+      if (lines.length > 0) {
+        criteria.primaryFocusServices = lines;
+        console.log('[generate-ma-guide] Extracted primary_focus from alt section:', lines);
+      }
+    }
+  }
+
+  // Extract EXCLUDED_SERVICES as array
+  const excludedMatch = content.match(/EXCLUDED_SERVICES:\s*((?:[-•]\s*.+\n?)+)/i);
+  if (excludedMatch) {
+    const lines = excludedMatch[1].split('\n')
+      .map(line => line.replace(/^[-•]\s*/, '').trim())
+      .filter(line => line.length > 0 && !line.startsWith('['))
+      .map(line => line.split(' - ')[0].trim());
+    
+    if (lines.length > 0) {
+      criteria.excludedServices = lines;
+    }
+  }
+  
+  // Fallback for excluded services
+  if (!criteria.excludedServices || criteria.excludedServices.length === 0) {
+    const altExcluded = content.match(/\*\*Services to Avoid[^*]*\*\*[:\s]*((?:[-•]\s*.+\n?)+)/i);
+    if (altExcluded) {
+      const lines = altExcluded[1].split('\n')
+        .map(line => line.replace(/^[-•]\s*/, '').trim())
+        .filter(line => line.length > 0 && !line.startsWith('['))
+        .map(line => line.split(' - ')[0].trim());
+      
+      if (lines.length > 0) {
+        criteria.excludedServices = lines;
+      }
+    }
+  }
+
   return criteria;
 }
 
+// =============================================================================
+// MAIN HANDLER
+// =============================================================================
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -805,7 +1092,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[generate-ma-guide] Starting for: ${industryName} with ${SUB_PHASES.length} sub-phases`);
+    console.log(`[generate-ma-guide] Starting for: "${industryName}" with ${SUB_PHASES.length} sub-phases`);
 
     const encoder = new TextEncoder();
     
@@ -818,9 +1105,10 @@ serve(async (req) => {
         let fullContent = "";
         
         try {
+          // Process each sub-phase
           for (let i = 0; i < SUB_PHASES.length; i++) {
             const subPhase = SUB_PHASES[i];
-            const phaseNum = Math.floor(i / 4) + 1;
+            const phaseNum = Math.ceil((i + 1) / 4); // 4 sub-phases per major phase
             
             console.log(`[generate-ma-guide] Sub-phase ${subPhase.id}: ${subPhase.name}`);
             
@@ -837,11 +1125,11 @@ serve(async (req) => {
 ${subPhase.prompt}
 
 CRITICAL REQUIREMENTS:
-- Generate 4,000-6,000 words for this section
-- NO PLACEHOLDERS - use real numbers and city names
+- Generate 3,000-4,500 words for this section
+- NO PLACEHOLDERS - use real numbers, city names, and benchmarks
 - Every table must have 6+ rows of real data
-- Be specific to the ${industryName} industry
-- This is for professional M&A advisors
+- Be specific to the ${industryName} industry throughout
+- This is for professional M&A advisors - be thorough and accurate
 
 Industry: ${industryName}`;
 
@@ -860,7 +1148,7 @@ Industry: ${industryName}`;
                   body: JSON.stringify({
                     model: DEFAULT_MODEL,
                     messages: [
-                      { role: 'system', content: SYSTEM_PROMPT },
+                      { role: 'system', content: MASTER_SYSTEM_PROMPT },
                       { role: 'user', content: userPrompt }
                     ],
                     stream: true,
@@ -868,8 +1156,8 @@ Industry: ${industryName}`;
                 });
 
                 if (response.status === 429) {
-                  console.log(`[generate-ma-guide] Rate limited, waiting 5 seconds...`);
-                  await new Promise(r => setTimeout(r, 5000));
+                  console.log(`[generate-ma-guide] Rate limited, waiting ${5 * (retryCount + 1)} seconds...`);
+                  await new Promise(r => setTimeout(r, 5000 * (retryCount + 1)));
                   retryCount++;
                   continue;
                 }
@@ -883,6 +1171,7 @@ Industry: ${industryName}`;
                 if (!response.ok) {
                   console.error(`[generate-ma-guide] Sub-phase ${subPhase.id} error:`, response.status);
                   retryCount++;
+                  await new Promise(r => setTimeout(r, 2000));
                   continue;
                 }
 
@@ -917,7 +1206,7 @@ Industry: ${industryName}`;
                         phaseContent += content;
                         fullContent += content;
                         
-                        const subPhaseProgress = Math.min(100, (phaseContent.length / 25000) * 100);
+                        const subPhaseProgress = Math.min(100, (phaseContent.length / 20000) * 100);
                         const overallProgress = ((i * 100) + subPhaseProgress) / SUB_PHASES.length;
                         
                         sendEvent({
@@ -935,7 +1224,7 @@ Industry: ${industryName}`;
                   }
                 }
 
-                break; // Success, exit retry loop
+                break; // Success - exit retry loop
               } catch (error) {
                 console.error(`[generate-ma-guide] Sub-phase ${subPhase.id} error:`, error);
                 retryCount++;
@@ -956,68 +1245,104 @@ Industry: ${industryName}`;
               phaseWordCount
             });
 
-            fullContent += "\n\n---\n\n";
+            // Small delay between phases to avoid rate limits
+            if (i < SUB_PHASES.length - 1) {
+              await new Promise(r => setTimeout(r, 1000));
+            }
           }
 
-          // Quality validation
-          console.log('[generate-ma-guide] Running quality validation...');
+          // Quality check
+          console.log('[generate-ma-guide] Running quality check...');
           sendEvent({ type: 'quality_check_start' });
           
-          const quality = validateQuality(fullContent, industryName);
-          console.log('[generate-ma-guide] Quality:', JSON.stringify({
-            score: quality.score,
-            wordCount: quality.wordCount,
-            hasCriteria: quality.hasCriteria,
-            hasBuyerTypes: quality.hasBuyerTypes
-          }));
-          
-          sendEvent({ type: 'quality_check_result', ...quality });
+          let quality = validateQuality(fullContent, industryName);
+          sendEvent({ 
+            type: 'quality_check_result', 
+            ...quality 
+          });
 
-          // Extract criteria using AI-enhanced extraction
+          // Gap filling if needed (up to 2 attempts)
+          let gapAttempt = 0;
+          while (!quality.passed && gapAttempt < 2 && quality.missingElements.length > 0) {
+            gapAttempt++;
+            console.log(`[generate-ma-guide] Gap fill attempt ${gapAttempt}`);
+            
+            sendEvent({ type: 'gap_fill_start', attempt: gapAttempt });
+            
+            const gapContent = await generateGapFillContent(
+              fullContent,
+              quality.missingElements,
+              industryName,
+              LOVABLE_API_KEY
+            );
+            
+            if (gapContent) {
+              fullContent += gapContent;
+              sendEvent({ type: 'gap_fill_content', content: gapContent });
+            }
+            
+            quality = validateQuality(fullContent, industryName);
+            quality.afterGapFill = true;
+            quality.attempt = gapAttempt;
+            
+            sendEvent({ type: 'final_quality', ...quality });
+          }
+
+          // Extract criteria
           console.log('[generate-ma-guide] Extracting criteria...');
-          const criteria = await extractCriteriaWithAI(fullContent, LOVABLE_API_KEY);
-          const criteriaKeys = Object.keys(criteria).filter(k => criteria[k as keyof typeof criteria]);
-          console.log('[generate-ma-guide] Extracted criteria sections:', criteriaKeys);
+          const extractedCriteria = await extractCriteriaWithAI(fullContent, LOVABLE_API_KEY);
           
-          sendEvent({ type: 'criteria', criteria, criteriaKeys });
+          console.log('[generate-ma-guide] Extracted criteria:', {
+            sizeCriteria: (extractedCriteria.sizeCriteria?.length || 0) + ' chars',
+            serviceCriteria: (extractedCriteria.serviceCriteria?.length || 0) + ' chars',
+            geographyCriteria: (extractedCriteria.geographyCriteria?.length || 0) + ' chars',
+            buyerTypesCriteria: (extractedCriteria.buyerTypesCriteria?.length || 0) + ' chars',
+            primaryFocusServices: extractedCriteria.primaryFocusServices,
+            excludedServices: extractedCriteria.excludedServices
+          });
+          
+          sendEvent({
+            type: 'criteria',
+            criteria: extractedCriteria
+          });
 
-          // Final complete event
+          // Complete
           const finalWordCount = fullContent.split(/\s+/).length;
+          console.log(`[generate-ma-guide] Complete. Total: ${finalWordCount} words, Quality: ${quality.score}`);
+          
           sendEvent({
             type: 'complete',
-            content: fullContent,
             wordCount: finalWordCount,
-            criteria,
             quality
           });
 
-          console.log(`[generate-ma-guide] Complete. Words: ${finalWordCount}, Score: ${quality.score}`);
+          sendEvent({ type: '[DONE]' });
+          controller.close();
 
         } catch (error) {
-          console.error('[generate-ma-guide] Error:', error);
+          console.error('[generate-ma-guide] Stream error:', error);
           sendEvent({ 
             type: 'error', 
-            message: error instanceof Error ? error.message : 'Generation failed' 
+            message: error instanceof Error ? error.message : 'Unknown error' 
           });
+          controller.close();
         }
-
-        controller.close();
       }
     });
 
     return new Response(stream, {
-      headers: {
-        ...corsHeaders,
+      headers: { 
+        ...corsHeaders, 
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
+        'Connection': 'keep-alive'
       },
     });
 
   } catch (error) {
-    console.error('[generate-ma-guide] Request error:', error);
+    console.error('[generate-ma-guide] Error:', error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Request failed' }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
