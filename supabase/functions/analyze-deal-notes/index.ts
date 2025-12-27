@@ -6,6 +6,159 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Region to state abbreviation mapping
+const REGION_TO_STATES: Record<string, string[]> = {
+  'southeast': ['GA', 'FL', 'SC', 'NC', 'AL', 'TN', 'MS', 'LA', 'AR', 'KY', 'VA', 'WV'],
+  'south': ['TX', 'OK', 'LA', 'AR', 'MS', 'AL', 'TN', 'KY', 'GA', 'FL', 'SC', 'NC', 'VA', 'WV'],
+  'northeast': ['NY', 'NJ', 'PA', 'CT', 'MA', 'RI', 'VT', 'NH', 'ME', 'DE', 'MD'],
+  'midwest': ['OH', 'MI', 'IN', 'IL', 'WI', 'MN', 'IA', 'MO', 'KS', 'NE', 'SD', 'ND'],
+  'southwest': ['TX', 'AZ', 'NM', 'OK', 'NV'],
+  'west': ['CA', 'WA', 'OR', 'NV', 'UT', 'CO', 'ID', 'MT', 'WY', 'AK', 'HI'],
+  'pacific northwest': ['WA', 'OR', 'ID'],
+  'new england': ['MA', 'CT', 'RI', 'VT', 'NH', 'ME'],
+  'mid-atlantic': ['NY', 'NJ', 'PA', 'DE', 'MD', 'DC'],
+  'great lakes': ['OH', 'MI', 'IN', 'IL', 'WI', 'MN'],
+  'gulf coast': ['TX', 'LA', 'MS', 'AL', 'FL'],
+  'rocky mountain': ['CO', 'UT', 'WY', 'MT', 'ID'],
+  'sunbelt': ['CA', 'AZ', 'NM', 'TX', 'LA', 'MS', 'AL', 'GA', 'FL', 'SC', 'NC'],
+  'east coast': ['ME', 'NH', 'MA', 'RI', 'CT', 'NY', 'NJ', 'PA', 'DE', 'MD', 'VA', 'NC', 'SC', 'GA', 'FL'],
+  'west coast': ['CA', 'OR', 'WA'],
+  'national': [], // Empty - means all states, handled separately
+  'nationwide': [],
+};
+
+// Pre-extract patterns from notes to help AI
+function preExtractHints(notes: string): { hints: string; preExtracted: Record<string, any> } {
+  const preExtracted: Record<string, any> = {};
+  const hintLines: string[] = [];
+  
+  // Website extraction
+  const websiteMatch = notes.match(/(?:Website|URL|Site|Web)[:\s]+\s*(https?:\/\/[^\s\n]+)/i);
+  if (websiteMatch) {
+    preExtracted.company_website = websiteMatch[1].replace(/[.,;]+$/, ''); // Remove trailing punctuation
+    hintLines.push(`PRE-EXTRACTED Website: ${preExtracted.company_website}`);
+  }
+  
+  // Revenue extraction with various formats
+  const revenuePatterns = [
+    /Revenue[:\s]+\$?([\d,.]+)\s*(M|MM|million|mil)?/i,
+    /\$?([\d,.]+)\s*(M|MM|million)\s+(?:in\s+)?revenue/i,
+    /annual\s+revenue[:\s]+\$?([\d,.]+)\s*(M|MM|million|K|thousand)?/i,
+  ];
+  for (const pattern of revenuePatterns) {
+    const match = notes.match(pattern);
+    if (match) {
+      let value = parseFloat(match[1].replace(/,/g, ''));
+      const suffix = match[2]?.toLowerCase();
+      if (suffix === 'k' || suffix === 'thousand') {
+        value = value / 1000; // Convert K to millions
+      } else if (!suffix && value > 100) {
+        // Likely already in thousands or actual dollars, try to normalize
+        if (value > 1000000) value = value / 1000000;
+        else if (value > 1000) value = value / 1000;
+      }
+      preExtracted.revenue = value;
+      hintLines.push(`PRE-EXTRACTED Revenue: $${value}M`);
+      break;
+    }
+  }
+  
+  // EBITDA dollar amount extraction
+  const ebitdaAmountPatterns = [
+    /EBITDA[:\s]+\$?([\d,.]+)\s*(K|thousand|M|MM|million)?/i,
+    /\$?([\d,.]+)\s*(K|thousand|M|MM|million)?\s+EBITDA/i,
+  ];
+  for (const pattern of ebitdaAmountPatterns) {
+    const match = notes.match(pattern);
+    if (match && !match[0].includes('%')) {
+      let value = parseFloat(match[1].replace(/,/g, ''));
+      const suffix = match[2]?.toLowerCase();
+      if (suffix === 'k' || suffix === 'thousand') {
+        value = value / 1000; // Convert K to millions
+      } else if (!suffix && value > 100) {
+        // Likely in thousands or actual dollars
+        if (value > 1000000) value = value / 1000000;
+        else if (value > 1000) value = value / 1000;
+      }
+      preExtracted.ebitda_amount = value;
+      hintLines.push(`PRE-EXTRACTED EBITDA Amount: $${value}M`);
+      break;
+    }
+  }
+  
+  // EBITDA margin/percentage extraction
+  const ebitdaPercentPatterns = [
+    /EBITDA\s+Margin[:\s]+([\d.]+)\s*%/i,
+    /EBITDA[:\s]+([\d.]+)\s*%/i,
+    /([\d.]+)\s*%\s+EBITDA/i,
+    /margins?[:\s]+([\d.]+)\s*%/i,
+  ];
+  for (const pattern of ebitdaPercentPatterns) {
+    const match = notes.match(pattern);
+    if (match) {
+      preExtracted.ebitda_percentage = parseFloat(match[1]);
+      hintLines.push(`PRE-EXTRACTED EBITDA Margin: ${preExtracted.ebitda_percentage}%`);
+      break;
+    }
+  }
+  
+  // Region/geography extraction
+  const regionPattern = /(?:across|throughout|in|serving)\s+(?:the\s+)?(southeast|southwest|northeast|midwest|west coast|east coast|pacific northwest|new england|mid-atlantic|gulf coast|sunbelt|south|west)/gi;
+  const regionMatches = [...notes.matchAll(regionPattern)];
+  if (regionMatches.length > 0) {
+    const regions = regionMatches.map(m => m[1].toLowerCase());
+    const expandedStates = new Set<string>();
+    for (const region of regions) {
+      const states = REGION_TO_STATES[region] || REGION_TO_STATES[region.replace(/\s+/g, ' ')];
+      if (states) {
+        states.forEach(s => expandedStates.add(s));
+      }
+    }
+    if (expandedStates.size > 0) {
+      preExtracted.geography = Array.from(expandedStates);
+      hintLines.push(`PRE-EXTRACTED Geography from regions (${regions.join(', ')}): ${preExtracted.geography.join(', ')}`);
+    }
+  }
+  
+  // Location count extraction
+  const locationPatterns = [
+    /(\d+)\s+(?:staffed\s+)?locations?/i,
+    /(\d+)\s+offices?/i,
+    /(\d+)\s+branches?/i,
+    /(\d+)\s+stores?/i,
+    /locations?[:\s]+(\d+)/i,
+  ];
+  for (const pattern of locationPatterns) {
+    const match = notes.match(pattern);
+    if (match) {
+      preExtracted.location_count = parseInt(match[1], 10);
+      hintLines.push(`PRE-EXTRACTED Location Count: ${preExtracted.location_count}`);
+      break;
+    }
+  }
+  
+  // "Multiple locations" handling
+  if (!preExtracted.location_count) {
+    if (/multiple\s+(?:staffed\s+)?locations?/i.test(notes)) {
+      preExtracted.location_count = 3; // Conservative estimate
+      hintLines.push(`PRE-EXTRACTED Location Count: ~3 (from "multiple locations")`);
+    }
+  }
+  
+  // Founded year extraction
+  const foundedMatch = notes.match(/(?:Founded|Established|Started)[:\s]+(\d{4})/i);
+  if (foundedMatch) {
+    preExtracted.founded_year = parseInt(foundedMatch[1], 10);
+    hintLines.push(`PRE-EXTRACTED Founded: ${preExtracted.founded_year}`);
+  }
+  
+  const hints = hintLines.length > 0 
+    ? '\n\n--- PRE-EXTRACTED HINTS (use these values) ---\n' + hintLines.join('\n') 
+    : '';
+    
+  return { hints, preExtracted };
+}
+
 const extractDealInfoTool = {
   type: "function",
   function: {
@@ -16,44 +169,44 @@ const extractDealInfoTool = {
       properties: {
         deal_name: {
           type: "string",
-          description: "Company name or deal name extracted from the notes"
+          description: "Company name or deal name. Look for explicit labels like 'Company:', 'Deal:', memo titles, or identify from context."
         },
         company_website: {
           type: "string",
-          description: "Company website URL if mentioned (include https://)"
+          description: "Company website URL if mentioned. Include https://. Look for 'Website:', 'URL:', 'Site:' labels."
         },
         geography: {
           type: "array",
           items: { type: "string" },
-          description: "US states where the company operates. Use 2-letter state abbreviations (e.g., TX, FL, CA). Extract from city/state mentions, headquarters, service areas."
+          description: "US states where the company operates as 2-letter abbreviations. Expand regions: 'Southeast' = GA,FL,SC,NC,AL,TN,MS,LA. Extract from service areas, headquarters, city mentions."
         },
         revenue: {
           type: "number",
-          description: "Annual revenue in MILLIONS. Convert to millions: $5M = 5, $500K = 0.5, $10 million = 10. If given as a range, use the midpoint."
+          description: "Annual revenue in MILLIONS. Convert: $6.0M = 6, $6,000,000 = 6, $500K = 0.5, $10 million = 10. Use midpoint for ranges."
         },
         ebitda_percentage: {
           type: "number", 
-          description: "EBITDA or profit margin as a PERCENTAGE (not decimal). 20% = 20, 15% margins = 15. Also extract from 'profit margins', 'margins', 'profitability' mentions."
+          description: "EBITDA margin as PERCENTAGE (whole number). '10.8%' = 10.8, '20% margins' = 20. Also from 'profit margins', 'EBITDA Margin:'."
         },
         ebitda_amount: {
           type: "number",
-          description: "EBITDA dollar amount in MILLIONS if mentioned (e.g., $1M EBITDA = 1)"
+          description: "EBITDA dollar amount in MILLIONS. '$650,000' = 0.65, '$650K' = 0.65, '$1M EBITDA' = 1."
         },
         service_mix: {
           type: "string",
-          description: "Description of services or products offered by the company"
+          description: "ALL services/products with percentages if given. Include: '70% residential / 30% commercial', specialties, revenue mix, capabilities."
         },
         owner_goals: {
           type: "string",
-          description: "What the owner wants from the sale - timeline, involvement post-sale, retirement plans, financial goals"
+          description: "Sale intentions and preferences: 'open to sale discussions', timeline, retirement plans, post-sale involvement, financial goals."
         },
         location_count: {
           type: "number",
-          description: "Number of physical locations, stores, shops, or offices the company operates"
+          description: "Number of physical locations/offices/branches. 'Multiple locations' = estimate 3. 'Several' = estimate 3-5."
         },
         additional_info: {
           type: "string",
-          description: "Any other relevant details not captured in other fields - employee count, years in business, certifications, unique aspects"
+          description: "Other relevant details: founded year, employee count, certifications, licenses, team experience, unique capabilities, geographic coverage details."
         }
       },
       required: []
@@ -82,6 +235,11 @@ serve(async (req) => {
     }
 
     console.log('[analyze-deal-notes] Analyzing notes, length:', notes.length, 'dealId:', dealId);
+    console.log('[analyze-deal-notes] Notes preview (first 500 chars):', notes.substring(0, 500));
+
+    // Pre-extract obvious patterns
+    const { hints, preExtracted } = preExtractHints(notes);
+    console.log('[analyze-deal-notes] Pre-extracted data:', JSON.stringify(preExtracted, null, 2));
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -94,25 +252,72 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are an M&A analyst assistant. Extract structured deal information from unstructured notes about a business opportunity.
+            content: `You are an M&A analyst assistant. Extract structured deal information from notes about a business opportunity.
 
-CRITICAL: Extract ALL financial information mentioned:
-- Revenue: Convert to millions (e.g., "$5 million" = 5, "$500K" = 0.5, "5M revenue" = 5)
-- EBITDA/Margins: Extract as percentage (e.g., "20% margins" = 20, "15% EBITDA" = 15, "margins around 18%" = 18)
-- Look for variations: "profit margins", "profitability", "bottom line", "cash flow margins"
+The notes may be in various formats:
+- Conversational notes from calls or emails
+- Structured memos with bullet points and headers
+- Mixed formats with sections and tables
 
-CRITICAL: Extract geographic information:
-- Convert city/state mentions to state abbreviations (e.g., "Houston, Texas" = TX, "based in Atlanta" = GA)
-- Extract from headquarters, service areas, locations mentioned
+EXTRACTION RULES:
 
-CRITICAL: Extract owner goals:
-- Timeline ("looking to exit in 2 years", "retire soon")
-- Post-sale involvement ("wants to stay on", "clean exit")
-- Financial expectations`
+1. DEAL NAME / COMPANY NAME:
+   - Look for explicit labels: "Company:", "Deal:", "Lead Memo –", or memo title/header
+   - If a descriptive name is given (e.g., "Southeast Roofing Contractor"), use it
+   - Can also extract from website domain if no other name given
+
+2. WEBSITE:
+   - Look for URLs anywhere: https://example.com
+   - Look for labels: "Website:", "URL:", "Site:", "Web:"
+   - Include full URL with https://
+
+3. FINANCIAL DATA (convert to MILLIONS):
+   - Revenue: "$6.0M" = 6, "$6,000,000" = 6, "$500K" = 0.5
+   - EBITDA Amount: "$650,000" = 0.65, "$650K" = 0.65, "$1.2M" = 1.2
+   - EBITDA Percentage: "10.8%" = 10.8, "EBITDA Margin: 15%" = 15
+   - Also look for: "margins", "profitability", "cash flow"
+
+4. GEOGRAPHY (expand regions to states):
+   - "Southeast" → GA, FL, SC, NC, AL, TN, MS, LA
+   - "Northeast" → NY, NJ, PA, CT, MA, RI, VT, NH, ME
+   - "Midwest" → OH, MI, IN, IL, WI, MN, IA, MO, KS, NE, SD, ND
+   - "Southwest" → TX, AZ, NM, OK
+   - "West Coast" → CA, WA, OR
+   - "Gulf Coast" → TX, LA, MS, AL, FL
+   - "Pacific Northwest" → WA, OR, ID
+   - Extract from city mentions: "Atlanta" = GA, "Houston" = TX
+   - Return as array of 2-letter state codes
+
+5. LOCATION COUNT:
+   - Look for: "X locations", "X offices", "X branches"
+   - "Multiple staffed locations" = estimate 3
+   - "Several locations" = estimate 4
+
+6. SERVICE MIX:
+   - Extract ALL services mentioned with percentages
+   - Format: "70% residential / 30% commercial. Metal roofing ~50% of production."
+   - Include specialties and unique capabilities
+
+7. OWNER GOALS:
+   - Sale intentions: "open to sale discussions", "looking to exit"
+   - Timeline: "retire in 2 years"
+   - Post-sale: "management can run operations post-transaction"
+   - Involvement preferences
+
+8. ADDITIONAL INFO:
+   - Founded/established date
+   - Employee count
+   - Years of experience
+   - Certifications, licenses
+   - Team structure
+   - Customer base details
+   - Unique aspects`
           },
           {
             role: "user",
-            content: `Extract ALL deal information from these notes. Pay special attention to any revenue, EBITDA, margin, or profitability figures mentioned:\n\n${notes}`
+            content: `Extract ALL deal information from these notes. Be thorough - extract every data point mentioned.
+
+${notes}${hints}`
           }
         ],
         tools: [extractDealInfoTool],
@@ -141,26 +346,61 @@ CRITICAL: Extract owner goals:
     }
 
     const data = await response.json();
-    console.log('[analyze-deal-notes] AI response received');
+    console.log('[analyze-deal-notes] Full AI response:', JSON.stringify(data.choices?.[0]?.message, null, 2));
 
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall || toolCall.function.name !== 'extract_deal_info') {
+      console.error('[analyze-deal-notes] Unexpected response format:', JSON.stringify(data, null, 2));
       throw new Error('Unexpected AI response format');
     }
 
-    const extractedData = JSON.parse(toolCall.function.arguments);
-    console.log('[analyze-deal-notes] Extracted data:', extractedData);
+    let extractedData = JSON.parse(toolCall.function.arguments);
+    console.log('[analyze-deal-notes] AI extracted data:', JSON.stringify(extractedData, null, 2));
+
+    // Merge pre-extracted data with AI results (pre-extracted takes precedence for numeric values)
+    if (preExtracted.company_website && !extractedData.company_website) {
+      extractedData.company_website = preExtracted.company_website;
+    }
+    if (preExtracted.revenue && !extractedData.revenue) {
+      extractedData.revenue = preExtracted.revenue;
+    }
+    if (preExtracted.ebitda_amount && !extractedData.ebitda_amount) {
+      extractedData.ebitda_amount = preExtracted.ebitda_amount;
+    }
+    if (preExtracted.ebitda_percentage && !extractedData.ebitda_percentage) {
+      extractedData.ebitda_percentage = preExtracted.ebitda_percentage;
+    }
+    if (preExtracted.geography?.length && (!extractedData.geography || extractedData.geography.length === 0)) {
+      extractedData.geography = preExtracted.geography;
+    }
+    if (preExtracted.location_count && !extractedData.location_count) {
+      extractedData.location_count = preExtracted.location_count;
+    }
+    
+    console.log('[analyze-deal-notes] After merging pre-extracted:', JSON.stringify(extractedData, null, 2));
 
     // Normalize geography to uppercase state abbreviations
     if (extractedData.geography && Array.isArray(extractedData.geography)) {
-      extractedData.geography = extractedData.geography
-        .map((g: string) => g.toUpperCase().trim())
-        .filter((g: string) => g.length === 2);
+      const normalizedGeo = new Set<string>();
+      for (const g of extractedData.geography) {
+        const upper = g.toUpperCase().trim();
+        // Check if it's already a valid 2-letter code
+        if (upper.length === 2) {
+          normalizedGeo.add(upper);
+        } else {
+          // Check if it's a region name
+          const regionKey = g.toLowerCase().trim();
+          const states = REGION_TO_STATES[regionKey];
+          if (states && states.length > 0) {
+            states.forEach(s => normalizedGeo.add(s));
+          }
+        }
+      }
+      extractedData.geography = Array.from(normalizedGeo).sort();
     }
 
     // Calculate ebitda_amount from percentage if not explicitly provided
     if (extractedData.revenue && extractedData.ebitda_percentage && !extractedData.ebitda_amount) {
-      // revenue is in millions, percentage is whole number (e.g., 30 for 30%)
       extractedData.ebitda_amount = extractedData.revenue * (extractedData.ebitda_percentage / 100);
       console.log('[analyze-deal-notes] Calculated ebitda_amount:', extractedData.ebitda_amount, 'from revenue:', extractedData.revenue, 'and margin:', extractedData.ebitda_percentage, '%');
     }
@@ -177,6 +417,8 @@ CRITICAL: Extract owner goals:
     if (extractedData.owner_goals) fieldsExtracted.push('owner_goals');
     if (extractedData.location_count) fieldsExtracted.push('location_count');
     if (extractedData.additional_info) fieldsExtracted.push('additional_info');
+
+    console.log('[analyze-deal-notes] Fields extracted:', fieldsExtracted);
 
     // If dealId is provided, update extraction_sources and optionally apply data
     if (dealId && fieldsExtracted.length > 0) {
@@ -221,10 +463,7 @@ CRITICAL: Extract owner goals:
           };
           
           // If applyToRecord is true, apply extracted data to empty fields
-          // Notes have priority 80 (below transcript at 100), so only fill empty fields
           if (applyToRecord) {
-            // Universal placeholder check - treats location_count=1 and employee_count=1 as placeholders
-            // since 1 is often the database default value and unlikely to be real data
             const isEmptyOrPlaceholder = (value: any, fieldName?: string): boolean => {
               if (value === null || value === undefined) return true;
               if (typeof value === 'string') {
@@ -232,9 +471,8 @@ CRITICAL: Extract owner goals:
                 return trimmed === '' || trimmed === 'n/a' || trimmed === 'na' || trimmed === '-' || trimmed === 'none' || trimmed === 'unknown';
               }
               if (Array.isArray(value)) return value.length === 0;
-              // Special case: location_count and employee_count of 1 are often defaults, treat as empty
               if ((fieldName === 'location_count' || fieldName === 'employee_count') && value === 1) return true;
-              if (typeof value === 'number') return false; // Other numbers are considered filled
+              if (typeof value === 'number') return false;
               return false;
             };
             
@@ -257,12 +495,9 @@ CRITICAL: Extract owner goals:
             if (extractedData.owner_goals && isEmptyOrPlaceholder(userDeal.owner_goals)) {
               updateData.owner_goals = extractedData.owner_goals;
             }
-            // Use fieldName parameter to treat location_count=1 as a placeholder
             if (extractedData.location_count && isEmptyOrPlaceholder(userDeal.location_count, 'location_count')) {
               updateData.location_count = extractedData.location_count;
             }
-            // Handle employee_count from additional_info
-            // Treat employee_count=1 as placeholder similar to location_count
             if (extractedData.additional_info) {
               const empMatch = extractedData.additional_info.match(/(\d+)\s*employees?/i);
               if (empMatch && isEmptyOrPlaceholder(userDeal.employee_count, 'employee_count')) {
