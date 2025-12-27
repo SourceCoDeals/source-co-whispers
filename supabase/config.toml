@@ -56,3 +56,15 @@ verify_jwt = true
 
 [functions.generate-ma-guide]
 verify_jwt = true
+
+[functions.validate-criteria]
+verify_jwt = true
+
+[functions.score-service-fit]
+verify_jwt = true
+
+[functions.migrate-buyers-to-hierarchy]
+verify_jwt = true
+
+[functions.migrate-deals-to-companies]
+verify_jwt = true

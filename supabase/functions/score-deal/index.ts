@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 /**
- * Deal Scoring Algorithm v6.0 - Industry-Adaptive Scoring
+ * Deal Scoring Algorithm v6.1 - Fail-Safe Industry-Adaptive Scoring
  * 
  * Weight Distribution (100 points total):
  * - Size: 40 pts (TOP PRIORITY - gating factor)
@@ -17,7 +17,9 @@ const corsHeaders = {
  * - Buyer Type Bonus: 5 pts
  * - Industry KPI Bonus: Up to 15 pts (optional, based on tracker config)
  * 
- * Key v6.0 Features:
+ * Key v6.1 Features:
+ * - CRITERIA VALIDATION: Checks if tracker has sufficient criteria before scoring
+ * - Returns scoring status: 'ready', 'needs_review', or 'insufficient_data'
  * - Dynamic primary service detection using tracker's service_criteria.primary_focus
  * - Industry-agnostic - no hardcoded collision/towing logic
  * - Optional KPI boost layer when tracker defines kpi_scoring_config
@@ -807,9 +809,100 @@ function calculateKPIBonus(deal: DealData, criteria: TrackerCriteria | null): {
   };
 }
 
+// ============= CRITERIA VALIDATION =============
+
+interface CriteriaValidationResult {
+  isValid: boolean;
+  status: 'ready' | 'needs_review' | 'insufficient_data';
+  hasPrimaryFocus: boolean;
+  hasSize: boolean;
+  hasService: boolean;
+  hasBuyerTypes: boolean;
+  missingCriteria: string[];
+  message: string;
+}
+
+function validateTrackerCriteria(criteria: TrackerCriteria | null): CriteriaValidationResult {
+  const missingCriteria: string[] = [];
+  
+  if (!criteria) {
+    return {
+      isValid: false,
+      status: 'insufficient_data',
+      hasPrimaryFocus: false,
+      hasSize: false,
+      hasService: false,
+      hasBuyerTypes: false,
+      missingCriteria: ['all'],
+      message: 'No tracker criteria configured'
+    };
+  }
+  
+  // Check size criteria
+  const hasSize = !!(criteria.size_criteria && (
+    criteria.size_criteria.min_revenue || 
+    criteria.size_criteria.min_ebitda
+  ));
+  if (!hasSize) missingCriteria.push('size_criteria');
+  
+  // Check service criteria - CRITICAL: primary_focus
+  let hasPrimaryFocus = false;
+  let hasService = false;
+  
+  if (criteria.service_criteria) {
+    const svc = typeof criteria.service_criteria === 'string'
+      ? JSON.parse(criteria.service_criteria)
+      : criteria.service_criteria;
+    
+    hasPrimaryFocus = !!(svc.primary_focus && Array.isArray(svc.primary_focus) && svc.primary_focus.length > 0);
+    hasService = hasPrimaryFocus || !!(svc.required_services && svc.required_services.length > 0);
+  }
+  
+  if (!hasPrimaryFocus) missingCriteria.push('primary_focus');
+  if (!hasService) missingCriteria.push('service_criteria');
+  
+  // Check buyer types
+  let hasBuyerTypes = false;
+  if (criteria.buyer_types_criteria) {
+    const bt = typeof criteria.buyer_types_criteria === 'string'
+      ? JSON.parse(criteria.buyer_types_criteria)
+      : criteria.buyer_types_criteria;
+    hasBuyerTypes = !!(bt.buyer_types && bt.buyer_types.length > 0);
+  }
+  if (!hasBuyerTypes) missingCriteria.push('buyer_types');
+  
+  // Determine status
+  let status: 'ready' | 'needs_review' | 'insufficient_data';
+  let message: string;
+  
+  if (hasSize && hasPrimaryFocus && hasBuyerTypes) {
+    status = 'ready';
+    message = 'Criteria complete - scoring will be accurate';
+  } else if (hasSize || hasPrimaryFocus) {
+    status = 'needs_review';
+    message = `Partial criteria: missing ${missingCriteria.join(', ')}. Results may be less accurate.`;
+  } else {
+    status = 'insufficient_data';
+    message = `Insufficient criteria for accurate scoring: missing ${missingCriteria.join(', ')}`;
+  }
+  
+  console.log(`[score-deal v6.1] Criteria validation: ${status} - ${message}`);
+  
+  return {
+    isValid: status !== 'insufficient_data',
+    status,
+    hasPrimaryFocus,
+    hasSize,
+    hasService,
+    hasBuyerTypes,
+    missingCriteria,
+    message
+  };
+}
+
 // ============= MAIN SCORING FUNCTION =============
 
-async function scoreDeal(deal: DealData, supabase: any): Promise<ScoreBreakdown> {
+async function scoreDeal(deal: DealData, supabase: any): Promise<ScoreBreakdown & { criteriaStatus?: CriteriaValidationResult }> {
   let trackerCriteria: TrackerCriteria | null = null;
   
   try {
@@ -827,11 +920,14 @@ async function scoreDeal(deal: DealData, supabase: any): Promise<ScoreBreakdown>
     
     if (tracker) {
       trackerCriteria = tracker;
-      console.log(`[score-deal v6.0] Using tracker criteria for industry: ${tracker.industry_name}`);
+      console.log(`[score-deal v6.1] Using tracker criteria for industry: ${tracker.industry_name}`);
     }
   } catch (e) {
-    console.log('[score-deal v6.0] Could not fetch tracker criteria');
+    console.log('[score-deal v6.1] Could not fetch tracker criteria');
   }
+  
+  // STEP 0: Validate criteria completeness
+  const criteriaValidation = validateTrackerCriteria(trackerCriteria);
   
   // Parse service criteria for dynamic detection
   let serviceCriteria: any = null;
@@ -845,7 +941,7 @@ async function scoreDeal(deal: DealData, supabase: any): Promise<ScoreBreakdown>
   
   // STEP 1: Detect primary service using tracker-defined focus keywords
   const primaryServiceInfo = detectPrimaryService(deal, serviceCriteria);
-  console.log(`[score-deal v6.0] Primary service: ${primaryServiceInfo.primaryService} (on-focus: ${primaryServiceInfo.isOnFocus}, ${primaryServiceInfo.confidence}) - ${primaryServiceInfo.reasoning}`);
+  console.log(`[score-deal v6.1] Primary service: ${primaryServiceInfo.primaryService} (on-focus: ${primaryServiceInfo.isOnFocus}, ${primaryServiceInfo.confidence}) - ${primaryServiceInfo.reasoning}`);
   
   // STEP 2: Calculate all scores
   const size = calculateSizeScore(deal, trackerCriteria);
@@ -864,6 +960,11 @@ async function scoreDeal(deal: DealData, supabase: any): Promise<ScoreBreakdown>
     disqualificationReasons.push(service.disqualificationReason);
   }
   
+  // Add criteria warnings to disqualification reasons if insufficient
+  if (criteriaValidation.status === 'insufficient_data') {
+    disqualificationReasons.push(`SCORING LIMITED: ${criteriaValidation.message}`);
+  }
+  
   const isDisqualified = size.disqualified || service.disqualified;
   
   // Calculate total (100 pts max + up to 15 KPI bonus)
@@ -875,7 +976,7 @@ async function scoreDeal(deal: DealData, supabase: any): Promise<ScoreBreakdown>
   
   const totalScore = Math.max(0, Math.min(rawTotal, 115)); // Allow up to 115 with KPI bonus
   
-  console.log(`[score-deal v6.0] ${deal.deal_name}: Size=${size.score}/40, Service=${service.score}/30, Geo=${geography.score}/10, Data=${data.score}/15, Bonus=${buyerTypeBonus.score}/5, KPI=${kpiBonus.score}/15 = ${totalScore}`);
+  console.log(`[score-deal v6.1] ${deal.deal_name}: Size=${size.score}/40, Service=${service.score}/30, Geo=${geography.score}/10, Data=${data.score}/15, Bonus=${buyerTypeBonus.score}/5, KPI=${kpiBonus.score}/15 = ${totalScore} (Criteria: ${criteriaValidation.status})`);
   
   return {
     sizeScore: size.score,
@@ -891,10 +992,11 @@ async function scoreDeal(deal: DealData, supabase: any): Promise<ScoreBreakdown>
     kpiBonusScore: kpiBonus.score,
     kpiBonusDetails: kpiBonus.details,
     totalScore,
-    scoringVersion: '6.0-industry-adaptive',
+    scoringVersion: '6.1-fail-safe',
     disqualified: isDisqualified,
     disqualificationReasons,
-    primaryService: primaryServiceInfo.primaryService
+    primaryService: primaryServiceInfo.primaryService,
+    criteriaStatus: criteriaValidation
   };
 }
 
@@ -915,7 +1017,7 @@ serve(async (req) => {
       );
     }
 
-    console.log('[score-deal v6.0] Scoring deal:', dealId);
+    console.log('[score-deal v6.1] Scoring deal:', dealId);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -933,7 +1035,7 @@ serve(async (req) => {
       .single();
 
     if (fetchError || !deal) {
-      console.error('[score-deal v6.0] Deal not found:', fetchError);
+      console.error('[score-deal v6.1] Deal not found:', fetchError);
       return new Response(
         JSON.stringify({ success: false, error: 'Deal not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -942,7 +1044,11 @@ serve(async (req) => {
 
     const breakdown = await scoreDeal(deal as DealData, serviceClient);
     
-    console.log('[score-deal v6.0] Score breakdown:', JSON.stringify(breakdown, null, 2));
+    console.log('[score-deal v6.1] Score breakdown:', JSON.stringify({
+      score: breakdown.totalScore,
+      criteriaStatus: breakdown.criteriaStatus?.status,
+      primaryService: breakdown.primaryService
+    }));
 
     const { error: updateError } = await serviceClient
       .from('deals')
@@ -953,25 +1059,26 @@ serve(async (req) => {
       .eq('id', dealId);
 
     if (updateError) {
-      console.error('[score-deal v6.0] Update failed:', updateError);
+      console.error('[score-deal v6.1] Update failed:', updateError);
       return new Response(
         JSON.stringify({ success: false, error: 'Failed to save score' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('[score-deal v6.0] Scored:', deal.deal_name, '=', breakdown.totalScore);
+    console.log('[score-deal v6.1] Scored:', deal.deal_name, '=', breakdown.totalScore, `(criteria: ${breakdown.criteriaStatus?.status})`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         score: breakdown.totalScore,
+        criteriaStatus: breakdown.criteriaStatus,
         breakdown 
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error('[score-deal v6.0] Error:', error);
+    console.error('[score-deal v6.1] Error:', error);
     return new Response(
       JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
