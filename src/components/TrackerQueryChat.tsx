@@ -15,6 +15,8 @@ interface TrackerQueryChatProps {
   trackerId: string;
   trackerName: string;
   onHighlightBuyers?: (buyerIds: string[]) => void;
+  selectedBuyerIds?: string[];
+  totalBuyerCount?: number;
 }
 
 // Parse buyer IDs from the AI response hidden marker
@@ -30,24 +32,10 @@ function extractBuyerIds(content: string): string[] {
   return [];
 }
 
-// Parse follow-up questions from the AI response
-function extractFollowupQuestions(content: string): string[] {
-  const match = content.match(/<!-- FOLLOWUP_QUESTIONS: (\[.*?\]) -->/);
-  if (match && match[1]) {
-    try {
-      return JSON.parse(match[1]);
-    } catch {
-      return [];
-    }
-  }
-  return [];
-}
-
 // Remove the hidden markers from displayed content
 function cleanContent(content: string): string {
   return content
     .replace(/<!-- BUYER_HIGHLIGHT: \[.*?\] -->/g, '')
-    .replace(/<!-- FOLLOWUP_QUESTIONS: \[.*?\] -->/g, '')
     .trim();
 }
 
@@ -59,20 +47,24 @@ const EXAMPLE_QUERIES = [
   "Compare our top 3 most active buyers",
 ];
 
-export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers }: TrackerQueryChatProps) {
+export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers, selectedBuyerIds, totalBuyerCount }: TrackerQueryChatProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [followupQuestions, setFollowupQuestions] = useState<string[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const isFiltering = selectedBuyerIds && selectedBuyerIds.length > 0;
+  const filterLabel = isFiltering 
+    ? `Querying ${selectedBuyerIds.length} of ${totalBuyerCount || '?'} buyers`
+    : totalBuyerCount ? `Querying all ${totalBuyerCount} buyers` : undefined;
 
   useEffect(() => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
-  }, [messages, followupQuestions]);
+  }, [messages]);
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
@@ -87,7 +79,6 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers }: 
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setIsLoading(true);
-    setFollowupQuestions([]); // Clear previous follow-ups
 
     let assistantContent = "";
     const updateAssistant = (chunk: string) => {
@@ -121,6 +112,7 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers }: 
           trackerId,
           query: messageText,
           messages: [...messages, userMsg],
+          selectedBuyerIds: selectedBuyerIds && selectedBuyerIds.length > 0 ? selectedBuyerIds : undefined,
         }),
       });
 
@@ -187,12 +179,6 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers }: 
       if (buyerIds.length > 0 && onHighlightBuyers) {
         onHighlightBuyers(buyerIds);
       }
-
-      // Extract follow-up questions
-      const followups = extractFollowupQuestions(assistantContent);
-      if (followups.length > 0) {
-        setFollowupQuestions(followups);
-      }
     } catch (err) {
       console.error("Chat error:", err);
       setMessages((prev) => [
@@ -216,9 +202,6 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers }: 
     sendMessage(query);
   };
 
-  const handleFollowupClick = (question: string) => {
-    sendMessage(question);
-  };
 
   if (!isOpen) {
     return (
@@ -240,7 +223,17 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers }: 
           <Sparkles className="h-5 w-5 text-primary" />
           <div>
             <h3 className="font-semibold text-sm">Buyer Universe AI</h3>
-            <p className="text-xs text-muted-foreground">{trackerName}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-muted-foreground">{trackerName}</p>
+              {filterLabel && (
+                <span className={cn(
+                  "text-xs px-2 py-0.5 rounded-full",
+                  isFiltering ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                )}>
+                  {filterLabel}
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
@@ -298,25 +291,6 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers }: 
                 <div className="bg-muted rounded-lg px-4 py-2 text-sm flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span>Analyzing buyer universe...</span>
-                </div>
-              </div>
-            )}
-            {/* Follow-up Questions */}
-            {!isLoading && followupQuestions.length > 0 && (
-              <div className="pt-2 space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">
-                  Follow-up questions:
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {followupQuestions.map((question, i) => (
-                    <button
-                      key={i}
-                      onClick={() => handleFollowupClick(question)}
-                      className="text-xs px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-full transition-colors text-left"
-                    >
-                      {question}
-                    </button>
-                  ))}
                 </div>
               </div>
             )}
