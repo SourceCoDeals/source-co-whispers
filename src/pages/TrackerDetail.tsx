@@ -2255,7 +2255,9 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
       {/* Tracker AI Chat */}
       <TrackerQueryChat 
         trackerId={id!} 
-        trackerName={tracker.industry_name} 
+        trackerName={tracker.industry_name}
+        selectedBuyerIds={Array.from(selectedBuyerIds)}
+        totalBuyerCount={buyers.length}
         onHighlightBuyers={(buyerIds) => {
           setHighlightedBuyerIds(new Set(buyerIds));
           setSelectedBuyerIds(new Set()); // Clear selections when new highlighting happens

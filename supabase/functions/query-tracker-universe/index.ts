@@ -93,7 +93,7 @@ serve(async (req) => {
       );
     }
 
-    const { trackerId, query, messages } = await req.json();
+    const { trackerId, query, messages, selectedBuyerIds } = await req.json();
     
     if (!trackerId || !query) {
       return new Response(
@@ -101,6 +101,8 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    
+    const hasSelectedBuyers = Array.isArray(selectedBuyerIds) && selectedBuyerIds.length > 0;
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -146,15 +148,24 @@ serve(async (req) => {
       throw new Error(`Tracker not found: ${trackerError?.message}`);
     }
 
-    // Fetch all buyers for this tracker
-    const { data: buyers, error: buyersError } = await supabase
+    // Fetch all buyers for this tracker (optionally filtered by selection)
+    let buyersQuery = supabase
       .from("buyers")
       .select("*")
       .eq("tracker_id", trackerId);
+    
+    if (hasSelectedBuyers) {
+      buyersQuery = buyersQuery.in("id", selectedBuyerIds);
+    }
+    
+    const { data: buyers, error: buyersError } = await buyersQuery;
 
     if (buyersError) {
       throw new Error(`Failed to fetch buyers: ${buyersError.message}`);
     }
+    
+    // Log filtering info
+    console.log(`[query-tracker-universe] Fetched ${buyers?.length || 0} buyers${hasSelectedBuyers ? ` (filtered from selection of ${selectedBuyerIds.length})` : ''}`);
 
     // Fetch all deals for this tracker
     const { data: deals, error: dealsError } = await supabase
@@ -368,9 +379,10 @@ serve(async (req) => {
 
 TRACKER OVERVIEW:
 - Industry: ${tracker.industry_name}
-- Total Buyers: ${buyerSummaries.length}
+- ${hasSelectedBuyers ? `Analyzing SELECTED SUBSET: ${buyerSummaries.length} buyers (user selected these from the full universe)` : `Total Buyers: ${buyerSummaries.length}`}
 - Total Deals: ${dealSummaries.length}
 - Buyer Transcripts Available: ${buyerTranscripts.length}
+${hasSelectedBuyers ? '\nNOTE: The user has specifically selected these buyers for analysis. Focus your responses on this subset.' : ''}
 
 BUYER FIT CRITERIA:
 ${JSON.stringify(criteriaContext, null, 2)}
@@ -410,14 +422,16 @@ CRITICAL - BUYER HIGHLIGHTING:
 When you identify specific buyers in your response (whether filtering, recommending, or analyzing them), you MUST include their IDs at the VERY END of your response in this exact format:
 <!-- BUYER_HIGHLIGHT: ["buyer-id-1", "buyer-id-2", "buyer-id-3"] -->
 
-CRITICAL - FOLLOW-UP SUGGESTIONS:
-At the end of your response (BEFORE the BUYER_HIGHLIGHT marker), include 2-3 suggested follow-up questions the user might want to ask. Format them as:
-<!-- FOLLOWUP_QUESTIONS: ["Question 1?", "Question 2?", "Question 3?"] -->
+CRITICAL - HANDLING UNCLEAR REQUESTS:
+If the user's question is ambiguous, too broad, or lacks necessary context to give a precise answer, DO NOT GUESS. Instead:
+1. Acknowledge what you understand about their request
+2. Ask 1-3 specific clarifying questions to narrow down what they need
+3. Only provide a preliminary answer if you're reasonably confident
 
-Make these questions contextually relevant to what was just discussed. Examples:
-- If discussing geographic fit, suggest drilling into specific regions
-- If comparing buyers, suggest analyzing deal history or contact relationships
-- If analyzing a deal, suggest matching to specific buyer types
+Examples of when to ask for clarification:
+- "Which buyers match?" → Ask: match what criteria? Size? Geography? Services?
+- "Show me the best ones" → Ask: best by what measure? Most active? Best geographic fit?
+- "Find similar buyers" → Ask: similar to which buyer? Similar in what way?
 
 This hidden marker allows the UI to highlight these buyers in the table. Always include this when you mention specific buyers by name. Use the exact "id" field from the buyer data provided above.`;
 
