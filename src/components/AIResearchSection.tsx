@@ -166,6 +166,23 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
                 break;
               case "criteria":
                 setExtractedCriteria(parsed.criteria);
+                // AUTO-APPLY criteria when extracted
+                if (parsed.criteria) {
+                  const criteria = parsed.criteria;
+                  const isEmpty = !criteria.sizeCriteria && !criteria.serviceCriteria &&
+                                  !criteria.geographyCriteria && !criteria.buyerTypesCriteria;
+                  if (!isEmpty) {
+                    console.log('[AIResearchSection] Auto-applying extracted criteria:', criteria);
+                    onApply({
+                      sizeCriteria: criteria.sizeCriteria || "",
+                      serviceCriteria: criteria.serviceCriteria || "",
+                      geographyCriteria: criteria.geographyCriteria || "",
+                      buyerTypesCriteria: criteria.buyerTypesCriteria || "",
+                      primaryFocusServices: criteria.primaryFocusServices || [],
+                      excludedServices: criteria.excludedServices || [],
+                    });
+                  }
+                }
                 break;
               case "complete":
                 setState("complete");
@@ -174,8 +191,8 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
                   setQualityResult(parsed.quality);
                 }
                 toast({ 
-                  title: "Guide generated", 
-                  description: `${parsed.wordCount?.toLocaleString()} words, quality score: ${parsed.quality?.score || 'N/A'}` 
+                  title: "Guide generated & criteria applied!", 
+                  description: `${parsed.wordCount?.toLocaleString()} words. Buyer fit criteria automatically populated.` 
                 });
                 break;
               case "error":
