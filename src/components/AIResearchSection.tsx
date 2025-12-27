@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
 import { saveAs } from "file-saver";
 import { Badge } from "@/components/ui/badge";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ExtractedCriteria {
   sizeCriteria?: string;
@@ -38,8 +39,15 @@ interface QualityResult {
   hasPrimaryFocus?: boolean;
 }
 
+export interface UploadedGuideDoc {
+  name: string;
+  path: string;
+  size: number;
+}
+
 interface AIResearchSectionProps {
   industryName: string;
+  trackerId?: string; // For existing trackers
   onApply: (data: {
     sizeCriteria: string;
     serviceCriteria: string;
@@ -49,11 +57,12 @@ interface AIResearchSectionProps {
     excludedServices?: string[];
   }) => void;
   onGuideGenerated?: (guide: string, qaContext: Record<string, string>) => void;
+  onGuideDocumentUploaded?: (doc: UploadedGuideDoc) => void;
 }
 
 type ResearchState = "idle" | "generating" | "quality_check" | "gap_filling" | "complete";
 
-export function AIResearchSection({ industryName, onApply, onGuideGenerated }: AIResearchSectionProps) {
+export function AIResearchSection({ industryName, trackerId, onApply, onGuideGenerated, onGuideDocumentUploaded }: AIResearchSectionProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [state, setState] = useState<ResearchState>("idle");
   const [guideContent, setGuideContent] = useState("");
@@ -63,6 +72,7 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
   const [extractedCriteria, setExtractedCriteria] = useState<ExtractedCriteria | null>(null);
   const [qualityResult, setQualityResult] = useState<QualityResult | null>(null);
   const [gapFillAttempt, setGapFillAttempt] = useState(0);
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -194,6 +204,10 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
                   title: "Guide generated & criteria applied!", 
                   description: `${parsed.wordCount?.toLocaleString()} words. Buyer fit criteria automatically populated.` 
                 });
+                // Auto-upload the guide as a supporting document
+                if (onGuideDocumentUploaded) {
+                  uploadGuideAsDocument(fullContent);
+                }
                 break;
               case "error":
                 toast({ title: "Error", description: parsed.message, variant: "destructive" });
@@ -284,6 +298,94 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
     setPhaseName("");
     setQualityResult(null);
     setGapFillAttempt(0);
+  };
+
+  // Upload the generated guide as a document to storage
+  const uploadGuideAsDocument = async (content: string): Promise<UploadedGuideDoc | null> => {
+    if (!content || !onGuideDocumentUploaded) return null;
+    
+    setIsUploadingDoc(true);
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('[AIResearchSection] No user found for guide upload');
+        return null;
+      }
+
+      // Create DOCX document
+      const lines = content.split('\n');
+      const children: Paragraph[] = [];
+
+      for (const line of lines) {
+        if (line.startsWith('## ') || line.startsWith('# ')) {
+          children.push(new Paragraph({
+            text: line.replace(/^#+\s*/, ''),
+            heading: HeadingLevel.HEADING_1,
+            spacing: { before: 400, after: 200 },
+          }));
+        } else if (line.startsWith('### ')) {
+          children.push(new Paragraph({
+            text: line.replace(/^###\s*/, ''),
+            heading: HeadingLevel.HEADING_2,
+            spacing: { before: 300, after: 100 },
+          }));
+        } else if (line.startsWith('- ') || line.startsWith('* ')) {
+          children.push(new Paragraph({
+            children: [new TextRun(line.replace(/^[-*]\s*/, '• '))],
+            spacing: { before: 100 },
+          }));
+        } else if (line.trim()) {
+          const parts = line.split(/(\*\*[^*]+\*\*)/g);
+          const runs: TextRun[] = parts.map(part => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+              return new TextRun({ text: part.slice(2, -2), bold: true });
+            }
+            return new TextRun(part);
+          });
+          children.push(new Paragraph({ children: runs, spacing: { before: 100 } }));
+        } else {
+          children.push(new Paragraph({ text: '' }));
+        }
+      }
+
+      const doc = new Document({ sections: [{ properties: {}, children }] });
+      const blob = await Packer.toBlob(doc);
+      
+      const sanitizedName = industryName.replace(/[^a-zA-Z0-9]/g, '_');
+      const fileName = `${sanitizedName}_MA_Guide.docx`;
+      const filePath = `${user.id}/${Date.now()}-${fileName}`;
+
+      const { error } = await supabase.storage
+        .from("tracker-documents")
+        .upload(filePath, blob);
+
+      if (error) {
+        console.error('[AIResearchSection] Failed to upload guide:', error);
+        toast({ 
+          title: "Guide upload failed", 
+          description: "Guide generated but could not be saved as document",
+          variant: "destructive"
+        });
+        return null;
+      }
+
+      const uploadedDoc: UploadedGuideDoc = {
+        name: fileName,
+        path: filePath,
+        size: blob.size,
+      };
+
+      console.log('[AIResearchSection] Guide uploaded as document:', uploadedDoc);
+      onGuideDocumentUploaded(uploadedDoc);
+      
+      return uploadedDoc;
+    } catch (err) {
+      console.error('[AIResearchSection] Error uploading guide:', err);
+      return null;
+    } finally {
+      setIsUploadingDoc(false);
+    }
   };
 
   const downloadAsDoc = async () => {
