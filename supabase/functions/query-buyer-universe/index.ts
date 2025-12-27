@@ -197,6 +197,7 @@ serve(async (req) => {
         peFirm: b.pe_firm_name,
         hq: b.hq_city && b.hq_state ? `${b.hq_city}, ${b.hq_state}` : (b.hq_state || "Unknown"),
         geographicFootprint: footprint,
+        otherOfficeLocations: b.other_office_locations || [], // Full addresses for city-level queries
         serviceRegions: b.service_regions || [],
         minRevenue: b.min_revenue,
         maxRevenue: b.max_revenue,
@@ -246,7 +247,8 @@ When answering questions:
 7. Format lists clearly with bullet points
 8. IMPORTANT: When mentioning specific buyers in your answer, include a hidden marker at the END of your response listing their IDs:
    <!-- BUYER_HIGHLIGHT: ["buyer-uuid-1", "buyer-uuid-2"] -->
-   Use the exact "id" field from the buyer data. This allows the UI to highlight those buyers in the list.`;
+   Use the exact "id" field from the buyer data. This allows the UI to highlight those buyers in the list.
+9. For CITY-SPECIFIC queries (like "buyers in Orlando" or "operations in Tampa"), search the otherOfficeLocations array for addresses containing that city name, as well as the hq field. The otherOfficeLocations field contains full street addresses with city/state info.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
