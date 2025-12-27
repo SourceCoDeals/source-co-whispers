@@ -874,6 +874,14 @@ export default function TrackerDetail() {
         
         console.log('[TrackerDetail] Saved service_criteria with primary_focus:', mergedServiceCriteria.primary_focus);
         
+        // Validation check: warn if primary_focus is still empty
+        if (!mergedServiceCriteria.primary_focus?.length) {
+          toast({ 
+            title: "Warning: Missing Primary Focus", 
+            description: "No primary services defined. Deal scoring may give 'needs review' status.",
+          });
+        }
+        
         setTracker({ 
           ...tracker, 
           fit_criteria_size: editedSizeCriteria,
