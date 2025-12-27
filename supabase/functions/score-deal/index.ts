@@ -143,14 +143,14 @@ function detectPrimaryService(deal: DealData, serviceCriteria: any): {
     console.log('[score-deal] detectPrimaryService: excluded_services keywords:', excludedServices);
   }
   
-  // If no primary_focus defined, give benefit of doubt but flag it
+  // If no primary_focus defined, return needs_review status instead of benefit of doubt
   if (primaryFocusKeywords.length === 0) {
-    console.log('[score-deal] detectPrimaryService: No primary focus defined in tracker service_criteria');
+    console.log('[score-deal] detectPrimaryService: No primary focus defined in tracker service_criteria - flagging for review');
     return { 
-      primaryService: 'not-specified', 
-      isOnFocus: true, 
+      primaryService: 'not-configured', 
+      isOnFocus: false,  // Changed from true - no longer give benefit of doubt
       confidence: 'low', 
-      reasoning: 'No primary focus defined in tracker - please update tracker service criteria with primary_focus array' 
+      reasoning: 'CRITERIA INCOMPLETE: No primary_focus defined in tracker. Update service_criteria to enable accurate scoring.' 
     };
   }
   

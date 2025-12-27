@@ -66,6 +66,15 @@ serve(async (req) => {
             role: 'system',
             content: `You are an expert M&A analyst who parses buyer fit criteria into structured data. Your job is to extract EVERY distinct buyer segment/type mentioned in the text.
 
+⚠️ CRITICAL - PRIMARY FOCUS SERVICES ⚠️
+You MUST extract primary_focus services - these are the MAIN services that define the industry vertical.
+Examples:
+- For "Residential Roofing" industry: ["residential roofing", "roof replacement", "roof repair", "shingle installation", "metal roofing"]
+- For "HVAC Services" industry: ["HVAC installation", "AC repair", "heating services", "ductwork", "commercial HVAC"]
+- For "Auto Body/Collision" industry: ["collision repair", "auto body work", "paintless dent repair", "frame repair"]
+
+If the text doesn't explicitly list primary services, INFER them from the industry context and buyer types mentioned.
+
 ⚠️ UNIVERSAL EXTRACTION GUIDE - CRITICAL SEMANTIC DISTINCTIONS ⚠️
 
 VALUATION MULTIPLES vs DOLLAR AMOUNTS:
@@ -148,10 +157,12 @@ For each buyer type, extract ALL of these if mentioned:
                     type: 'object',
                     description: 'Service/product mix requirements',
                     properties: {
+                      primary_focus: { type: 'array', items: { type: 'string' }, description: 'Primary focus services - the MAIN services that define this industry (e.g., for roofing: ["residential roofing", "commercial roofing", "roof repair", "roof replacement"])' },
                       required_services: { type: 'array', items: { type: 'string' }, description: 'Must-have services or capabilities' },
                       preferred_services: { type: 'array', items: { type: 'string' }, description: 'Nice-to-have services' },
                       excluded_services: { type: 'array', items: { type: 'string' }, description: 'Services that are deal breakers' },
                       business_model: { type: 'string', description: 'Required business model (B2B, B2C, recurring, etc.)' },
+                      recurring_revenue: { type: 'string', description: 'Recurring revenue requirements if any' },
                       customer_profile: { type: 'string', description: 'Target customer profile requirements' },
                       other: { type: 'array', items: { type: 'string' }, description: 'Other service-related criteria' }
                     }

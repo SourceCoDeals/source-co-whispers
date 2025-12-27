@@ -16,6 +16,8 @@ interface ExtractedCriteria {
   serviceCriteria: string;
   geographyCriteria: string;
   buyerTypesCriteria: string;
+  primaryFocusServices: string[];
+  excludedServices: string[];
 }
 
 export default function NewTracker() {
@@ -27,6 +29,8 @@ export default function NewTracker() {
     serviceCriteria: "",
     geographyCriteria: "",
     buyerTypesCriteria: "",
+    primaryFocusServices: [],
+    excludedServices: [],
   });
   const [pendingGuide, setPendingGuide] = useState<{ content: string; qaContext: Record<string, string> } | null>(null);
   const navigate = useNavigate();
@@ -38,6 +42,8 @@ export default function NewTracker() {
     serviceCriteria: string;
     geographyCriteria: string;
     buyerTypesCriteria: string;
+    primaryFocusServices?: string[];
+    excludedServices?: string[];
   }) => {
     if (data.industryName && !name.trim()) {
       setName(data.industryName);
@@ -47,6 +53,13 @@ export default function NewTracker() {
       serviceCriteria: data.serviceCriteria ? (prev.serviceCriteria ? `${prev.serviceCriteria}\n${data.serviceCriteria}` : data.serviceCriteria) : prev.serviceCriteria,
       geographyCriteria: data.geographyCriteria ? (prev.geographyCriteria ? `${prev.geographyCriteria}\n${data.geographyCriteria}` : data.geographyCriteria) : prev.geographyCriteria,
       buyerTypesCriteria: data.buyerTypesCriteria ? (prev.buyerTypesCriteria ? `${prev.buyerTypesCriteria}\n${data.buyerTypesCriteria}` : data.buyerTypesCriteria) : prev.buyerTypesCriteria,
+      // Merge arrays, avoiding duplicates
+      primaryFocusServices: data.primaryFocusServices?.length 
+        ? [...new Set([...prev.primaryFocusServices, ...data.primaryFocusServices])]
+        : prev.primaryFocusServices,
+      excludedServices: data.excludedServices?.length
+        ? [...new Set([...prev.excludedServices, ...data.excludedServices])]
+        : prev.excludedServices,
     }));
   };
 
@@ -114,18 +127,49 @@ export default function NewTracker() {
         });
 
         if (parsedData?.success) {
+          // Merge parsed service_criteria with directly extracted primaryFocusServices
+          const serviceCriteria = {
+            ...parsedData.service_criteria,
+            // Prefer directly extracted primaryFocusServices if available
+            primary_focus: extractedCriteria.primaryFocusServices?.length 
+              ? extractedCriteria.primaryFocusServices 
+              : (parsedData.service_criteria?.primary_focus || []),
+            excluded_services: extractedCriteria.excludedServices?.length
+              ? [...new Set([...(parsedData.service_criteria?.excluded_services || []), ...extractedCriteria.excludedServices])]
+              : (parsedData.service_criteria?.excluded_services || []),
+          };
+          
           await supabase
             .from("industry_trackers")
             .update({
               size_criteria: parsedData.size_criteria,
-              service_criteria: parsedData.service_criteria,
+              service_criteria: serviceCriteria,
               geography_criteria: parsedData.geography_criteria,
               buyer_types_criteria: parsedData.buyer_types_criteria,
             })
             .eq("id", data.id);
+            
+          console.log('[NewTracker] Saved service_criteria with primary_focus:', serviceCriteria.primary_focus);
         }
-      } catch {
+      } catch (err) {
+        console.error('[NewTracker] Failed to parse criteria:', err);
         // Silently continue - structured criteria is optional
+      }
+    } else if (extractedCriteria.primaryFocusServices?.length) {
+      // Even without text criteria, save primaryFocusServices if we have them
+      try {
+        await supabase
+          .from("industry_trackers")
+          .update({
+            service_criteria: {
+              primary_focus: extractedCriteria.primaryFocusServices,
+              excluded_services: extractedCriteria.excludedServices || [],
+            },
+          })
+          .eq("id", data.id);
+        console.log('[NewTracker] Saved primaryFocusServices directly:', extractedCriteria.primaryFocusServices);
+      } catch (err) {
+        console.error('[NewTracker] Failed to save primaryFocusServices:', err);
       }
     }
 
