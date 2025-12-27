@@ -850,15 +850,29 @@ export default function TrackerDetail() {
       });
 
       if (parsedData?.success) {
+        // Preserve existing primary_focus if already set, otherwise use parsed
+        const existingPrimaryFocus = (tracker?.service_criteria as any)?.primary_focus || [];
+        const parsedPrimaryFocus = parsedData.service_criteria?.primary_focus || [];
+        
+        const mergedServiceCriteria = {
+          ...parsedData.service_criteria,
+          // Keep existing primary_focus if it has values, otherwise use parsed
+          primary_focus: existingPrimaryFocus.length > 0 
+            ? existingPrimaryFocus 
+            : parsedPrimaryFocus,
+        };
+        
         await supabase
           .from("industry_trackers")
           .update({
             size_criteria: parsedData.size_criteria,
-            service_criteria: parsedData.service_criteria,
+            service_criteria: mergedServiceCriteria,
             geography_criteria: parsedData.geography_criteria,
             buyer_types_criteria: parsedData.buyer_types_criteria,
           })
           .eq("id", id);
+        
+        console.log('[TrackerDetail] Saved service_criteria with primary_focus:', mergedServiceCriteria.primary_focus);
         
         setTracker({ 
           ...tracker, 
@@ -867,7 +881,7 @@ export default function TrackerDetail() {
           fit_criteria_geography: editedGeographyCriteria,
           fit_criteria_buyer_types: editedBuyerTypesCriteria,
           size_criteria: parsedData.size_criteria,
-          service_criteria: parsedData.service_criteria,
+          service_criteria: mergedServiceCriteria,
           geography_criteria: parsedData.geography_criteria,
           buyer_types_criteria: parsedData.buyer_types_criteria
         });

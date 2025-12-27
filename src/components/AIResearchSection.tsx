@@ -45,6 +45,8 @@ interface AIResearchSectionProps {
     serviceCriteria: string;
     geographyCriteria: string;
     buyerTypesCriteria: string;
+    primaryFocusServices?: string[];
+    excludedServices?: string[];
   }) => void;
   onGuideGenerated?: (guide: string, qaContext: Record<string, string>) => void;
 }
@@ -231,11 +233,14 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
       excludedServices: extractedCriteria.excludedServices
     });
     
+    // Pass ALL extracted data including primaryFocusServices
     onApply({
       sizeCriteria: extractedCriteria.sizeCriteria || "",
       serviceCriteria: extractedCriteria.serviceCriteria || "",
       geographyCriteria: extractedCriteria.geographyCriteria || "",
       buyerTypesCriteria: extractedCriteria.buyerTypesCriteria || "",
+      primaryFocusServices: extractedCriteria.primaryFocusServices || [],
+      excludedServices: extractedCriteria.excludedServices || [],
     });
     
     const foundCount = [
@@ -245,9 +250,11 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
       extractedCriteria.buyerTypesCriteria
     ].filter(c => c && c.length > 50).length;
     
+    const primaryCount = extractedCriteria.primaryFocusServices?.length || 0;
+    
     toast({ 
       title: "Criteria Applied!", 
-      description: `${foundCount}/4 sections extracted. ${extractedCriteria.primaryFocusServices?.length || 0} primary focus services.` 
+      description: `${foundCount}/4 sections extracted. ${primaryCount} primary focus service${primaryCount !== 1 ? 's' : ''}.` 
     });
   };
 
