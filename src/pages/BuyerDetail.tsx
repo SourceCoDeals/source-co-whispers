@@ -11,7 +11,7 @@ import { MainContactSection } from "@/components/MainContactSection";
 import { ContactCSVImport } from "@/components/ContactCSVImport";
 import { AddContactDialog } from "@/components/AddContactDialog";
 import { EditContactDialog } from "@/components/EditContactDialog";
-import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2, Briefcase, DollarSign, TrendingUp, Linkedin, Sparkles, CheckCircle, Clock, ChevronDown, ChevronUp, Check, Pencil, Star } from "lucide-react";
+import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, Users, BarChart3, History, Target, User, Quote, Globe, FileCheck, FileText, Plus, Link2, Upload, Trash2, Briefcase, DollarSign, TrendingUp, Linkedin, Sparkles, CheckCircle, Clock, ChevronDown, ChevronUp, Check, Pencil, Star, AlertTriangle } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -585,6 +585,53 @@ export default function BuyerDetail() {
 
   const recentAcqs = Array.isArray(buyer.recent_acquisitions) ? buyer.recent_acquisitions : [];
   const dealForEmail = deal;
+  
+  // Calculate criteria completeness for scoring
+  const calculateCriteriaCompleteness = () => {
+    const fields = {
+      // Geography fields (25% weight)
+      geography: [
+        buyer.target_geographies?.length > 0,
+        buyer.geographic_footprint?.length > 0,
+        buyer.hq_state,
+      ],
+      // Size fields (25% weight)
+      size: [
+        buyer.min_revenue || buyer.max_revenue,
+        buyer.min_ebitda || buyer.max_ebitda,
+        buyer.revenue_sweet_spot || buyer.ebitda_sweet_spot,
+      ],
+      // Service fields (25% weight)
+      services: [
+        buyer.target_services?.length > 0,
+        buyer.services_offered,
+        buyer.service_mix_prefs,
+      ],
+      // Thesis fields (25% weight)
+      thesis: [
+        buyer.thesis_summary,
+        buyer.acquisition_appetite,
+        buyer.deal_breakers?.length > 0,
+      ],
+    };
+    
+    const geoScore = fields.geography.filter(Boolean).length / fields.geography.length;
+    const sizeScore = fields.size.filter(Boolean).length / fields.size.length;
+    const serviceScore = fields.services.filter(Boolean).length / fields.services.length;
+    const thesisScore = fields.thesis.filter(Boolean).length / fields.thesis.length;
+    
+    const overallScore = Math.round((geoScore + sizeScore + serviceScore + thesisScore) / 4 * 100);
+    
+    const missing: string[] = [];
+    if (geoScore < 0.5) missing.push("geography preferences");
+    if (sizeScore < 0.5) missing.push("size criteria");
+    if (serviceScore < 0.5) missing.push("target services");
+    if (thesisScore < 0.5) missing.push("investment thesis");
+    
+    return { score: overallScore, missing };
+  };
+  
+  const criteriaCompleteness = calculateCriteriaCompleteness();
 
   return (
     <AppLayout>
@@ -626,6 +673,27 @@ export default function BuyerDetail() {
                   Back to Matching
                 </Button>
               </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Criteria Completeness Warning */}
+        {criteriaCompleteness.score < 60 && (
+          <Card className="p-4 bg-amber-500/10 border-amber-500/30">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium text-amber-800 dark:text-amber-200">
+                  Criteria Completeness: {criteriaCompleteness.score}%
+                </p>
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  Missing: {criteriaCompleteness.missing.join(", ")}. Add more data to improve scoring accuracy.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={enrichFromWebsite} disabled={isEnriching}>
+                {isEnriching ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
+                Auto-Enrich
+              </Button>
             </div>
           </Card>
         )}

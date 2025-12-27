@@ -485,41 +485,114 @@ function analyzeEngagementSignals(callIntelligence: any[] | null): EngagementSig
   return signals;
 }
 
-// Determine if a buyer operates at a "national" or "large platform" scale
-// Now uses tracker's buyer_types_criteria when available
-function determineBuyerScale(buyer: Buyer, tracker: Tracker): { isNational: boolean; buyerType: string | null } {
-  // First, try to match buyer against tracker's defined buyer types
+// Assign best-fit buyer type based on tracker's buyer_types_criteria
+// Returns the most suitable buyer type with match details
+function assignBuyerType(buyer: Buyer, tracker: Tracker): { 
+  buyerType: string | null; 
+  isNational: boolean; 
+  matchScore: number;
+  matchDetails: string;
+} {
   const buyerTypes = tracker.buyer_types_criteria?.buyer_types || [];
   
+  if (buyerTypes.length === 0) {
+    // Fallback to heuristic-based detection when no buyer types defined
+    return determineBuyerScaleHeuristic(buyer);
+  }
+  
+  let bestMatch: { type: any; score: number; details: string } | null = null;
+  
   for (const buyerType of buyerTypes) {
-    // Check if buyer matches this type based on geographic_scope
+    let matchScore = 0;
+    const matchDetails: string[] = [];
+    
+    // 1. Geographic scope matching (0-30 points)
     const scope = buyerType.geographic_scope?.toLowerCase() || '';
+    const buyerGeoCount = (buyer.target_geographies?.length || 0) + (buyer.geographic_footprint?.length || 0);
     
     if (scope.includes('national') || scope.includes('nationwide')) {
-      // Check if buyer's data suggests national scope
-      const hasNationalPresence = 
-        (buyer.target_geographies && buyer.target_geographies.length > 5) ||
-        (buyer.geographic_footprint && buyer.geographic_footprint.length > 5);
-      
-      const isActiveAcquirer = buyer.total_acquisitions && buyer.total_acquisitions > 5;
-      
-      if (hasNationalPresence || isActiveAcquirer) {
-        return { isNational: true, buyerType: buyerType.type_name };
+      if (buyerGeoCount > 5 || (buyer.total_acquisitions && buyer.total_acquisitions > 5)) {
+        matchScore += 30;
+        matchDetails.push('national scope match');
+      } else if (buyerGeoCount > 3) {
+        matchScore += 15;
+        matchDetails.push('expanding regional');
+      }
+    } else if (scope.includes('regional')) {
+      if (buyerGeoCount >= 2 && buyerGeoCount <= 8) {
+        matchScore += 30;
+        matchDetails.push('regional scope match');
+      }
+    } else if (scope.includes('local') || scope.includes('single')) {
+      if (buyerGeoCount <= 2) {
+        matchScore += 30;
+        matchDetails.push('local scope match');
       }
     }
     
-    if (scope.includes('regional')) {
-      const hasRegionalPresence = 
-        (buyer.target_geographies && buyer.target_geographies.length >= 3) ||
-        (buyer.geographic_footprint && buyer.geographic_footprint.length >= 3);
-      
-      if (hasRegionalPresence) {
-        return { isNational: false, buyerType: buyerType.type_name };
-      }
+    // 2. Size criteria matching (0-30 points)
+    const minEbitda = parseFloat(buyerType.min_ebitda || '0');
+    const maxEbitda = parseFloat(buyerType.max_ebitda || '999');
+    const buyerMinEbitda = buyer.min_ebitda || 0;
+    const buyerMaxEbitda = buyer.max_ebitda || 999;
+    
+    // Check overlap between buyer's EBITDA range and buyer type's range
+    if (buyerMinEbitda <= maxEbitda && buyerMaxEbitda >= minEbitda) {
+      matchScore += 25;
+      matchDetails.push('EBITDA range overlap');
+    }
+    
+    // 3. Location count matching (0-20 points)
+    const minLocs = parseInt(buyerType.min_locations || '0');
+    const maxLocs = parseInt(buyerType.max_locations || '999');
+    // Infer buyer's preferred location count from acquisition history
+    const buyerAcquisitions = buyer.total_acquisitions || 0;
+    const inferredScale = buyerAcquisitions > 10 ? 5 : buyerAcquisitions > 5 ? 3 : 1;
+    
+    if (inferredScale >= minLocs && inferredScale <= maxLocs) {
+      matchScore += 20;
+      matchDetails.push('location scale match');
+    }
+    
+    // 4. Acquisition style matching (0-20 points)
+    const style = buyerType.acquisition_style?.toLowerCase() || '';
+    const buyerAppetite = buyer.acquisition_appetite?.toLowerCase() || '';
+    const buyerFrequency = buyer.acquisition_frequency?.toLowerCase() || '';
+    
+    if (style.includes('active') && (buyerAppetite.includes('active') || buyerFrequency.includes('multiple'))) {
+      matchScore += 20;
+      matchDetails.push('active acquirer');
+    } else if (style.includes('opportunistic') && (buyerAppetite.includes('opportunistic') || buyerAppetite.includes('selective'))) {
+      matchScore += 15;
+      matchDetails.push('opportunistic match');
+    }
+    
+    if (!bestMatch || matchScore > bestMatch.score) {
+      bestMatch = { type: buyerType, score: matchScore, details: matchDetails.join(', ') };
     }
   }
   
-  // Fallback to heuristic-based detection
+  if (bestMatch && bestMatch.score >= 30) {
+    const isNational = bestMatch.type.geographic_scope?.toLowerCase().includes('national') || false;
+    return {
+      buyerType: bestMatch.type.type_name,
+      isNational,
+      matchScore: bestMatch.score,
+      matchDetails: bestMatch.details
+    };
+  }
+  
+  // Fallback if no good match
+  return determineBuyerScaleHeuristic(buyer);
+}
+
+// Fallback heuristic-based buyer type detection
+function determineBuyerScaleHeuristic(buyer: Buyer): {
+  buyerType: string | null;
+  isNational: boolean;
+  matchScore: number;
+  matchDetails: string;
+} {
   const hasNationalPresence = 
     (buyer.target_geographies && buyer.target_geographies.length > 3) ||
     (buyer.geographic_footprint && buyer.geographic_footprint.length > 3);
@@ -532,10 +605,20 @@ function determineBuyerScale(buyer: Buyer, tracker: Tracker): { isNational: bool
     buyer.services_offered
   ].some(text => text?.toLowerCase().includes('national') || text?.toLowerCase().includes('nationwide'));
   
-  return { 
-    isNational: hasNationalPresence || isActiveAcquirer || mentionsNational, 
-    buyerType: null 
+  const isNational = hasNationalPresence || isActiveAcquirer || mentionsNational;
+  
+  return {
+    buyerType: null,
+    isNational,
+    matchScore: 0,
+    matchDetails: isNational ? 'heuristic: national indicators' : 'heuristic: regional/local indicators'
   };
+}
+
+// Legacy wrapper for backward compatibility
+function determineBuyerScale(buyer: Buyer, tracker: Tracker): { isNational: boolean; buyerType: string | null } {
+  const result = assignBuyerType(buyer, tracker);
+  return { isNational: result.isNational, buyerType: result.buyerType };
 }
 
 // Get scoring behavior from tracker or use defaults
@@ -729,7 +812,7 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer, tracker: Tracker): Category
   };
 }
 
-// Score GEOGRAPHY category with deal attractiveness adjustment and regional matching
+// Score GEOGRAPHY category with weighted geography fields and deal attractiveness adjustment
 function scoreGeographyCategory(
   deal: Deal, 
   buyer: Buyer, 
@@ -746,14 +829,57 @@ function scoreGeographyCategory(
   
   const dealLocations = deal.location_count || 1;
   
-  // Collect buyer geographic data
-  const buyerStates = new Set<string>();
-  if (buyer.hq_state) buyerStates.add(normalizeState(buyer.hq_state));
-  if (buyer.hq_city) extractStatesFromText(buyer.hq_city).forEach(s => buyerStates.add(s));
-  extractStatesFromGeography(buyer.target_geographies).forEach(s => buyerStates.add(s));
-  extractStatesFromGeography(buyer.service_regions).forEach(s => buyerStates.add(s));
-  extractStatesFromGeography(buyer.geographic_footprint).forEach(s => buyerStates.add(s));
+  // Collect buyer geographic data with DIFFERENT WEIGHTS for each field:
+  // - target_geographies: Full weight (1.0) - where they WANT to acquire
+  // - geographic_footprint: 0.7 weight - they have presence, might expand
+  // - service_regions: 0.5 weight - they serve there but may not acquire
+  // - hq_state: 0.3 weight - just HQ, weakest signal
+  interface WeightedState { state: string; weight: number; source: string }
+  const weightedStates: WeightedState[] = [];
+  
+  // Target geographies - highest weight (1.0)
+  extractStatesFromGeography(buyer.target_geographies).forEach(s => {
+    weightedStates.push({ state: s, weight: 1.0, source: 'target_geographies' });
+  });
+  
+  // Geographic footprint - medium-high weight (0.7)
+  extractStatesFromGeography(buyer.geographic_footprint).forEach(s => {
+    if (!weightedStates.some(ws => ws.state === s && ws.weight > 0.7)) {
+      weightedStates.push({ state: s, weight: 0.7, source: 'geographic_footprint' });
+    }
+  });
+  
+  // Service regions - medium weight (0.5)
+  extractStatesFromGeography(buyer.service_regions).forEach(s => {
+    if (!weightedStates.some(ws => ws.state === s && ws.weight > 0.5)) {
+      weightedStates.push({ state: s, weight: 0.5, source: 'service_regions' });
+    }
+  });
+  
+  // HQ state/city - lowest weight (0.3)
+  if (buyer.hq_state) {
+    const hqState = normalizeState(buyer.hq_state);
+    if (hqState && !weightedStates.some(ws => ws.state === hqState && ws.weight > 0.3)) {
+      weightedStates.push({ state: hqState, weight: 0.3, source: 'hq_state' });
+    }
+  }
+  if (buyer.hq_city) {
+    extractStatesFromText(buyer.hq_city).forEach(s => {
+      if (!weightedStates.some(ws => ws.state === s && ws.weight > 0.3)) {
+        weightedStates.push({ state: s, weight: 0.3, source: 'hq_city' });
+      }
+    });
+  }
+  
+  // Legacy: flat list for compatibility with existing logic
+  const buyerStates = new Set<string>(weightedStates.map(ws => ws.state));
   const buyerStateArray = Array.from(buyerStates).filter(Boolean);
+  
+  // Helper to get max weight for a state
+  const getStateWeight = (state: string): number => {
+    const matching = weightedStates.filter(ws => ws.state === state);
+    return matching.length > 0 ? Math.max(...matching.map(ws => ws.weight)) : 0;
+  };
   
   // Check for geographic exclusions (hard disqualifier)
   const exclusions = extractStatesFromGeography(buyer.geographic_exclusions);
@@ -768,8 +894,17 @@ function scoreGeographyCategory(
     };
   }
   
-  // Check for exact state matches
+  // Check for exact state matches with weights
   const exactMatches = dealStates.filter(ds => buyerStateArray.includes(ds));
+  const exactMatchMaxWeight = exactMatches.length > 0 
+    ? Math.max(...exactMatches.map(ds => getStateWeight(ds))) 
+    : 0;
+  
+  // Check for target_geographies matches specifically (highest priority)
+  const targetGeoMatches = dealStates.filter(ds => 
+    weightedStates.some(ws => ws.state === ds && ws.source === 'target_geographies')
+  );
+  const hasTargetGeoMatch = targetGeoMatches.length > 0;
   
   // Check for adjacent state matches
   const adjacentMatches: string[] = [];
@@ -810,10 +945,16 @@ function scoreGeographyCategory(
   // Single-location deal logic
   if (!isMultiLocation) {
     if (exactMatches.length > 0) {
-      const baseScore = 95 * attractivenessBonus * engagementMultiplier;
+      // Apply weight-based scoring: target_geographies match = +15 bonus
+      const targetGeoBonus = hasTargetGeoMatch ? 15 : 0;
+      const weightBonus = Math.round(exactMatchMaxWeight * 10); // Up to +10 for high-weight matches
+      const baseScore = Math.min(100, 85 + targetGeoBonus + weightBonus) * attractivenessBonus * engagementMultiplier;
+      const reasoningPrefix = hasTargetGeoMatch 
+        ? `Excellent fit: Deal in buyer's TARGET geography (${targetGeoMatches.join(", ")})`
+        : `Strong fit: Buyer has presence in ${exactMatches.join(", ")}`;
       return {
         score: Math.round(Math.min(100, baseScore)),
-        reasoning: `Strong fit: Buyer has presence in ${exactMatches.join(", ")} - same state as deal${engagementOverride ? '. Active buyer interest shown.' : ''}`,
+        reasoning: `${reasoningPrefix}${engagementOverride ? '. Active buyer interest shown.' : ''}`,
         isDisqualified: false,
         disqualificationReason: null,
         confidence: 'high'
@@ -871,10 +1012,16 @@ function scoreGeographyCategory(
   
   // Multi-location deal (3+) - more lenient, regional matching allowed
   if (exactMatches.length > 0) {
-    const baseScore = (90 + multiLocationBonus) * attractivenessBonus * engagementMultiplier;
+    // Apply weight-based scoring for multi-location: target_geographies match = +15 bonus
+    const targetGeoBonus = hasTargetGeoMatch ? 15 : 0;
+    const weightBonus = Math.round(exactMatchMaxWeight * 10);
+    const baseScore = Math.min(100, 80 + targetGeoBonus + weightBonus + multiLocationBonus) * attractivenessBonus * engagementMultiplier;
+    const reasoningPrefix = hasTargetGeoMatch 
+      ? `Excellent fit: Deal in buyer's TARGET geography (${targetGeoMatches.join(", ")})`
+      : `Strong fit: Buyer targets ${exactMatches.join(", ")}`;
     return {
       score: Math.round(Math.min(100, baseScore)),
-      reasoning: `Strong fit: Buyer targets ${exactMatches.join(", ")} - direct overlap with deal geography${engagementOverride ? '. Active interest confirmed.' : ''}`,
+      reasoning: `${reasoningPrefix} - direct overlap with deal geography${engagementOverride ? '. Active interest confirmed.' : ''}`,
       isDisqualified: false,
       disqualificationReason: null,
       confidence: 'high'
@@ -1016,6 +1163,40 @@ function scoreServicesCategory(deal: Deal, buyer: Buyer, tracker: Tracker): Cate
     };
   }
   
+  // NEW: Cross-validate buyer's target_services against tracker's excluded_services
+  // If buyer is targeting services that the tracker has excluded, apply penalty
+  if (excludedServices.length > 0 && targetServices.length > 0) {
+    const buyerTargetsExcluded = targetServices.filter(ts => 
+      excludedServices.some(ex => ts.includes(ex) || ex.includes(ts))
+    );
+    if (buyerTargetsExcluded.length > 0 && targetServices.length > 0) {
+      const excludedRatio = buyerTargetsExcluded.length / targetServices.length;
+      if (excludedRatio > 0.5) {
+        // Buyer primarily targets excluded services - poor fit
+        return {
+          score: 20,
+          reasoning: `Buyer primarily targets services that are OFF-FOCUS for this tracker: ${buyerTargetsExcluded.join(", ")}. Weak service alignment.`,
+          isDisqualified: false,
+          disqualificationReason: null,
+          confidence: 'high'
+        };
+      } else if (excludedRatio > 0) {
+        // Buyer partially targets excluded services - mild penalty later
+        console.log(`[Services] Buyer targets some excluded services: ${buyerTargetsExcluded.join(", ")}`);
+      }
+    }
+  }
+  
+  // NEW: Validate buyer's target_services align with tracker's primary_focus
+  // Give bonus if buyer explicitly targets primary focus services
+  let buyerPrimaryFocusMatch = 0;
+  if (primaryFocus.length > 0 && targetServices.length > 0) {
+    const matchingTargets = targetServices.filter(ts =>
+      primaryFocus.some(pf => ts.includes(pf) || pf.includes(ts))
+    );
+    buyerPrimaryFocusMatch = matchingTargets.length;
+  }
+  
   // Check tracker-level excluded services (off-focus penalty)
   const matchesExcludedService = excludedServices.some(ex => dealServices.includes(ex));
   
@@ -1087,20 +1268,26 @@ function scoreServicesCategory(deal: Deal, buyer: Buyer, tracker: Tracker): Cate
     }
   }
   
+  // NEW: Bonus for buyer explicitly targeting tracker's primary focus services
+  let buyerAlignmentBonus = 0;
+  if (buyerPrimaryFocusMatch > 0) {
+    buyerAlignmentBonus = Math.min(10, buyerPrimaryFocusMatch * 3);
+  }
+  
   let score = 50;
   let reasoning = "";
   
   if (overlapPercent >= 70) {
-    score = 90 + (overlapPercent - 70) / 3 + primaryFocusBonus;
+    score = 90 + (overlapPercent - 70) / 3 + primaryFocusBonus + buyerAlignmentBonus;
     reasoning = `Strong service alignment (${Math.round(overlapPercent)}% overlap): ${matches.slice(0, 4).join(", ")}`;
   } else if (overlapPercent >= 40) {
-    score = 70 + (overlapPercent - 40) + primaryFocusBonus;
+    score = 70 + (overlapPercent - 40) + primaryFocusBonus + buyerAlignmentBonus;
     reasoning = `Good service alignment (${Math.round(overlapPercent)}% overlap): ${matches.slice(0, 3).join(", ")}`;
   } else if (overlapPercent >= 20) {
-    score = 50 + overlapPercent + primaryFocusBonus;
+    score = 50 + overlapPercent + primaryFocusBonus + buyerAlignmentBonus;
     reasoning = `Partial service overlap (${Math.round(overlapPercent)}%): ${matches.join(", ")}. May be complementary.`;
   } else if (matches.length > 0) {
-    score = 40 + primaryFocusBonus;
+    score = 40 + primaryFocusBonus + buyerAlignmentBonus;
     reasoning = `Limited service overlap: ${matches.join(", ")}. Consider as add-on opportunity.`;
   } else {
     score = 25;
@@ -1109,6 +1296,9 @@ function scoreServicesCategory(deal: Deal, buyer: Buyer, tracker: Tracker): Cate
   
   if (primaryFocusBonus > 0) {
     reasoning += ` +${primaryFocusBonus}pt primary focus bonus.`;
+  }
+  if (buyerAlignmentBonus > 0) {
+    reasoning += ` +${buyerAlignmentBonus}pt buyer alignment bonus.`;
   }
   
   return {
