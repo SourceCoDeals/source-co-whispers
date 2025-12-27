@@ -286,7 +286,13 @@ When answering questions:
 6. Keep responses concise but informative
 7. Format lists clearly with bullet points
 8. When comparing buyers, provide clear pros/cons for each
-9. Consider the fit criteria when making recommendations`;
+9. Consider the fit criteria when making recommendations
+
+CRITICAL - BUYER HIGHLIGHTING:
+When you identify specific buyers in your response (whether filtering, recommending, or analyzing them), you MUST include their IDs at the VERY END of your response in this exact format:
+<!-- BUYER_HIGHLIGHT: ["buyer-id-1", "buyer-id-2", "buyer-id-3"] -->
+
+This hidden marker allows the UI to highlight these buyers in the table. Always include this when you mention specific buyers by name. Use the exact "id" field from the buyer data provided above.`;
 
     console.log(`[query-tracker-universe] Processing query for tracker ${trackerId}: "${query}"`);
 

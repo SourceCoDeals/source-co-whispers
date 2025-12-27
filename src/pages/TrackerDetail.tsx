@@ -12,10 +12,11 @@ import { KPIConfigPanel } from "@/components/KPIConfigPanel";
 import { ScoringBehaviorPanel } from "@/components/ScoringBehaviorPanel";
 import { TrackerQueryChat } from "@/components/TrackerQueryChat";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload, TrendingUp, ArrowUp, ArrowDown, Filter, BookOpen } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload, TrendingUp, ArrowUp, ArrowDown, Filter, BookOpen, CheckSquare, Square } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -79,6 +80,10 @@ export default function TrackerDetail() {
   const [dealSortColumn, setDealSortColumn] = useState<string>("deal_score");
   const [dealSortDirection, setDealSortDirection] = useState<"asc" | "desc">("desc");
   
+  // Buyer highlighting state (from AI chat)
+  const [highlightedBuyerIds, setHighlightedBuyerIds] = useState<Set<string>>(new Set());
+  const [selectedBuyerIds, setSelectedBuyerIds] = useState<Set<string>>(new Set());
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
 
   useEffect(() => { loadData(); }, [id]);
   
@@ -1662,6 +1667,102 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
           <TabsList><TabsTrigger value="buyers"><Users className="w-4 h-4 mr-2" />Buyers ({buyers.length})</TabsTrigger><TabsTrigger value="deals"><FileText className="w-4 h-4 mr-2" />Deals ({deals.length})</TabsTrigger></TabsList>
           
           <TabsContent value="buyers" className="mt-4 space-y-4">
+            {/* Bulk action bar when buyers are highlighted or selected */}
+            {(highlightedBuyerIds.size > 0 || selectedBuyerIds.size > 0) && (
+              <div className="flex items-center gap-3 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200">
+                    {highlightedBuyerIds.size} highlighted by AI
+                  </Badge>
+                  {selectedBuyerIds.size > 0 && (
+                    <Badge variant="default">
+                      {selectedBuyerIds.size} selected
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 ml-auto">
+                  {highlightedBuyerIds.size > 0 && selectedBuyerIds.size === 0 && (
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setSelectedBuyerIds(new Set(highlightedBuyerIds))}
+                    >
+                      <CheckSquare className="w-4 h-4 mr-1" />
+                      Select All Highlighted
+                    </Button>
+                  )}
+                  {selectedBuyerIds.size > 0 && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button 
+                          variant="destructive" 
+                          size="sm"
+                          disabled={isDeletingSelected}
+                        >
+                          {isDeletingSelected ? (
+                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4 mr-1" />
+                          )}
+                          Delete Selected ({selectedBuyerIds.size})
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete {selectedBuyerIds.size} Buyer{selectedBuyerIds.size === 1 ? '' : 's'}</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete {selectedBuyerIds.size} selected buyer{selectedBuyerIds.size === 1 ? '' : 's'}? This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction 
+                            onClick={async () => {
+                              setIsDeletingSelected(true);
+                              try {
+                                for (const buyerId of selectedBuyerIds) {
+                                  await deleteBuyerWithRelated(buyerId);
+                                }
+                                toast({ 
+                                  title: "Buyers deleted", 
+                                  description: `${selectedBuyerIds.size} buyer${selectedBuyerIds.size === 1 ? '' : 's'} removed` 
+                                });
+                                setSelectedBuyerIds(new Set());
+                                setHighlightedBuyerIds(new Set());
+                                loadData();
+                              } catch (err) {
+                                toast({ 
+                                  title: "Error", 
+                                  description: err instanceof Error ? err.message : "Failed to delete buyers", 
+                                  variant: "destructive" 
+                                });
+                              } finally {
+                                setIsDeletingSelected(false);
+                              }
+                            }}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => {
+                      setHighlightedBuyerIds(new Set());
+                      setSelectedBuyerIds(new Set());
+                    }}
+                  >
+                    <X className="w-4 h-4 mr-1" />
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            )}
+            
             <div className="flex gap-4 items-center">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -1713,6 +1814,18 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
+                      <TableHead className="w-[40px]">
+                        <Checkbox 
+                          checked={selectedBuyerIds.size > 0 && selectedBuyerIds.size === filteredBuyers.length}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedBuyerIds(new Set(filteredBuyers.map(b => b.id)));
+                            } else {
+                              setSelectedBuyerIds(new Set());
+                            }
+                          }}
+                        />
+                      </TableHead>
                       <TableHead className="w-[220px]">
                         <div className="flex items-center gap-1">Platform Company <ArrowUpDown className="w-3 h-3 text-muted-foreground" /></div>
                       </TableHead>
@@ -1725,53 +1838,77 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredBuyers.map((buyer) => (
-                      <TableRow 
-                        key={buyer.id} 
-                        className="cursor-pointer hover:bg-muted/30 transition-colors"
-                        onClick={() => navigate(`/buyers/${buyer.id}`)}
-                      >
-                        <TableCell>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">{buyer.platform_company_name || buyer.pe_firm_name}</span>
-                              {buyer.platform_website ? (
-                                <a 
-                                  href={getWebsiteUrl(buyer.platform_website)!} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="text-primary hover:text-primary/80"
-                                  title="Visit website"
-                                >
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </a>
-                              ) : (
-                                <span className="text-muted-foreground/40" title="Website not set">
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </span>
-                              )}
+                    {filteredBuyers.map((buyer) => {
+                      const isHighlighted = highlightedBuyerIds.has(buyer.id);
+                      const isSelected = selectedBuyerIds.has(buyer.id);
+                      return (
+                        <TableRow 
+                          key={buyer.id} 
+                          className={`cursor-pointer hover:bg-muted/30 transition-colors ${isHighlighted ? 'bg-amber-50 dark:bg-amber-950/30 border-l-4 border-l-amber-400' : ''} ${isSelected ? 'bg-primary/10' : ''}`}
+                          onClick={() => navigate(`/buyers/${buyer.id}`)}
+                        >
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox 
+                              checked={isSelected}
+                              onCheckedChange={(checked) => {
+                                setSelectedBuyerIds(prev => {
+                                  const next = new Set(prev);
+                                  if (checked) {
+                                    next.add(buyer.id);
+                                  } else {
+                                    next.delete(buyer.id);
+                                  }
+                                  return next;
+                                });
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{buyer.platform_company_name || buyer.pe_firm_name}</span>
+                                {isHighlighted && (
+                                  <Badge variant="outline" className="text-xs px-1.5 py-0 bg-amber-100 text-amber-800 border-amber-300">
+                                    AI Match
+                                  </Badge>
+                                )}
+                                {buyer.platform_website ? (
+                                  <a 
+                                    href={getWebsiteUrl(buyer.platform_website)!} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-primary hover:text-primary/80"
+                                    title="Visit website"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+                                ) : (
+                                  <span className="text-muted-foreground/40" title="Website not set">
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-1">
+                                {isActuallyEnriched(buyer) && (
+                                  <Badge variant="outline" className="text-xs px-1.5 py-0 bg-primary/10 text-primary border-primary/20">
+                                    <Sparkles className="w-3 h-3 mr-1" />
+                                    Enriched
+                                  </Badge>
+                                )}
+                                {(buyer.has_fee_agreement || (buyer.fee_agreement_status && buyer.fee_agreement_status !== 'None')) && (
+                                  <Badge variant="outline" className="text-xs px-1.5 py-0 bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                                    <DollarSign className="w-3 h-3 mr-1" />
+                                    Fee Agreed
+                                  </Badge>
+                                )}
+                              </div>
+                              <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                <MapPin className="w-3 h-3" />
+                                {getHQ(buyer) || <span className="italic">Location not set</span>}
+                              </span>
                             </div>
-                            <div className="flex items-center gap-1.5 mt-1">
-                              {isActuallyEnriched(buyer) && (
-                                <Badge variant="outline" className="text-xs px-1.5 py-0 bg-primary/10 text-primary border-primary/20">
-                                  <Sparkles className="w-3 h-3 mr-1" />
-                                  Enriched
-                                </Badge>
-                              )}
-                              {(buyer.has_fee_agreement || (buyer.fee_agreement_status && buyer.fee_agreement_status !== 'None')) && (
-                                <Badge variant="outline" className="text-xs px-1.5 py-0 bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
-                                  <DollarSign className="w-3 h-3 mr-1" />
-                                  Fee Agreed
-                                </Badge>
-                              )}
-                            </div>
-                            <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                              <MapPin className="w-3 h-3" />
-                              {getHQ(buyer) || <span className="italic">Location not set</span>}
-                            </span>
-                          </div>
-                        </TableCell>
+                          </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
@@ -1855,8 +1992,9 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                             </AlertDialog>
                           </div>
                         </TableCell>
-                      </TableRow>
-                    ))}
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}
@@ -2069,7 +2207,18 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
       </div>
       
       {/* Tracker AI Chat */}
-      <TrackerQueryChat trackerId={id!} trackerName={tracker.industry_name} />
+      <TrackerQueryChat 
+        trackerId={id!} 
+        trackerName={tracker.industry_name} 
+        onHighlightBuyers={(buyerIds) => {
+          setHighlightedBuyerIds(new Set(buyerIds));
+          setSelectedBuyerIds(new Set()); // Clear selections when new highlighting happens
+          toast({
+            title: `${buyerIds.length} buyer${buyerIds.length === 1 ? '' : 's'} highlighted`,
+            description: "These buyers are now highlighted in the table below",
+          });
+        }}
+      />
     </AppLayout>
   );
 }

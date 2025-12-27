@@ -14,6 +14,25 @@ interface Message {
 interface TrackerQueryChatProps {
   trackerId: string;
   trackerName: string;
+  onHighlightBuyers?: (buyerIds: string[]) => void;
+}
+
+// Parse buyer IDs from the AI response hidden marker
+function extractBuyerIds(content: string): string[] {
+  const match = content.match(/<!-- BUYER_HIGHLIGHT: (\[.*?\]) -->/);
+  if (match && match[1]) {
+    try {
+      return JSON.parse(match[1]);
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+// Remove the hidden marker from displayed content
+function cleanContent(content: string): string {
+  return content.replace(/<!-- BUYER_HIGHLIGHT: \[.*?\] -->/g, '').trim();
 }
 
 const EXAMPLE_QUERIES = [
@@ -24,7 +43,7 @@ const EXAMPLE_QUERIES = [
   "Compare our top 3 most active buyers",
 ];
 
-export function TrackerQueryChat({ trackerId, trackerName }: TrackerQueryChatProps) {
+export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers }: TrackerQueryChatProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -144,6 +163,12 @@ export function TrackerQueryChat({ trackerId, trackerName }: TrackerQueryChatPro
           }
         }
       }
+      
+      // Extract buyer IDs from the complete response and trigger highlighting
+      const buyerIds = extractBuyerIds(assistantContent);
+      if (buyerIds.length > 0 && onHighlightBuyers) {
+        onHighlightBuyers(buyerIds);
+      }
     } catch (err) {
       console.error("Chat error:", err);
       setMessages((prev) => [
@@ -236,7 +261,7 @@ export function TrackerQueryChat({ trackerId, trackerName }: TrackerQueryChatPro
                       : "bg-muted"
                   )}
                 >
-                  <div className="whitespace-pre-wrap">{msg.content}</div>
+                  <div className="whitespace-pre-wrap">{cleanContent(msg.content)}</div>
                 </div>
               </div>
             ))}
