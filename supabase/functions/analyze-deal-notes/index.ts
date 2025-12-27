@@ -27,6 +27,89 @@ const REGION_TO_STATES: Record<string, string[]> = {
   'nationwide': [],
 };
 
+// City to state mapping for common US cities
+const CITY_TO_STATE: Record<string, string> = {
+  'orlando': 'FL', 'miami': 'FL', 'tampa': 'FL', 'jacksonville': 'FL', 'fort lauderdale': 'FL',
+  'atlanta': 'GA', 'savannah': 'GA', 'augusta': 'GA',
+  'charlotte': 'NC', 'raleigh': 'NC', 'durham': 'NC', 'greensboro': 'NC',
+  'charleston': 'SC', 'columbia': 'SC', 'greenville': 'SC',
+  'nashville': 'TN', 'memphis': 'TN', 'knoxville': 'TN', 'chattanooga': 'TN',
+  'birmingham': 'AL', 'montgomery': 'AL', 'huntsville': 'AL',
+  'new orleans': 'LA', 'baton rouge': 'LA',
+  'houston': 'TX', 'dallas': 'TX', 'austin': 'TX', 'san antonio': 'TX', 'fort worth': 'TX',
+  'phoenix': 'AZ', 'tucson': 'AZ', 'scottsdale': 'AZ',
+  'denver': 'CO', 'colorado springs': 'CO', 'boulder': 'CO',
+  'los angeles': 'CA', 'san francisco': 'CA', 'san diego': 'CA', 'sacramento': 'CA', 'san jose': 'CA',
+  'seattle': 'WA', 'tacoma': 'WA', 'spokane': 'WA',
+  'portland': 'OR', 'eugene': 'OR',
+  'las vegas': 'NV', 'reno': 'NV',
+  'salt lake city': 'UT',
+  'new york': 'NY', 'buffalo': 'NY', 'albany': 'NY', 'rochester': 'NY',
+  'chicago': 'IL', 'springfield': 'IL',
+  'detroit': 'MI', 'grand rapids': 'MI', 'ann arbor': 'MI',
+  'cleveland': 'OH', 'columbus': 'OH', 'cincinnati': 'OH',
+  'indianapolis': 'IN', 'fort wayne': 'IN',
+  'milwaukee': 'WI', 'madison': 'WI',
+  'minneapolis': 'MN', 'st paul': 'MN',
+  'kansas city': 'MO', 'st louis': 'MO',
+  'boston': 'MA', 'cambridge': 'MA', 'worcester': 'MA',
+  'philadelphia': 'PA', 'pittsburgh': 'PA',
+  'baltimore': 'MD', 'annapolis': 'MD',
+  'washington': 'DC', 'dc': 'DC',
+  'richmond': 'VA', 'virginia beach': 'VA', 'norfolk': 'VA',
+};
+
+// State name to abbreviation mapping
+const STATE_NAME_TO_ABBREV: Record<string, string> = {
+  'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
+  'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'florida': 'FL', 'georgia': 'GA',
+  'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA',
+  'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
+  'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS', 'missouri': 'MO',
+  'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
+  'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', 'ohio': 'OH',
+  'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+  'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT', 'vermont': 'VT',
+  'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY',
+};
+
+// Detect if notes contain specific city/state context that narrows geography
+function detectLocalContext(notes: string): { hasLocalContext: boolean; states: string[] } {
+  const notesLower = notes.toLowerCase();
+  const detectedStates = new Set<string>();
+  
+  // Check for explicit state names
+  for (const [stateName, abbrev] of Object.entries(STATE_NAME_TO_ABBREV)) {
+    // Match state name as whole word (not part of another word)
+    const stateRegex = new RegExp(`\\b${stateName}\\b`, 'i');
+    if (stateRegex.test(notesLower)) {
+      detectedStates.add(abbrev);
+    }
+  }
+  
+  // Check for city names
+  for (const [city, state] of Object.entries(CITY_TO_STATE)) {
+    const cityRegex = new RegExp(`\\b${city.replace(/\s+/g, '\\s+')}\\b`, 'i');
+    if (cityRegex.test(notesLower)) {
+      detectedStates.add(state);
+    }
+  }
+  
+  // Check for state abbreviations (e.g., "FL", "TX") - must be uppercase in original
+  const abbrevMatches = notes.match(/\b[A-Z]{2}\b/g) || [];
+  const validAbbrevs = new Set(Object.values(STATE_NAME_TO_ABBREV));
+  for (const match of abbrevMatches) {
+    if (validAbbrevs.has(match)) {
+      detectedStates.add(match);
+    }
+  }
+  
+  return {
+    hasLocalContext: detectedStates.size > 0,
+    states: Array.from(detectedStates)
+  };
+}
+
 // Pre-extract patterns from notes to help AI
 function preExtractHints(notes: string): { hints: string; preExtracted: Record<string, any> } {
   const preExtracted: Record<string, any> = {};
@@ -102,10 +185,27 @@ function preExtractHints(notes: string): { hints: string; preExtracted: Record<s
     }
   }
   
-  // Region/geography extraction
+  // Context-aware region/geography extraction
+  // First, detect if there are specific cities/states mentioned (local context)
+  const localContext = detectLocalContext(notes);
+  console.log('[preExtractHints] Local context detection:', JSON.stringify(localContext));
+  
+  // Check for region mentions
   const regionPattern = /(?:across|throughout|in|serving)\s+(?:the\s+)?(southeast|southwest|northeast|midwest|west coast|east coast|pacific northwest|new england|mid-atlantic|gulf coast|sunbelt|south|west)/gi;
   const regionMatches = [...notes.matchAll(regionPattern)];
-  if (regionMatches.length > 0) {
+  
+  if (localContext.hasLocalContext) {
+    // When specific cities/states are mentioned, regional terms likely mean local areas
+    // e.g., "southeast counties near Orlando" means southeast Florida, not the Southeast US
+    preExtracted.geography = localContext.states;
+    if (regionMatches.length > 0) {
+      const regions = regionMatches.map(m => m[1].toLowerCase()).join(', ');
+      hintLines.push(`PRE-EXTRACTED Geography: ${preExtracted.geography.join(', ')} (interpreted "${regions}" as local area modifier, not macro-region, because specific city/state "${localContext.states.join(', ')}" was mentioned)`);
+    } else {
+      hintLines.push(`PRE-EXTRACTED Geography from city/state mentions: ${preExtracted.geography.join(', ')}`);
+    }
+  } else if (regionMatches.length > 0) {
+    // No local context - expand regions to their constituent states
     const regions = regionMatches.map(m => m[1].toLowerCase());
     const expandedStates = new Set<string>();
     for (const region of regions) {
@@ -116,7 +216,7 @@ function preExtractHints(notes: string): { hints: string; preExtracted: Record<s
     }
     if (expandedStates.size > 0) {
       preExtracted.geography = Array.from(expandedStates);
-      hintLines.push(`PRE-EXTRACTED Geography from regions (${regions.join(', ')}): ${preExtracted.geography.join(', ')}`);
+      hintLines.push(`PRE-EXTRACTED Geography from macro-regions (${regions.join(', ')}): ${preExtracted.geography.join(', ')}`);
     }
   }
   
