@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PassReasonDialog } from "@/components/PassReasonDialog";
 import { BuyerQueryChat } from "@/components/BuyerQueryChat";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
 
 interface CategoryScore {
   score: number;
@@ -61,6 +62,7 @@ export default function DealMatching() {
   const [dealAttractiveness, setDealAttractiveness] = useState<number>(50);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [buyerToRemove, setBuyerToRemove] = useState<any>(null);
+  const [highlightedBuyers, setHighlightedBuyers] = useState<Set<string>>(new Set());
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -607,15 +609,24 @@ export default function DealMatching() {
     );
   };
 
+  const handleHighlightBuyers = (buyerIds: string[]) => {
+    setHighlightedBuyers(new Set(buyerIds));
+  };
+
+  const clearHighlights = () => {
+    setHighlightedBuyers(new Set());
+  };
+
   const renderBuyerRow = (buyer: any, showCheckbox = true, showContacts = false, showPassButton = false, showRemoveButton = true) => {
     const score = buyer.score;
     const isExpanded = expanded.has(buyer.id);
     const isApproved = score?.selected_for_outreach && !score?.passed_on_deal;
     const isPassed = score?.passed_on_deal;
     const buyerContacts = getBuyerContacts(buyer.id);
+    const isHighlighted = highlightedBuyers.has(buyer.id);
 
     return (
-      <div key={buyer.id} className="p-4">
+      <div key={buyer.id} className={cn("p-4 transition-colors", isHighlighted && "bg-yellow-100/50 dark:bg-yellow-900/20 border-l-4 border-l-yellow-500")}>
         <div className="flex items-start gap-4">
           {showCheckbox && (
             <Checkbox checked={selected.has(buyer.id)} onCheckedChange={() => toggleSelect(buyer.id)} className="mt-1" />
@@ -979,7 +990,8 @@ export default function DealMatching() {
       {deal && (
         <BuyerQueryChat 
           dealId={id!} 
-          dealName={deal.deal_name} 
+          dealName={deal.deal_name}
+          onHighlightBuyers={handleHighlightBuyers}
         />
       )}
     </AppLayout>

@@ -192,6 +192,7 @@ serve(async (req) => {
       const inDealState = footprint.some((s: string) => dealStates.includes(s));
       
       return {
+        id: b.id, // Include ID for highlighting
         name: b.platform_company_name || b.pe_firm_name,
         peFirm: b.pe_firm_name,
         hq: b.hq_city && b.hq_state ? `${b.hq_city}, ${b.hq_state}` : (b.hq_state || "Unknown"),
@@ -242,7 +243,10 @@ When answering questions:
 4. For "within X miles" queries, interpret this as adjacent states (~100mi) or nearby states (~250mi)
 5. If no buyers match, say so clearly
 6. Keep responses concise but informative
-7. Format lists clearly with bullet points`;
+7. Format lists clearly with bullet points
+8. IMPORTANT: When mentioning specific buyers in your answer, include a hidden marker at the END of your response listing their IDs:
+   <!-- BUYER_HIGHLIGHT: ["buyer-uuid-1", "buyer-uuid-2"] -->
+   Use the exact "id" field from the buyer data. This allows the UI to highlight those buyers in the list.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
