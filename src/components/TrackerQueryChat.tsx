@@ -30,9 +30,25 @@ function extractBuyerIds(content: string): string[] {
   return [];
 }
 
-// Remove the hidden marker from displayed content
+// Parse follow-up questions from the AI response
+function extractFollowupQuestions(content: string): string[] {
+  const match = content.match(/<!-- FOLLOWUP_QUESTIONS: (\[.*?\]) -->/);
+  if (match && match[1]) {
+    try {
+      return JSON.parse(match[1]);
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+// Remove the hidden markers from displayed content
 function cleanContent(content: string): string {
-  return content.replace(/<!-- BUYER_HIGHLIGHT: \[.*?\] -->/g, '').trim();
+  return content
+    .replace(/<!-- BUYER_HIGHLIGHT: \[.*?\] -->/g, '')
+    .replace(/<!-- FOLLOWUP_QUESTIONS: \[.*?\] -->/g, '')
+    .trim();
 }
 
 const EXAMPLE_QUERIES = [
@@ -48,6 +64,7 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers }: 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [followupQuestions, setFollowupQuestions] = useState<string[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -55,7 +72,7 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers }: 
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, followupQuestions]);
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
@@ -70,6 +87,7 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers }: 
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setIsLoading(true);
+    setFollowupQuestions([]); // Clear previous follow-ups
 
     let assistantContent = "";
     const updateAssistant = (chunk: string) => {
@@ -169,6 +187,12 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers }: 
       if (buyerIds.length > 0 && onHighlightBuyers) {
         onHighlightBuyers(buyerIds);
       }
+
+      // Extract follow-up questions
+      const followups = extractFollowupQuestions(assistantContent);
+      if (followups.length > 0) {
+        setFollowupQuestions(followups);
+      }
     } catch (err) {
       console.error("Chat error:", err);
       setMessages((prev) => [
@@ -190,6 +214,10 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers }: 
 
   const handleExampleClick = (query: string) => {
     sendMessage(query);
+  };
+
+  const handleFollowupClick = (question: string) => {
+    sendMessage(question);
   };
 
   if (!isOpen) {
@@ -270,6 +298,25 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers }: 
                 <div className="bg-muted rounded-lg px-4 py-2 text-sm flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span>Analyzing buyer universe...</span>
+                </div>
+              </div>
+            )}
+            {/* Follow-up Questions */}
+            {!isLoading && followupQuestions.length > 0 && (
+              <div className="pt-2 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Follow-up questions:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {followupQuestions.map((question, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleFollowupClick(question)}
+                      className="text-xs px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-full transition-colors text-left"
+                    >
+                      {question}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}

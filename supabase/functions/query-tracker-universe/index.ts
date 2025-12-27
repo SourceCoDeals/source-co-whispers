@@ -166,12 +166,66 @@ serve(async (req) => {
       throw new Error(`Failed to fetch deals: ${dealsError.message}`);
     }
 
-    // Build buyer summaries
+    // Fetch all buyer transcripts for buyers in this tracker
+    const buyerIds = (buyers || []).map((b: any) => b.id);
+    let buyerTranscripts: any[] = [];
+    if (buyerIds.length > 0) {
+      const { data: transcripts, error: transcriptsError } = await supabase
+        .from("buyer_transcripts")
+        .select("buyer_id, title, call_date, notes, extracted_data")
+        .in("buyer_id", buyerIds);
+      
+      if (!transcriptsError && transcripts) {
+        buyerTranscripts = transcripts;
+      }
+    }
+
+    // Fetch primary contacts for each buyer
+    let buyerContacts: any[] = [];
+    if (buyerIds.length > 0) {
+      const { data: contacts, error: contactsError } = await supabase
+        .from("buyer_contacts")
+        .select("buyer_id, name, title, email, is_primary_contact, role_category")
+        .in("buyer_id", buyerIds);
+      
+      if (!contactsError && contacts) {
+        buyerContacts = contacts;
+      }
+    }
+
+    // Group transcripts and contacts by buyer_id
+    const transcriptsByBuyer: Record<string, any[]> = {};
+    for (const t of buyerTranscripts) {
+      if (!transcriptsByBuyer[t.buyer_id]) transcriptsByBuyer[t.buyer_id] = [];
+      transcriptsByBuyer[t.buyer_id].push(t);
+    }
+
+    const contactsByBuyer: Record<string, any[]> = {};
+    for (const c of buyerContacts) {
+      if (!contactsByBuyer[c.buyer_id]) contactsByBuyer[c.buyer_id] = [];
+      contactsByBuyer[c.buyer_id].push(c);
+    }
+
+    // Build buyer summaries with enhanced data
     const buyerSummaries = (buyers || []).map((b: any) => {
       const footprint = b.geographic_footprint || [];
       const targetGeos = b.target_geographies || [];
       const regions = [...new Set([...footprint, ...targetGeos].map(s => getRegionForState(s)).filter(Boolean))];
       
+      // Get transcripts for this buyer
+      const transcripts = transcriptsByBuyer[b.id] || [];
+      const transcriptSummaries = transcripts.slice(0, 3).map((t: any) => ({
+        title: t.title,
+        date: t.call_date,
+        keyPoints: t.notes ? t.notes.substring(0, 200) : null,
+        extractedInsights: t.extracted_data ? Object.keys(t.extracted_data).slice(0, 5) : [],
+      }));
+
+      // Get contacts for this buyer
+      const contacts = contactsByBuyer[b.id] || [];
+      const primaryContact = contacts.find((c: any) => c.is_primary_contact);
+      const dealTeamContacts = contacts.filter((c: any) => c.role_category === "deal_team").slice(0, 2);
+
       return {
         id: b.id,
         name: b.platform_company_name || b.pe_firm_name,
@@ -198,9 +252,17 @@ serve(async (req) => {
         businessSummary: b.business_summary,
         servicesOffered: b.services_offered,
         dealBreakers: b.deal_breakers || [],
+        keyQuotes: b.key_quotes || [],
+        industryExclusions: b.industry_exclusions || [],
+        geographicExclusions: b.geographic_exclusions || [],
         addonOnly: b.addon_only,
         platformOnly: b.platform_only,
         hasFeeAgreement: b.has_fee_agreement,
+        thesisConfidence: b.thesis_confidence,
+        // Enhanced data
+        recentCalls: transcriptSummaries,
+        primaryContact: primaryContact ? { name: primaryContact.name, title: primaryContact.title } : null,
+        dealTeam: dealTeamContacts.map((c: any) => ({ name: c.name, title: c.title })),
       };
     });
 
@@ -247,10 +309,60 @@ serve(async (req) => {
       buyerTypes: buyerTypesCriteria.buyer_types || [],
     };
 
-    // Truncate M&A guide if too long
-    const maGuideExcerpt = tracker.ma_guide_content 
-      ? tracker.ma_guide_content.substring(0, 3000) + (tracker.ma_guide_content.length > 3000 ? "..." : "")
-      : null;
+    // Smart M&A guide context - extract key sections instead of truncating
+    let maGuideContext = "";
+    if (tracker.ma_guide_content) {
+      const fullGuide = tracker.ma_guide_content;
+      const guideLength = fullGuide.length;
+      
+      // Extract key sections by looking for section headers
+      const sections: string[] = [];
+      
+      // Try to find and extract key sections
+      const sectionPatterns = [
+        /## .*?Deal[- ]?Killers.*?(?=\n## |\n# |$)/is,
+        /## .*?Valuation.*?(?=\n## |\n# |$)/is,
+        /## .*?Buyer Types.*?(?=\n## |\n# |$)/is,
+        /## .*?Geographic.*?(?=\n## |\n# |$)/is,
+        /## .*?Service.*?(?=\n## |\n# |$)/is,
+        /## .*?Size.*?Criteria.*?(?=\n## |\n# |$)/is,
+        /## .*?Key Terminology.*?(?=\n## |\n# |$)/is,
+      ];
+
+      for (const pattern of sectionPatterns) {
+        const match = fullGuide.match(pattern);
+        if (match && match[0].length < 2000) {
+          sections.push(match[0].trim());
+        }
+      }
+
+      if (sections.length > 0) {
+        maGuideContext = "KEY M&A GUIDE SECTIONS:\n\n" + sections.join("\n\n---\n\n");
+      }
+
+      // If no sections found or still have room, include overview
+      if (maGuideContext.length < 8000) {
+        // Get first 4000 chars as overview if guide exists
+        const overview = fullGuide.substring(0, 4000);
+        if (sections.length === 0) {
+          maGuideContext = "M&A GUIDE OVERVIEW:\n" + overview + (guideLength > 4000 ? "..." : "");
+        } else {
+          maGuideContext = maGuideContext + "\n\nGUIDE OVERVIEW:\n" + overview.substring(0, 2000) + "...";
+        }
+      }
+
+      // Log guide usage
+      console.log(`[query-tracker-universe] M&A guide: ${guideLength} chars total, using ${maGuideContext.length} chars`);
+    }
+
+    // Extract uploaded documents info if available
+    let documentsContext = "";
+    if (tracker.documents && Array.isArray(tracker.documents) && tracker.documents.length > 0) {
+      const docs = tracker.documents as any[];
+      documentsContext = "\nUPLOADED DOCUMENTS:\n" + docs.map((d: any) => 
+        `- ${d.name || d.filename}: ${d.summary || 'No summary available'}`
+      ).join("\n");
+    }
 
     const systemPrompt = `You are an expert M&A analyst helping evaluate the buyer universe for the "${tracker.industry_name}" industry tracker.
 
@@ -258,11 +370,13 @@ TRACKER OVERVIEW:
 - Industry: ${tracker.industry_name}
 - Total Buyers: ${buyerSummaries.length}
 - Total Deals: ${dealSummaries.length}
+- Buyer Transcripts Available: ${buyerTranscripts.length}
 
 BUYER FIT CRITERIA:
 ${JSON.stringify(criteriaContext, null, 2)}
 
-${maGuideExcerpt ? `M&A GUIDE EXCERPT:\n${maGuideExcerpt}\n` : ""}
+${maGuideContext ? `\n${maGuideContext}\n` : ""}
+${documentsContext}
 
 BUYER UNIVERSE (${buyerSummaries.length} buyers):
 ${JSON.stringify(buyerSummaries, null, 2)}
@@ -287,14 +401,28 @@ When answering questions:
 7. Format lists clearly with bullet points
 8. When comparing buyers, provide clear pros/cons for each
 9. Consider the fit criteria when making recommendations
+10. Reference deal breakers and exclusions when relevant
+11. Use key quotes from buyers when available to support your analysis
+12. Reference call notes/transcripts when they provide useful context
+13. Mention thesis confidence levels when recommending buyers
 
 CRITICAL - BUYER HIGHLIGHTING:
 When you identify specific buyers in your response (whether filtering, recommending, or analyzing them), you MUST include their IDs at the VERY END of your response in this exact format:
 <!-- BUYER_HIGHLIGHT: ["buyer-id-1", "buyer-id-2", "buyer-id-3"] -->
 
+CRITICAL - FOLLOW-UP SUGGESTIONS:
+At the end of your response (BEFORE the BUYER_HIGHLIGHT marker), include 2-3 suggested follow-up questions the user might want to ask. Format them as:
+<!-- FOLLOWUP_QUESTIONS: ["Question 1?", "Question 2?", "Question 3?"] -->
+
+Make these questions contextually relevant to what was just discussed. Examples:
+- If discussing geographic fit, suggest drilling into specific regions
+- If comparing buyers, suggest analyzing deal history or contact relationships
+- If analyzing a deal, suggest matching to specific buyer types
+
 This hidden marker allows the UI to highlight these buyers in the table. Always include this when you mention specific buyers by name. Use the exact "id" field from the buyer data provided above.`;
 
     console.log(`[query-tracker-universe] Processing query for tracker ${trackerId}: "${query}"`);
+    console.log(`[query-tracker-universe] System prompt size: ${systemPrompt.length} chars`);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
