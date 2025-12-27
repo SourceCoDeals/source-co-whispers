@@ -10,8 +10,9 @@ import { DealCSVImport } from "@/components/DealCSVImport";
 import { StructuredCriteriaPanel } from "@/components/StructuredCriteriaPanel";
 import { KPIConfigPanel } from "@/components/KPIConfigPanel";
 import { ScoringBehaviorPanel } from "@/components/ScoringBehaviorPanel";
+import { TrackerQueryChat } from "@/components/TrackerQueryChat";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload, TrendingUp, ArrowUp, ArrowDown, Filter } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload, TrendingUp, ArrowUp, ArrowDown, Filter, BookOpen } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -66,6 +67,7 @@ export default function TrackerDetail() {
   const [showAnalysisConfirmDialog, setShowAnalysisConfirmDialog] = useState(false);
   const [isCriteriaCollapsed, setIsCriteriaCollapsed] = useState(true);
   const [isUploadingDocs, setIsUploadingDocs] = useState(false);
+  const [isExtractingFromGuide, setIsExtractingFromGuide] = useState(false);
   const docFileInputRef = useRef<HTMLInputElement>(null);
   
   // Deal scoring state
@@ -982,6 +984,61 @@ export default function TrackerDetail() {
     }
   };
 
+  // Extract criteria from existing M&A guide content
+  const extractCriteriaFromGuide = async () => {
+    if (!tracker?.ma_guide_content) {
+      toast({ title: "No M&A Guide", description: "Generate an M&A guide first to extract criteria from it", variant: "destructive" });
+      return;
+    }
+
+    setIsExtractingFromGuide(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('parse-fit-criteria', {
+        body: { fit_criteria: tracker.ma_guide_content }
+      });
+
+      if (error) {
+        toast({ title: "Extraction failed", description: error.message, variant: "destructive" });
+        return;
+      }
+
+      if (!data.success) {
+        toast({ title: "Extraction failed", description: data.error || "Unknown error", variant: "destructive" });
+        return;
+      }
+
+      const { error: updateError } = await supabase
+        .from("industry_trackers")
+        .update({
+          size_criteria: data.size_criteria,
+          service_criteria: data.service_criteria,
+          geography_criteria: data.geography_criteria,
+          buyer_types_criteria: data.buyer_types_criteria,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", id);
+
+      if (updateError) {
+        toast({ title: "Failed to save", description: updateError.message, variant: "destructive" });
+        return;
+      }
+
+      setTracker({
+        ...tracker,
+        size_criteria: data.size_criteria,
+        service_criteria: data.service_criteria,
+        geography_criteria: data.geography_criteria,
+        buyer_types_criteria: data.buyer_types_criteria
+      });
+
+      toast({ title: "Criteria extracted", description: "Successfully extracted structured criteria from M&A guide" });
+    } catch (err) {
+      toast({ title: "Extraction failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setIsExtractingFromGuide(false);
+    }
+  };
+
   const hasExistingCriteria = () => {
     return tracker?.size_criteria || tracker?.service_criteria || 
            tracker?.geography_criteria || tracker?.buyer_types_criteria ||
@@ -1195,12 +1252,24 @@ export default function TrackerDetail() {
               <Info className="w-4 h-4 text-primary" />
               <h3 className="font-semibold text-sm">Buyer Fit Criteria</h3>
             </button>
-            {!isEditingFitCriteria && (
-              <Button variant="ghost" size="sm" onClick={startEditingFitCriteria}>
-                <Pencil className="w-3.5 h-3.5 mr-1" />
-                Edit
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {!isEditingFitCriteria && tracker?.ma_guide_content && !hasExistingCriteria() && (
+                <Button variant="outline" size="sm" onClick={extractCriteriaFromGuide} disabled={isExtractingFromGuide}>
+                  {isExtractingFromGuide ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                  ) : (
+                    <BookOpen className="w-3.5 h-3.5 mr-1" />
+                  )}
+                  Extract from Guide
+                </Button>
+              )}
+              {!isEditingFitCriteria && (
+                <Button variant="ghost" size="sm" onClick={startEditingFitCriteria}>
+                  <Pencil className="w-3.5 h-3.5 mr-1" />
+                  Edit
+                </Button>
+              )}
+            </div>
           </div>
           
           {/* Fit Criteria Edit Dialog */}
@@ -1933,6 +2002,9 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
           </TabsContent>
         </Tabs>
       </div>
+      
+      {/* Tracker AI Chat */}
+      <TrackerQueryChat trackerId={id!} trackerName={tracker.industry_name} />
     </AppLayout>
   );
 }

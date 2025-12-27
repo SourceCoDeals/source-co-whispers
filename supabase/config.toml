@@ -68,3 +68,6 @@ verify_jwt = true
 
 [functions.migrate-deals-to-companies]
 verify_jwt = true
+
+[functions.query-tracker-universe]
+verify_jwt = true
