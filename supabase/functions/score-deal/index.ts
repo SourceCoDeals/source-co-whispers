@@ -115,16 +115,41 @@ function detectPrimaryService(deal: DealData, serviceCriteria: any): {
   ].join(' ').toLowerCase();
   
   if (allText.trim().length < 5) {
-    return { primaryService: 'unknown', isOnFocus: false, confidence: 'low', reasoning: 'Insufficient data' };
+    console.log('[score-deal] detectPrimaryService: Insufficient deal data for service detection');
+    return { primaryService: 'unknown', isOnFocus: true, confidence: 'low', reasoning: 'Insufficient data - giving benefit of doubt' };
   }
   
   // Get focus and exclusion keywords from tracker's service criteria
-  const primaryFocusKeywords: string[] = (serviceCriteria?.primary_focus || []).map((s: string) => s.toLowerCase());
-  const excludedServices: string[] = (serviceCriteria?.excluded_services || []).map((s: string) => s.toLowerCase());
+  // CRITICAL: Handle both array and parsed JSON formats
+  let primaryFocusKeywords: string[] = [];
+  let excludedServices: string[] = [];
   
-  // If no primary_focus defined, default to generic detection
+  if (serviceCriteria) {
+    // Handle primary_focus - can be array or from required_services
+    if (Array.isArray(serviceCriteria.primary_focus)) {
+      primaryFocusKeywords = serviceCriteria.primary_focus.map((s: string) => s.toLowerCase().trim());
+    } else if (Array.isArray(serviceCriteria.required_services)) {
+      primaryFocusKeywords = serviceCriteria.required_services.map((s: string) => s.toLowerCase().trim());
+    }
+    
+    // Handle excluded_services
+    if (Array.isArray(serviceCriteria.excluded_services)) {
+      excludedServices = serviceCriteria.excluded_services.map((s: string) => s.toLowerCase().trim());
+    }
+    
+    console.log('[score-deal] detectPrimaryService: primary_focus keywords:', primaryFocusKeywords);
+    console.log('[score-deal] detectPrimaryService: excluded_services keywords:', excludedServices);
+  }
+  
+  // If no primary_focus defined, give benefit of doubt but flag it
   if (primaryFocusKeywords.length === 0) {
-    return { primaryService: 'not-specified', isOnFocus: true, confidence: 'low', reasoning: 'No primary focus defined in tracker' };
+    console.log('[score-deal] detectPrimaryService: No primary focus defined in tracker service_criteria');
+    return { 
+      primaryService: 'not-specified', 
+      isOnFocus: true, 
+      confidence: 'low', 
+      reasoning: 'No primary focus defined in tracker - please update tracker service criteria with primary_focus array' 
+    };
   }
   
   // Count mentions of focus vs exclusion keywords
@@ -137,34 +162,48 @@ function detectPrimaryService(deal: DealData, serviceCriteria: any): {
   const dealNameLower = (deal.deal_name || '').toLowerCase();
   
   for (const keyword of primaryFocusKeywords) {
+    if (!keyword || keyword.length < 2) continue; // Skip empty/tiny keywords
+    
     if (dealNameLower.includes(keyword)) {
       focusMentions += 3; // Strong weight for deal name
-      focusMatches.push(keyword);
+      if (!focusMatches.includes(keyword)) focusMatches.push(keyword);
     }
     // Count in full text
-    const regex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    const matches = (allText.match(regex) || []).length;
-    if (matches > 0) {
-      focusMentions += matches;
-      if (!focusMatches.includes(keyword)) focusMatches.push(keyword);
+    try {
+      const regex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      const matches = (allText.match(regex) || []).length;
+      if (matches > 0) {
+        focusMentions += matches;
+        if (!focusMatches.includes(keyword)) focusMatches.push(keyword);
+      }
+    } catch (e) {
+      console.error('[score-deal] Regex error for keyword:', keyword, e);
     }
   }
   
   for (const keyword of excludedServices) {
+    if (!keyword || keyword.length < 2) continue;
+    
     if (dealNameLower.includes(keyword)) {
       exclusionMentions += 3; // Strong weight for deal name
-      exclusionMatches.push(keyword);
-    }
-    const regex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    const matches = (allText.match(regex) || []).length;
-    if (matches > 0) {
-      exclusionMentions += matches;
       if (!exclusionMatches.includes(keyword)) exclusionMatches.push(keyword);
+    }
+    try {
+      const regex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      const matches = (allText.match(regex) || []).length;
+      if (matches > 0) {
+        exclusionMentions += matches;
+        if (!exclusionMatches.includes(keyword)) exclusionMatches.push(keyword);
+      }
+    } catch (e) {
+      console.error('[score-deal] Regex error for excluded keyword:', keyword, e);
     }
   }
   
+  console.log(`[score-deal] detectPrimaryService: focusMentions=${focusMentions} (${focusMatches.join(',')}), exclusionMentions=${exclusionMentions} (${exclusionMatches.join(',')})`);
+  
   // Determine if on-focus or off-focus
-  if (exclusionMentions > focusMentions * 1.5) {
+  if (exclusionMentions > 0 && exclusionMentions > focusMentions * 1.5) {
     // Exclusion keywords dominate - off-focus primary
     return {
       primaryService: exclusionMatches[0] || 'off-focus',
@@ -183,12 +222,12 @@ function detectPrimaryService(deal: DealData, serviceCriteria: any): {
     };
   }
   
-  // Neither focus nor exclusion detected
+  // Neither focus nor exclusion detected - give benefit of doubt
   return {
     primaryService: 'undetermined',
     isOnFocus: true, // Give benefit of doubt
     confidence: 'low',
-    reasoning: 'Could not determine primary service from text'
+    reasoning: 'Could not determine primary service from text - giving benefit of doubt'
   };
 }
 

@@ -16,6 +16,8 @@ interface ExtractedCriteria {
   serviceCriteria?: string;
   geographyCriteria?: string;
   buyerTypesCriteria?: string;
+  primaryFocusServices?: string[];
+  excludedServices?: string[];
 }
 
 interface QualityResult {
@@ -31,6 +33,9 @@ interface QualityResult {
   issues: string[];
   afterGapFill?: boolean;
   attempt?: number;
+  hasCriteria?: boolean;
+  hasBuyerTypes?: boolean;
+  hasPrimaryFocus?: boolean;
 }
 
 interface AIResearchSectionProps {
@@ -202,13 +207,48 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
 
   const applyExtracted = () => {
     if (!extractedCriteria) return;
+    
+    // Check for empty criteria
+    const isEmpty = !extractedCriteria.sizeCriteria && !extractedCriteria.serviceCriteria &&
+                    !extractedCriteria.geographyCriteria && !extractedCriteria.buyerTypesCriteria;
+    
+    if (isEmpty) {
+      toast({ 
+        title: "No Criteria Found", 
+        description: "Could not extract criteria from the guide. Try regenerating.",
+        variant: "destructive" 
+      });
+      return;
+    }
+    
+    // Log what we're applying
+    console.log('[AIResearchSection] Applying extracted criteria:', {
+      sizeCriteria: extractedCriteria.sizeCriteria?.length || 0,
+      serviceCriteria: extractedCriteria.serviceCriteria?.length || 0,
+      geographyCriteria: extractedCriteria.geographyCriteria?.length || 0,
+      buyerTypesCriteria: extractedCriteria.buyerTypesCriteria?.length || 0,
+      primaryFocusServices: extractedCriteria.primaryFocusServices,
+      excludedServices: extractedCriteria.excludedServices
+    });
+    
     onApply({
       sizeCriteria: extractedCriteria.sizeCriteria || "",
       serviceCriteria: extractedCriteria.serviceCriteria || "",
       geographyCriteria: extractedCriteria.geographyCriteria || "",
       buyerTypesCriteria: extractedCriteria.buyerTypesCriteria || "",
     });
-    toast({ title: "Applied!", description: "Criteria added to form" });
+    
+    const foundCount = [
+      extractedCriteria.sizeCriteria,
+      extractedCriteria.serviceCriteria,
+      extractedCriteria.geographyCriteria,
+      extractedCriteria.buyerTypesCriteria
+    ].filter(c => c && c.length > 50).length;
+    
+    toast({ 
+      title: "Criteria Applied!", 
+      description: `${foundCount}/4 sections extracted. ${extractedCriteria.primaryFocusServices?.length || 0} primary focus services.` 
+    });
   };
 
   const reset = () => {
@@ -488,7 +528,59 @@ export function AIResearchSection({ industryName, onApply, onGuideGenerated }: A
 
                 {extractedCriteria && (
                   <div className="space-y-3">
-                    <Label className="text-sm font-medium">Extracted Buyer Fit Criteria</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium">Extracted Buyer Fit Criteria</Label>
+                      {extractedCriteria.primaryFocusServices && extractedCriteria.primaryFocusServices.length > 0 && (
+                        <Badge variant="default" className="text-xs">
+                          {extractedCriteria.primaryFocusServices.length} Primary Focus Services
+                        </Badge>
+                      )}
+                    </div>
+                    
+                    {/* Primary Focus Services - Critical for Scoring */}
+                    {extractedCriteria.primaryFocusServices && extractedCriteria.primaryFocusServices.length > 0 && (
+                      <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+                        <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400 mb-2">
+                          <CheckCircle2 className="w-3 h-3" />
+                          Primary Focus Services (for scoring)
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {extractedCriteria.primaryFocusServices.map((service, idx) => (
+                            <Badge key={idx} variant="secondary" className="text-xs bg-green-500/20">
+                              {service}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Excluded Services */}
+                    {extractedCriteria.excludedServices && extractedCriteria.excludedServices.length > 0 && (
+                      <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                        <div className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400 mb-2">
+                          <XCircle className="w-3 h-3" />
+                          Excluded Services (avoid)
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {extractedCriteria.excludedServices.map((service, idx) => (
+                            <Badge key={idx} variant="outline" className="text-xs border-red-500/30 text-red-600">
+                              {service}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Warning if no primary focus extracted */}
+                    {(!extractedCriteria.primaryFocusServices || extractedCriteria.primaryFocusServices.length === 0) && (
+                      <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                        <div className="flex items-center gap-2 text-xs text-yellow-700 dark:text-yellow-400">
+                          <AlertTriangle className="w-3 h-3" />
+                          No primary focus services extracted. Deal scoring may not work correctly.
+                        </div>
+                      </div>
+                    )}
+                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {extractedCriteria.sizeCriteria && (
                         <div className="p-3 bg-background rounded-lg border">
