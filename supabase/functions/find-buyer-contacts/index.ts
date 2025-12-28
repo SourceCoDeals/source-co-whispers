@@ -8,6 +8,7 @@ const corsHeaders = {
 interface Contact {
   name: string;
   title: string;
+  email?: string;
   linkedin_url?: string;
   bio_url?: string;
   is_deal_team: boolean;
@@ -18,61 +19,105 @@ interface ExtractionResult {
   contacts: Contact[];
   deal_team_found: boolean;
   source_url: string;
+  email_pattern?: string;
 }
 
 // Keywords for scoring team page URLs
 const POSITIVE_KEYWORDS = ['team', 'leadership', 'executive', 'management', 'people', 'board', 'officers', 'directors', 'staff', 'who-we-are', 'about-us'];
 const NEGATIVE_KEYWORDS = ['careers', 'jobs', 'job', 'hiring', 'news', 'blog', 'press', 'contact', 'locations', 'services', 'products', 'case-study', 'testimonial', 'faq', 'privacy', 'terms', 'login', 'signin', 'cart', 'checkout'];
 
+// Keywords that indicate an individual profile page
+const PROFILE_PARENT_KEYWORDS = ['team', 'team-members', 'people', 'staff', 'leadership', 'executives', 'management', 'board', 'directors', 'members', 'professionals', 'advisors'];
+
 function scoreUrl(url: string): number {
   const path = url.toLowerCase();
   let score = 0;
+  const penalties: string[] = [];
+  const bonuses: string[] = [];
   
   // Check for positive keywords
   for (const kw of POSITIVE_KEYWORDS) {
-    if (path.includes(kw)) score += 10;
+    if (path.includes(kw)) {
+      score += 10;
+      bonuses.push(`+10 for keyword "${kw}"`);
+    }
   }
   
   // Check for negative keywords
   for (const kw of NEGATIVE_KEYWORDS) {
-    if (path.includes(kw)) score -= 20;
+    if (path.includes(kw)) {
+      score -= 20;
+      penalties.push(`-20 for keyword "${kw}"`);
+    }
   }
   
-  // CRITICAL: Heavily penalize individual profile pages
-  // These match patterns like /team-members/john-doe, /people/jane-smith, /staff/member-name
   try {
     const urlPath = new URL(url).pathname;
     const pathParts = urlPath.split('/').filter(Boolean);
     
-    // Check if this looks like an individual profile page (has a person's name slug at the end)
+    // CRITICAL: Very heavy penalty for individual profile pages
+    // These match patterns like /team-members/john-doe, /people/jane-smith
     if (pathParts.length >= 2) {
       const lastSegment = pathParts[pathParts.length - 1];
       const parentSegment = pathParts[pathParts.length - 2];
       
-      // If parent is a team-related keyword and last segment looks like a name (contains hyphen or is long)
-      const teamParentKeywords = ['team', 'team-members', 'people', 'staff', 'leadership', 'executives', 'management', 'board', 'directors', 'members'];
-      if (teamParentKeywords.some(kw => parentSegment.includes(kw))) {
-        // This is likely an individual profile page - heavy penalty
-        console.log(`Penalizing individual profile page: ${url}`);
-        score -= 30;
+      // If parent is a team-related keyword and last segment looks like a name
+      if (PROFILE_PARENT_KEYWORDS.some(kw => parentSegment.includes(kw))) {
+        // Check if the last segment looks like a person's name (contains hyphen, or is a slug)
+        if (lastSegment.includes('-') || lastSegment.match(/^[a-z]+$/)) {
+          score -= 50; // Heavy penalty for individual profiles
+          penalties.push(`-50 INDIVIDUAL PROFILE (parent="${parentSegment}", slug="${lastSegment}")`);
+        }
+      }
+      
+      // Also catch direct patterns like /team-members/name
+      if (parentSegment.match(/team[-_]?members?/i) || 
+          parentSegment.match(/our[-_]?team/i) ||
+          parentSegment.match(/people/i) ||
+          parentSegment.match(/staff/i)) {
+        score -= 50;
+        penalties.push(`-50 INDIVIDUAL PROFILE (pattern match)`);
       }
     }
     
-    // Bonus for root team pages (not individual profiles)
-    // e.g., /team, /leadership, /people (single path segment)
+    // Bonus for root team pages (single path segment like /team, /leadership)
     if (pathParts.length === 1) {
       const segment = pathParts[0];
       if (['team', 'leadership', 'people', 'executives', 'management', 'about', 'staff', 'board'].includes(segment)) {
-        console.log(`Bonus for root team page: ${url}`);
+        score += 25;
+        bonuses.push(`+25 ROOT TEAM PAGE (/${segment})`);
+      }
+    }
+    
+    // Bonus for 2-segment paths that are likely overview pages
+    if (pathParts.length === 2) {
+      const [first, second] = pathParts;
+      // Patterns like /about/team, /about/leadership, /company/team
+      if (['about', 'company', 'our-company', 'who-we-are'].includes(first) && 
+          ['team', 'leadership', 'people', 'management', 'executives'].includes(second)) {
         score += 20;
+        bonuses.push(`+20 OVERVIEW PATH (/${first}/${second})`);
       }
     }
     
     // Bonus for shorter paths (more likely to be main team pages)
-    if (pathParts.length <= 2) score += 5;
+    if (pathParts.length === 1) {
+      score += 10;
+      bonuses.push(`+10 for single segment path`);
+    } else if (pathParts.length === 2) {
+      score += 5;
+      bonuses.push(`+5 for two segment path`);
+    }
     
   } catch (e) {
     // If URL parsing fails, just continue with basic scoring
+  }
+  
+  // Log scoring details for debugging
+  if (penalties.length > 0 || bonuses.length > 0) {
+    console.log(`Score ${score} for ${url}`);
+    if (bonuses.length > 0) console.log(`  Bonuses: ${bonuses.join(', ')}`);
+    if (penalties.length > 0) console.log(`  Penalties: ${penalties.join(', ')}`);
   }
   
   return score;
@@ -111,7 +156,7 @@ async function scrapeUrl(url: string, apiKey: string): Promise<string | null> {
   }
 }
 
-async function discoverTeamPages(baseUrl: string, apiKey: string): Promise<string[]> {
+async function discoverTeamPages(baseUrl: string, apiKey: string): Promise<Array<{ url: string; score: number }>> {
   // Normalize base URL
   let normalizedBase = baseUrl.trim();
   if (!normalizedBase.startsWith('http://') && !normalizedBase.startsWith('https://')) {
@@ -132,7 +177,7 @@ async function discoverTeamPages(baseUrl: string, apiKey: string): Promise<strin
       body: JSON.stringify({
         url: normalizedBase,
         search: 'team leadership executive management board directors people staff officers cfo ceo',
-        limit: 50,
+        limit: 100, // Increased limit to find more pages
         includeSubdomains: false,
       }),
     });
@@ -154,27 +199,40 @@ async function discoverTeamPages(baseUrl: string, apiKey: string): Promise<strin
     // Score and sort URLs by relevance
     const scoredUrls = links
       .map((url: string) => ({ url, score: scoreUrl(url) }))
-      .filter((item: { url: string; score: number }) => item.score > -10) // Filter out clearly irrelevant pages
-      .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+      .filter((item: { url: string; score: number }) => item.score > -20) // Filter out clearly irrelevant pages
+      .sort((a: { url: string; score: number }, b: { url: string; score: number }) => {
+        // Sort by score first, then by path length (shorter = better for team overview pages)
+        if (b.score !== a.score) return b.score - a.score;
+        const aPathLen = new URL(a.url).pathname.split('/').filter(Boolean).length;
+        const bPathLen = new URL(b.url).pathname.split('/').filter(Boolean).length;
+        return aPathLen - bPathLen;
+      });
 
-    console.log(`Top 5 scored URLs:`, scoredUrls.slice(0, 5).map((u: { url: string; score: number }) => `${u.url} (${u.score})`));
+    console.log(`=== TOP 10 SCORED URLs ===`);
+    scoredUrls.slice(0, 10).forEach((u: { url: string; score: number }, i: number) => {
+      console.log(`${i + 1}. Score ${u.score}: ${u.url}`);
+    });
 
-    // Return top 5 URLs for scraping (increased from 3)
-    return scoredUrls.slice(0, 5).map((item: { url: string }) => item.url);
+    // Return top 5 URLs for scraping
+    return scoredUrls.slice(0, 5);
   } catch (error) {
     console.error(`Error mapping ${normalizedBase}:`, error);
     return [];
   }
 }
 
-async function scrapeMultiplePages(urls: string[], apiKey: string): Promise<Array<{ url: string; content: string }>> {
-  const results: Array<{ url: string; content: string }> = [];
+async function scrapeMultiplePages(urls: Array<{ url: string; score: number }>, apiKey: string): Promise<Array<{ url: string; content: string; score: number }>> {
+  const results: Array<{ url: string; content: string; score: number }> = [];
   
-  // Scrape up to 3 pages in parallel
-  const scrapePromises = urls.slice(0, 3).map(async (url) => {
+  // Scrape top 3 pages in parallel
+  const pagesToScrape = urls.slice(0, 3);
+  console.log(`=== SCRAPING ${pagesToScrape.length} PAGES ===`);
+  pagesToScrape.forEach((u, i) => console.log(`${i + 1}. ${u.url} (score: ${u.score})`));
+  
+  const scrapePromises = pagesToScrape.map(async ({ url, score }) => {
     const content = await scrapeUrl(url, apiKey);
     if (content && content.length > 300) {
-      return { url, content };
+      return { url, content, score };
     }
     return null;
   });
@@ -198,7 +256,7 @@ async function findTeamPages(baseUrl: string, apiKey: string): Promise<Array<{ u
   if (discoveredUrls.length > 0) {
     const results = await scrapeMultiplePages(discoveredUrls, apiKey);
     if (results.length > 0) {
-      return results;
+      return results.map(r => ({ url: r.url, content: r.content }));
     }
   }
   
@@ -214,13 +272,14 @@ async function findTeamPages(baseUrl: string, apiKey: string): Promise<Array<{ u
   const fallbackPaths = [
     '/team', '/leadership', '/about', '/about-us', '/our-team',
     '/executive-team', '/our-executive-team', '/leadership-team',
-    '/management', '/executives', '/people', '/who-we-are'
+    '/management', '/executives', '/people', '/who-we-are',
+    '/about/team', '/about/leadership', '/company/team'
   ];
   
-  const fallbackUrls = fallbackPaths.map(path => `${normalizedBase}${path}`);
+  const fallbackUrls = fallbackPaths.map(path => ({ url: `${normalizedBase}${path}`, score: 0 }));
   const results = await scrapeMultiplePages(fallbackUrls, apiKey);
   
-  return results;
+  return results.map(r => ({ url: r.url, content: r.content }));
 }
 
 async function extractContactsWithAI(
@@ -237,29 +296,36 @@ async function extractContactsWithAI(
   }
 
   const roleContext = isPEFirm
-    ? `Focus on finding:
-1. Deal team members specifically assigned to ${platformCompanyName || 'portfolio companies'} (highest priority)
-2. Business Development team members
-3. Junior investment professionals (Associates, Senior Associates, Principals, Vice Presidents)
+    ? `Focus on finding ALL team members on this page, including:
+1. Managing Partners, Partners, Managing Directors, Directors (highest priority)
+2. Deal team members specifically assigned to ${platformCompanyName || 'portfolio companies'}
+3. Business Development team members
+4. Principals, Vice Presidents, Associates, Senior Associates, Analysts
+5. Operating Partners, Advisors, Senior Advisors
 
-For each contact, determine if they are specifically on the deal team for ${platformCompanyName || 'this company'} based on context.`
-    : `Focus on finding:
-1. CFO or Chief Financial Officer (highest priority)
-2. Anyone with Corporate Development in their title
-3. Anyone with M&A or Mergers & Acquisitions responsibilities
-4. VP/Director of Strategy or Business Development`;
+IMPORTANT: Extract EVERY person listed on the team page, not just a few. Look for the complete roster.`
+    : `Focus on finding ALL executives and relevant contacts on this page, including:
+1. CFO, CEO, COO, CMO, and other C-suite executives (highest priority)
+2. Anyone with Corporate Development, M&A, or Strategy in their title
+3. VP/Director/Head of Business Development
+4. General Managers, Regional Directors
+5. Any other executives or leadership team members
 
-  const prompt = `Extract contact information from this ${isPEFirm ? 'PE firm' : 'company'} website content for ${companyName}.
+IMPORTANT: Extract EVERY person listed on the page.`;
+
+  const prompt = `Extract ALL contact information from this ${isPEFirm ? 'PE firm' : 'company'} website content for ${companyName}.
 
 ${roleContext}
 
-Extract ONLY real contacts mentioned in the content. DO NOT make up any information.
 For each contact found, extract:
-- Full name
-- Title/Role
-- LinkedIn URL (ONLY if explicitly shown on the page)
+- Full name (required)
+- Title/Role (required)
+- Email address (ONLY if explicitly shown on the page)
+- LinkedIn URL (ONLY if explicitly shown on the page, must be a full linkedin.com URL)
 - Bio/profile URL on the company site (if available)
 - Whether they appear to be specifically assigned to work with ${platformCompanyName || 'relevant deals'} (is_deal_team flag)
+
+Also try to identify the company's email pattern if you see any emails (e.g., "firstname.lastname@company.com" or "first@company.com").
 
 Return a JSON object with this structure:
 {
@@ -267,19 +333,28 @@ Return a JSON object with this structure:
     {
       "name": "Full Name",
       "title": "Job Title",
+      "email": "email@company.com" or null,
       "linkedin_url": "https://linkedin.com/in/..." or null,
       "bio_url": "https://company.com/team/name" or null,
       "is_deal_team": true/false,
       "role_category": "deal_team" | "business_dev" | "junior_investment" | "corp_dev" | "executive" | "other"
     }
   ],
-  "deal_team_found": true/false
+  "deal_team_found": true/false,
+  "email_pattern": "{first}.{last}@company.com" or null
 }
 
+IMPORTANT: 
+- Extract ALL people listed, not just a sample
+- Only include contacts that are clearly real people with both name and title
+- Do NOT make up any information - only extract what is explicitly shown
+- If you see 10 people on the page, return 10 contacts
+
 Website content:
-${content.slice(0, 15000)}`;
+${content.slice(0, 20000)}`;
 
   try {
+    console.log(`Calling AI to extract contacts from ${sourceUrl}...`);
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -306,10 +381,14 @@ ${content.slice(0, 15000)}`;
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       console.log(`AI extracted ${parsed.contacts?.length || 0} contacts from ${sourceUrl}`);
+      if (parsed.email_pattern) {
+        console.log(`Email pattern detected: ${parsed.email_pattern}`);
+      }
       return {
         contacts: parsed.contacts || [],
         deal_team_found: parsed.deal_team_found || false,
         source_url: sourceUrl,
+        email_pattern: parsed.email_pattern || undefined,
       };
     }
   } catch (error) {
@@ -394,19 +473,23 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Finding contacts for buyer: ${buyer.pe_firm_name} / ${buyer.platform_company_name}`);
-    console.log(`PE website: ${buyer.pe_firm_website}, Platform website: ${buyer.platform_website}`);
+    console.log(`\n========================================`);
+    console.log(`FINDING CONTACTS FOR: ${buyer.pe_firm_name} / ${buyer.platform_company_name}`);
+    console.log(`PE website: ${buyer.pe_firm_website}`);
+    console.log(`Platform website: ${buyer.platform_website}`);
     if (useFallbackPaths) {
       console.log(`Using fallback paths mode`);
     }
+    console.log(`========================================\n`);
 
     const allContacts: Array<Contact & { company_type: string; source_url: string }> = [];
     let dealTeamFound = false;
     const scrapedPages: string[] = [];
+    let emailPattern: string | undefined;
 
     // PE Firm contact discovery - scrape multiple pages
     if (buyer.pe_firm_website) {
-      console.log(`=== PE FIRM: ${buyer.pe_firm_name} ===`);
+      console.log(`\n=== PE FIRM: ${buyer.pe_firm_name} ===`);
       const pePages = await findTeamPages(buyer.pe_firm_website, firecrawlKey);
       
       for (const page of pePages) {
@@ -422,6 +505,9 @@ Deno.serve(async (req) => {
 
         if (extraction.deal_team_found) {
           dealTeamFound = true;
+        }
+        if (extraction.email_pattern && !emailPattern) {
+          emailPattern = extraction.email_pattern;
         }
         
         for (const contact of extraction.contacts) {
@@ -441,7 +527,7 @@ Deno.serve(async (req) => {
 
     // Platform company contact discovery - scrape multiple pages
     if (buyer.platform_website) {
-      console.log(`=== PLATFORM: ${buyer.platform_company_name} ===`);
+      console.log(`\n=== PLATFORM: ${buyer.platform_company_name} ===`);
       const platformPages = await findTeamPages(buyer.platform_website, firecrawlKey);
       
       const platformContactsCount = allContacts.length;
@@ -471,8 +557,12 @@ Deno.serve(async (req) => {
       console.log(`Platform: Found ${allContacts.length - platformContactsCount} unique contacts from ${platformPages.length} pages`);
     }
 
-    console.log(`=== TOTAL: ${allContacts.length} contacts found. Deal team: ${dealTeamFound} ===`);
-    console.log(`Pages scraped: ${scrapedPages.join(', ')}`);
+    console.log(`\n========================================`);
+    console.log(`TOTAL: ${allContacts.length} contacts found`);
+    console.log(`Deal team: ${dealTeamFound}`);
+    console.log(`Pages scraped: ${scrapedPages.length}`);
+    scrapedPages.forEach((p, i) => console.log(`  ${i + 1}. ${p}`));
+    console.log(`========================================\n`);
 
     // Insert contacts into database
     const insertedContacts = [];
@@ -496,25 +586,23 @@ Deno.serve(async (req) => {
           buyer_id: buyerId,
           name: contact.name,
           title: contact.title,
+          email: contact.email || null,
           linkedin_url: contact.linkedin_url || null,
           company_type: contact.company_type,
+          is_deal_team: contact.is_deal_team || false,
+          role_category: contact.role_category || 'other',
           source: 'website',
           source_url: contact.source_url,
-          is_deal_team: contact.is_deal_team,
-          role_category: contact.role_category,
-          priority_level: contact.is_deal_team ? 1 : 
-            contact.role_category === 'executive' ? 2 :
-            contact.role_category === 'corp_dev' ? 3 :
-            contact.role_category === 'business_dev' ? 4 :
-            contact.role_category === 'junior_investment' ? 5 : 10,
+          priority_level: contact.is_deal_team ? 1 : (contact.role_category === 'executive' ? 2 : 5),
         })
         .select()
         .single();
 
       if (insertError) {
-        console.error(`Error inserting contact ${contact.name}:`, insertError);
-      } else if (inserted) {
+        console.error(`Failed to insert contact ${contact.name}:`, insertError.message);
+      } else {
         insertedContacts.push(inserted);
+        console.log(`Inserted contact: ${contact.name} (${contact.title})`);
       }
     }
 
@@ -524,15 +612,15 @@ Deno.serve(async (req) => {
         contacts_found: allContacts.length,
         contacts_inserted: insertedContacts.length,
         deal_team_found: dealTeamFound,
-        contacts: insertedContacts,
         pages_scraped: scrapedPages,
+        email_pattern: emailPattern,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error('Error finding contacts:', error);
+    console.error('Error in find-buyer-contacts:', error);
     return new Response(
-      JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Failed to find contacts' }),
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
