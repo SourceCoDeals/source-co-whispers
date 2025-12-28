@@ -19,6 +19,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { AddContactDialog } from "@/components/AddContactDialog";
 import { ContactsSummarySection } from "@/components/ContactsSummarySection";
 import { cn } from "@/lib/utils";
+import { normalizeDomain } from "@/lib/normalizeDomain";
 
 interface CategoryScore {
   score: number;
@@ -53,6 +54,8 @@ export default function DealMatching() {
   const [scores, setScores] = useState<any[]>([]);
   const [buyerScores, setBuyerScores] = useState<Map<string, BuyerScore>>(new Map());
   const [contacts, setContacts] = useState<Record<string, any[]>>({});
+  const [peFirmContacts, setPeFirmContacts] = useState<any[]>([]);
+  const [platformContacts, setPlatformContacts] = useState<any[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [isScoringLoading, setIsScoringLoading] = useState(false);
@@ -75,17 +78,78 @@ export default function DealMatching() {
       const { data: buyersData } = await supabase.from("buyers").select("*").eq("tracker_id", dealData.tracker_id);
       setBuyers(buyersData || []);
       
-      // Fetch contacts for all buyers
+      // Fetch contacts from all 3 tables
       const buyerIds = (buyersData || []).map(b => b.id);
+      const contactsByBuyer: Record<string, any[]> = {};
+      
+      // 1. Fetch buyer_contacts (legacy table)
       if (buyerIds.length > 0) {
-        const { data: contactsData } = await supabase.from("buyer_contacts").select("*").in("buyer_id", buyerIds);
-        const contactsByBuyer: Record<string, any[]> = {};
-        (contactsData || []).forEach(c => {
+        const { data: buyerContactsData } = await supabase.from("buyer_contacts").select("*").in("buyer_id", buyerIds);
+        (buyerContactsData || []).forEach(c => {
           if (!contactsByBuyer[c.buyer_id]) contactsByBuyer[c.buyer_id] = [];
-          contactsByBuyer[c.buyer_id].push(c);
+          contactsByBuyer[c.buyer_id].push({ ...c, _source: 'buyer_contacts' });
         });
-        setContacts(contactsByBuyer);
       }
+      
+      // 2. Fetch pe_firm_contacts and platform_contacts
+      const { data: peFirmContactsData } = await supabase.from("pe_firm_contacts").select("*, pe_firms(id, name, domain, website)");
+      const { data: platformContactsData } = await supabase.from("platform_contacts").select("*, platforms(id, name, domain, website, pe_firm_id)");
+      
+      setPeFirmContacts(peFirmContactsData || []);
+      setPlatformContacts(platformContactsData || []);
+      
+      // 3. Match pe_firm_contacts and platform_contacts to buyers by domain
+      for (const buyer of (buyersData || [])) {
+        if (!contactsByBuyer[buyer.id]) contactsByBuyer[buyer.id] = [];
+        
+        // Match PE firm contacts by website domain
+        if (buyer.pe_firm_website) {
+          const buyerPeDomain = normalizeDomain(buyer.pe_firm_website);
+          const matchedPeContacts = (peFirmContactsData || []).filter(c => {
+            const peDomain = c.pe_firms?.domain || normalizeDomain(c.pe_firms?.website || '');
+            return peDomain && buyerPeDomain && peDomain === buyerPeDomain;
+          });
+          for (const c of matchedPeContacts) {
+            // Check if this contact is already in the list (by name)
+            const exists = contactsByBuyer[buyer.id].some(existing => 
+              existing.name?.toLowerCase() === c.name?.toLowerCase()
+            );
+            if (!exists) {
+              contactsByBuyer[buyer.id].push({
+                ...c,
+                company_type: 'PE Firm',
+                _source: 'pe_firm_contacts',
+                _pe_firm_name: c.pe_firms?.name
+              });
+            }
+          }
+        }
+        
+        // Match platform contacts by website domain
+        if (buyer.platform_website) {
+          const buyerPlatformDomain = normalizeDomain(buyer.platform_website);
+          const matchedPlatformContacts = (platformContactsData || []).filter(c => {
+            const platformDomain = c.platforms?.domain || normalizeDomain(c.platforms?.website || '');
+            return platformDomain && buyerPlatformDomain && platformDomain === buyerPlatformDomain;
+          });
+          for (const c of matchedPlatformContacts) {
+            // Check if this contact is already in the list (by name)
+            const exists = contactsByBuyer[buyer.id].some(existing => 
+              existing.name?.toLowerCase() === c.name?.toLowerCase()
+            );
+            if (!exists) {
+              contactsByBuyer[buyer.id].push({
+                ...c,
+                company_type: 'Platform',
+                _source: 'platform_contacts',
+                _platform_name: c.platforms?.name
+              });
+            }
+          }
+        }
+      }
+      
+      setContacts(contactsByBuyer);
       
       // Get AI-powered scores from new edge function
       setIsScoringLoading(true);

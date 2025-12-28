@@ -297,17 +297,17 @@ async function extractContactsWithAI(
 
   const roleContext = isPEFirm
     ? `Focus on finding ALL team members on this page, including:
-1. Managing Partners, Partners, Managing Directors, Directors (highest priority)
+1. Managing Partners, Partners, Managing Directors, Directors (executive level)
 2. Deal team members specifically assigned to ${platformCompanyName || 'portfolio companies'}
 3. Business Development team members
-4. Principals, Vice Presidents, Associates, Senior Associates, Analysts
+4. Principals, Vice Presidents (VP), Associates, Senior Associates, Analysts (TARGET ROLES - most responsive)
 5. Operating Partners, Advisors, Senior Advisors
 
 IMPORTANT: Extract EVERY person listed on the team page, not just a few. Look for the complete roster.`
     : `Focus on finding ALL executives and relevant contacts on this page, including:
-1. CFO, CEO, COO, CMO, and other C-suite executives (highest priority)
-2. Anyone with Corporate Development, M&A, or Strategy in their title
-3. VP/Director/Head of Business Development
+1. CFO, CEO, COO, CMO, and other C-suite executives
+2. Anyone with Corporate Development, M&A, or Strategy in their title (TARGET ROLES)
+3. VP/Director/Head of Business Development (TARGET ROLES)
 4. General Managers, Regional Directors
 5. Any other executives or leadership team members
 
@@ -327,6 +327,14 @@ For each contact found, extract:
 
 Also try to identify the company's email pattern if you see any emails (e.g., "firstname.lastname@company.com" or "first@company.com").
 
+ROLE CATEGORIZATION RULES (CRITICAL - follow exactly):
+- "junior_investment": VP, Vice President, Principal, Associate, Senior Associate, Analyst, Investment Professional (these are TARGET roles, most likely to respond)
+- "business_dev": Business Development, BD, Partnerships, Strategic Partnerships titles
+- "corp_dev": Corporate Development, M&A, Strategy, Acquisitions titles
+- "deal_team": Anyone explicitly assigned to a specific portfolio company or deal
+- "executive": Managing Partner, Partner, Managing Director, Director, CEO, CFO, COO, C-suite (senior executives are less responsive)
+- "other": Admin, Marketing, HR, Legal, or unclear roles
+
 Return a JSON object with this structure:
 {
   "contacts": [
@@ -337,7 +345,7 @@ Return a JSON object with this structure:
       "linkedin_url": "https://linkedin.com/in/..." or null,
       "bio_url": "https://company.com/team/name" or null,
       "is_deal_team": true/false,
-      "role_category": "deal_team" | "business_dev" | "junior_investment" | "corp_dev" | "executive" | "other"
+      "role_category": "junior_investment" | "business_dev" | "corp_dev" | "deal_team" | "executive" | "other"
     }
   ],
   "deal_team_found": true/false,
@@ -349,6 +357,7 @@ IMPORTANT:
 - Only include contacts that are clearly real people with both name and title
 - Do NOT make up any information - only extract what is explicitly shown
 - If you see 10 people on the page, return 10 contacts
+- Use the role_category rules EXACTLY as specified above
 
 Website content:
 ${content.slice(0, 20000)}`;
@@ -467,20 +476,55 @@ Deno.serve(async (req) => {
 
       // Insert into pe_firm_contacts
       let insertedCount = 0;
+      // Find email pattern from any discovered emails
+      let emailPattern: string | undefined;
+      for (const c of allContacts) {
+        if (c.email) {
+          const match = c.email.match(/^([a-z]+)\.([a-z]+)@(.+)$/i);
+          if (match) {
+            emailPattern = `{first}.{last}@${match[3]}`;
+            break;
+          }
+          const match2 = c.email.match(/^([a-z]+)@(.+)$/i);
+          if (match2) {
+            emailPattern = `{first}@${match2[2]}`;
+            break;
+          }
+        }
+      }
+      
       for (const contact of allContacts) {
         const { data: existing } = await supabase.from('pe_firm_contacts').select('id').eq('pe_firm_id', peFirmId).eq('name', contact.name).single();
         if (existing) continue;
         
-        const priority = contact.is_deal_team ? 1 : ['junior_investment', 'business_dev'].includes(contact.role_category) ? 2 : contact.role_category === 'executive' ? 4 : 3;
+        // Infer email if we have a pattern
+        let email = contact.email || null;
+        let emailConfidence = contact.email ? 'verified' : null;
+        if (!email && emailPattern && contact.name) {
+          const nameParts = contact.name.trim().split(/\s+/);
+          if (nameParts.length >= 2) {
+            const first = nameParts[0].toLowerCase();
+            const last = nameParts[nameParts.length - 1].toLowerCase();
+            email = emailPattern.replace('{first}', first).replace('{last}', last);
+            emailConfidence = 'inferred';
+          }
+        }
+        
+        // Priority: 1=deal_team, 2=junior_investment/business_dev/corp_dev (target), 3=other, 4=executive
+        const priority = contact.is_deal_team ? 1 : 
+          ['junior_investment', 'business_dev', 'corp_dev'].includes(contact.role_category) ? 2 : 
+          contact.role_category === 'executive' ? 4 : 3;
+        
         const { error } = await supabase.from('pe_firm_contacts').insert({
-          pe_firm_id: peFirmId, name: contact.name, title: contact.title, email: contact.email || null,
+          pe_firm_id: peFirmId, name: contact.name, title: contact.title, email: email,
+          email_confidence: emailConfidence,
           linkedin_url: contact.linkedin_url || null, role_category: contact.role_category || 'other',
           priority_level: priority, source: 'website', source_url: contact.source_url
         });
         if (!error) insertedCount++;
       }
 
-      return new Response(JSON.stringify({ success: true, contacts_found: allContacts.length, contacts_inserted: insertedCount, pages_scraped: scrapedPages }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ success: true, contacts_found: allContacts.length, contacts_inserted: insertedCount, pages_scraped: scrapedPages, email_pattern: emailPattern }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // Handle Platform mode - store in platform_contacts
@@ -499,22 +543,57 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Find email pattern from any discovered emails
+      let emailPattern: string | undefined;
+      for (const c of allContacts) {
+        if (c.email) {
+          const match = c.email.match(/^([a-z]+)\.([a-z]+)@(.+)$/i);
+          if (match) {
+            emailPattern = `{first}.{last}@${match[3]}`;
+            break;
+          }
+          const match2 = c.email.match(/^([a-z]+)@(.+)$/i);
+          if (match2) {
+            emailPattern = `{first}@${match2[2]}`;
+            break;
+          }
+        }
+      }
+      
       // Insert into platform_contacts
       let insertedCount = 0;
       for (const contact of allContacts) {
         const { data: existing } = await supabase.from('platform_contacts').select('id').eq('platform_id', platformId).eq('name', contact.name).single();
         if (existing) continue;
         
-        const priority = contact.is_deal_team ? 1 : ['junior_investment', 'business_dev'].includes(contact.role_category) ? 2 : contact.role_category === 'executive' ? 4 : 3;
+        // Infer email if we have a pattern
+        let email = contact.email || null;
+        let emailConfidence = contact.email ? 'verified' : null;
+        if (!email && emailPattern && contact.name) {
+          const nameParts = contact.name.trim().split(/\s+/);
+          if (nameParts.length >= 2) {
+            const first = nameParts[0].toLowerCase();
+            const last = nameParts[nameParts.length - 1].toLowerCase();
+            email = emailPattern.replace('{first}', first).replace('{last}', last);
+            emailConfidence = 'inferred';
+          }
+        }
+        
+        // Priority: 1=deal_team, 2=junior_investment/business_dev/corp_dev (target), 3=other, 4=executive
+        const priority = contact.is_deal_team ? 1 : 
+          ['junior_investment', 'business_dev', 'corp_dev'].includes(contact.role_category) ? 2 : 
+          contact.role_category === 'executive' ? 4 : 3;
+        
         const { error } = await supabase.from('platform_contacts').insert({
-          platform_id: platformId, name: contact.name, title: contact.title, email: contact.email || null,
+          platform_id: platformId, name: contact.name, title: contact.title, email: email,
+          email_confidence: emailConfidence,
           linkedin_url: contact.linkedin_url || null, role_category: contact.role_category || 'other',
           priority_level: priority, source: 'website', source_url: contact.source_url
         });
         if (!error) insertedCount++;
       }
 
-      return new Response(JSON.stringify({ success: true, contacts_found: allContacts.length, contacts_inserted: insertedCount, pages_scraped: scrapedPages }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ success: true, contacts_found: allContacts.length, contacts_inserted: insertedCount, pages_scraped: scrapedPages, email_pattern: emailPattern }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // Legacy buyer mode - keep existing behavior for backwards compatibility
@@ -654,10 +733,22 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Determine priority: 1=deal team, 2=business dev/corp dev, 3=junior investment, 4=executive, 3=other
+      // Infer email if we have a pattern
+      let email = contact.email || null;
+      let emailConfidence = contact.email ? 'verified' : null;
+      if (!email && emailPattern && contact.name) {
+        const nameParts = contact.name.trim().split(/\s+/);
+        if (nameParts.length >= 2) {
+          const first = nameParts[0].toLowerCase();
+          const last = nameParts[nameParts.length - 1].toLowerCase();
+          email = emailPattern.replace('{first}', first).replace('{last}', last);
+          emailConfidence = 'inferred';
+        }
+      }
+      
+      // Priority: 1=deal_team, 2=junior_investment/business_dev/corp_dev (target), 3=other, 4=executive
       const priority = contact.is_deal_team ? 1 : 
-        ['business_dev', 'corp_dev'].includes(contact.role_category) ? 2 :
-        contact.role_category === 'junior_investment' ? 3 :
+        ['junior_investment', 'business_dev', 'corp_dev'].includes(contact.role_category) ? 2 :
         contact.role_category === 'executive' ? 4 : 3;
       
       const { data: inserted, error: insertError } = await supabase
@@ -666,7 +757,8 @@ Deno.serve(async (req) => {
           buyer_id: buyerId,
           name: contact.name,
           title: contact.title,
-          email: contact.email || null,
+          email: email,
+          email_confidence: emailConfidence,
           linkedin_url: contact.linkedin_url || null,
           company_type: contact.company_type,
           is_deal_team: contact.is_deal_team || false,
@@ -682,7 +774,7 @@ Deno.serve(async (req) => {
         console.error(`Failed to insert contact ${contact.name}:`, insertError.message);
       } else {
         insertedContacts.push(inserted);
-        console.log(`Inserted contact: ${contact.name} (${contact.title})`);
+        console.log(`Inserted contact: ${contact.name} (${contact.title}) - email: ${email || 'none'} (${emailConfidence || 'n/a'})`);
       }
     }
 
