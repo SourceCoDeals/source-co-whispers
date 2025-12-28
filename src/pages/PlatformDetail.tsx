@@ -5,7 +5,8 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BuyerDataSection, DataField, DataListField, DataGrid } from "@/components/BuyerDataSection";
-import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, BarChart3, Target, Globe, Linkedin, Sparkles, DollarSign, TrendingUp, FileCheck } from "lucide-react";
+import { ContactsTable } from "@/components/ContactsTable";
+import { Loader2, ArrowLeft, Edit, ExternalLink, Building2, MapPin, BarChart3, Target, Globe, Linkedin, Sparkles, DollarSign, TrendingUp, FileCheck, Users } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
@@ -54,16 +55,33 @@ interface PEFirm {
   has_fee_agreement: boolean | null;
 }
 
+interface Contact {
+  id: string;
+  name: string;
+  title: string | null;
+  email: string | null;
+  phone: string | null;
+  linkedin_url: string | null;
+  role_category: string | null;
+  priority_level: number | null;
+  is_primary_contact: boolean | null;
+  source: string | null;
+  created_at: string;
+}
+
 export default function PlatformDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [platform, setPlatform] = useState<Platform | null>(null);
   const [peFirm, setPeFirm] = useState<PEFirm | null>(null);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [peFirmContacts, setPeFirmContacts] = useState<Contact[]>([]);
   const [trackerNames, setTrackerNames] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editData, setEditData] = useState<Partial<Platform>>({});
+  const [isDiscovering, setIsDiscovering] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -94,6 +112,26 @@ export default function PlatformDetail() {
 
     setPeFirm(peFirmData);
 
+    // Load platform contacts
+    const { data: platformContactsData } = await supabase
+      .from("platform_contacts")
+      .select("*")
+      .eq("platform_id", id)
+      .order("priority_level", { ascending: true });
+
+    setContacts(platformContactsData || []);
+
+    // Load PE firm contacts if we have a PE firm
+    if (peFirmData) {
+      const { data: peFirmContactsData } = await supabase
+        .from("pe_firm_contacts")
+        .select("*")
+        .eq("pe_firm_id", peFirmData.id)
+        .order("priority_level", { ascending: true });
+
+      setPeFirmContacts(peFirmContactsData || []);
+    }
+
     // Load tracker names via tracker_buyers junction
     const { data: trackerBuyers } = await supabase
       .from("tracker_buyers")
@@ -111,6 +149,36 @@ export default function PlatformDetail() {
     }
 
     setIsLoading(false);
+  };
+
+  const handleDiscoverContacts = async () => {
+    if (!platform?.website) {
+      toast({ title: "No website", description: "Platform needs a website to discover contacts", variant: "destructive" });
+      return;
+    }
+    
+    setIsDiscovering(true);
+    toast({ title: "Finding contacts...", description: `Scanning ${platform.name} website` });
+
+    const { data, error } = await supabase.functions.invoke('find-buyer-contacts', {
+      body: { 
+        platformId: id,
+        platformWebsite: platform.website,
+        platformName: platform.name
+      }
+    });
+
+    setIsDiscovering(false);
+
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else if (data?.success) {
+      toast({ 
+        title: `Found ${data.contacts_found} contacts`, 
+        description: `Added ${data.contacts_inserted} new contacts`
+      });
+      loadData();
+    }
   };
 
   const saveChanges = async () => {
@@ -453,12 +521,64 @@ export default function PlatformDetail() {
         </div>
 
         {/* Main Content */}
-        <Tabs defaultValue="overview" className="space-y-4">
+        <Tabs defaultValue="contacts" className="space-y-4">
           <TabsList>
+            <TabsTrigger value="contacts">
+              <Users className="w-4 h-4 mr-2" />
+              Contacts ({contacts.length})
+            </TabsTrigger>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="criteria">Investment Criteria</TabsTrigger>
             <TabsTrigger value="pe-firm">PE Firm</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="contacts" className="space-y-6">
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Platform Contacts</h3>
+              <ContactsTable
+                contacts={contacts}
+                entityType="platform"
+                entityId={platform.id}
+                entityName={platform.name}
+                onContactsChange={loadData}
+                showDiscoverButton={!!platform.website}
+                onDiscover={handleDiscoverContacts}
+                isDiscovering={isDiscovering}
+              />
+            </div>
+            
+            {peFirmContacts.length > 0 && (
+              <div className="space-y-2 pt-4 border-t">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                    PE Firm Contacts ({peFirm?.name})
+                  </h3>
+                  {peFirm && (
+                    <Link to={`/pe-firms/${peFirm.id}`}>
+                      <Button variant="ghost" size="sm" className="text-xs">
+                        View All PE Firm Contacts →
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+                <div className="text-sm text-muted-foreground bg-muted/30 rounded-lg p-4">
+                  <p className="mb-3">These contacts are from the parent PE firm and may be relevant for outreach.</p>
+                  <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                    {peFirmContacts.slice(0, 6).map((contact) => (
+                      <div key={contact.id} className="flex items-center gap-2 bg-background rounded p-2 text-sm">
+                        <span className={`w-2 h-2 rounded-full ${contact.priority_level && contact.priority_level <= 2 ? 'bg-green-500' : 'bg-muted-foreground'}`} />
+                        <span className="font-medium truncate">{contact.name}</span>
+                        {contact.title && <span className="text-muted-foreground text-xs truncate">• {contact.title}</span>}
+                      </div>
+                    ))}
+                  </div>
+                  {peFirmContacts.length > 6 && (
+                    <p className="text-xs text-muted-foreground mt-2">+{peFirmContacts.length - 6} more contacts</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </TabsContent>
 
           <TabsContent value="overview" className="space-y-4">
             <BuyerDataSection title="Business Overview" icon={<Building2 className="w-4 h-4" />}>
@@ -508,13 +628,23 @@ export default function PlatformDetail() {
 
           <TabsContent value="pe-firm" className="space-y-4">
             {peFirm && (
-              <BuyerDataSection title="PE Firm Details" icon={<Building2 className="w-4 h-4" />}>
-                <DataGrid>
-                  <DataField label="Firm Name" value={peFirm.name} />
-                  <DataField label="Location" value={[peFirm.hq_city, peFirm.hq_state, peFirm.hq_country].filter(Boolean).join(", ")} />
-                  <DataField label="Website" value={peFirm.website} type="url" />
-                </DataGrid>
-              </BuyerDataSection>
+              <>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">{peFirm.name}</h3>
+                  <Link to={`/pe-firms/${peFirm.id}`}>
+                    <Button variant="outline" size="sm">
+                      View PE Firm Profile →
+                    </Button>
+                  </Link>
+                </div>
+                <BuyerDataSection title="PE Firm Details" icon={<Building2 className="w-4 h-4" />}>
+                  <DataGrid>
+                    <DataField label="Firm Name" value={peFirm.name} />
+                    <DataField label="Location" value={[peFirm.hq_city, peFirm.hq_state, peFirm.hq_country].filter(Boolean).join(", ")} />
+                    <DataField label="Website" value={peFirm.website} type="url" />
+                  </DataGrid>
+                </BuyerDataSection>
+              </>
             )}
           </TabsContent>
         </Tabs>

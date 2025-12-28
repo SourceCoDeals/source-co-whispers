@@ -1177,6 +1177,65 @@ export type Database = {
           },
         ]
       }
+      pe_firm_contacts: {
+        Row: {
+          created_at: string
+          email: string | null
+          email_confidence: string | null
+          id: string
+          is_primary_contact: boolean | null
+          linkedin_url: string | null
+          name: string
+          pe_firm_id: string
+          phone: string | null
+          priority_level: number | null
+          role_category: string | null
+          source: string | null
+          source_url: string | null
+          title: string | null
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          email_confidence?: string | null
+          id?: string
+          is_primary_contact?: boolean | null
+          linkedin_url?: string | null
+          name: string
+          pe_firm_id: string
+          phone?: string | null
+          priority_level?: number | null
+          role_category?: string | null
+          source?: string | null
+          source_url?: string | null
+          title?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          email_confidence?: string | null
+          id?: string
+          is_primary_contact?: boolean | null
+          linkedin_url?: string | null
+          name?: string
+          pe_firm_id?: string
+          phone?: string | null
+          priority_level?: number | null
+          role_category?: string | null
+          source?: string | null
+          source_url?: string | null
+          title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pe_firm_contacts_pe_firm_id_fkey"
+            columns: ["pe_firm_id"]
+            isOneToOne: false
+            referencedRelation: "pe_firms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pe_firms: {
         Row: {
           created_at: string
@@ -1230,6 +1289,65 @@ export type Database = {
           website?: string | null
         }
         Relationships: []
+      }
+      platform_contacts: {
+        Row: {
+          created_at: string
+          email: string | null
+          email_confidence: string | null
+          id: string
+          is_primary_contact: boolean | null
+          linkedin_url: string | null
+          name: string
+          phone: string | null
+          platform_id: string
+          priority_level: number | null
+          role_category: string | null
+          source: string | null
+          source_url: string | null
+          title: string | null
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          email_confidence?: string | null
+          id?: string
+          is_primary_contact?: boolean | null
+          linkedin_url?: string | null
+          name: string
+          phone?: string | null
+          platform_id: string
+          priority_level?: number | null
+          role_category?: string | null
+          source?: string | null
+          source_url?: string | null
+          title?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          email_confidence?: string | null
+          id?: string
+          is_primary_contact?: boolean | null
+          linkedin_url?: string | null
+          name?: string
+          phone?: string | null
+          platform_id?: string
+          priority_level?: number | null
+          role_category?: string | null
+          source?: string | null
+          source_url?: string | null
+          title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_contacts_platform_id_fkey"
+            columns: ["platform_id"]
+            isOneToOne: false
+            referencedRelation: "platforms"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       platforms: {
         Row: {

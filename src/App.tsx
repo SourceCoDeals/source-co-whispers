@@ -11,6 +11,7 @@ import TrackerDetail from "./pages/TrackerDetail";
 import NewTracker from "./pages/NewTracker";
 import BuyerDetail from "./pages/BuyerDetail";
 import PlatformDetail from "./pages/PlatformDetail";
+import PEFirmDetail from "./pages/PEFirmDetail";
 import DealDetail from "./pages/DealDetail";
 import NewDeal from "./pages/NewDeal";
 import DealMatching from "./pages/DealMatching";
@@ -36,6 +37,7 @@ const App = () => (
           <Route path="/buyers" element={<ProtectedRoute><AllBuyers /></ProtectedRoute>} />
           <Route path="/buyers/:id" element={<ProtectedRoute><BuyerDetail /></ProtectedRoute>} />
           <Route path="/platforms/:id" element={<ProtectedRoute><PlatformDetail /></ProtectedRoute>} />
+          <Route path="/pe-firms/:id" element={<ProtectedRoute><PEFirmDetail /></ProtectedRoute>} />
           <Route path="/deals" element={<ProtectedRoute><AllDeals /></ProtectedRoute>} />
           <Route path="/trackers/:trackerId/deals/new" element={<ProtectedRoute><NewDeal /></ProtectedRoute>} />
           <Route path="/deals/:id" element={<ProtectedRoute><DealDetail /></ProtectedRoute>} />
