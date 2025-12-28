@@ -71,3 +71,6 @@ verify_jwt = true
 
 [functions.query-tracker-universe]
 verify_jwt = true
+
+[functions.dedupe-buyers]
+verify_jwt = true
