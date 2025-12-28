@@ -654,6 +654,12 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // Determine priority: 1=deal team, 2=business dev/corp dev, 3=junior investment, 4=executive, 3=other
+      const priority = contact.is_deal_team ? 1 : 
+        ['business_dev', 'corp_dev'].includes(contact.role_category) ? 2 :
+        contact.role_category === 'junior_investment' ? 3 :
+        contact.role_category === 'executive' ? 4 : 3;
+      
       const { data: inserted, error: insertError } = await supabase
         .from('buyer_contacts')
         .insert({
@@ -667,7 +673,7 @@ Deno.serve(async (req) => {
           role_category: contact.role_category || 'other',
           source: 'website',
           source_url: contact.source_url,
-          priority_level: contact.is_deal_team ? 1 : (contact.role_category === 'executive' ? 2 : 5),
+          priority_level: priority,
         })
         .select()
         .single();

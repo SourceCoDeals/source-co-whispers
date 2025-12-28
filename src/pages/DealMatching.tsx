@@ -17,6 +17,7 @@ import { PassReasonDialog } from "@/components/PassReasonDialog";
 import { BuyerQueryChat } from "@/components/BuyerQueryChat";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { AddContactDialog } from "@/components/AddContactDialog";
+import { ContactsSummarySection } from "@/components/ContactsSummarySection";
 import { cn } from "@/lib/utils";
 
 interface CategoryScore {
@@ -965,17 +966,44 @@ export default function DealMatching() {
             </div>
             
             <CollapsibleContent className="mt-4 pl-0 space-y-4">
-              {/* Contacts Section - Only shown in Approved tab */}
+              {/* Contacts Section - Compact Summary */}
               {showContacts && (
-                <div className="border rounded-lg p-4 space-y-4 bg-muted/20">
-                  <h4 className="text-sm font-semibold flex items-center gap-2">
-                    <User className="w-4 h-4" /> Contacts
-                  </h4>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    {renderContactSection(buyer, "PE Firm", buyer.pe_firm_name)}
-                    {buyer.platform_company_name && renderContactSection(buyer, "Platform", buyer.platform_company_name)}
-                  </div>
-                </div>
+                <ContactsSummarySection
+                  buyerId={buyer.id}
+                  peFirmName={buyer.pe_firm_name}
+                  platformCompanyName={buyer.platform_company_name}
+                  peFirmContacts={getContactsByType(buyer.id, "PE Firm")}
+                  platformContacts={getContactsByType(buyer.id, "Platform")}
+                  onFindContacts={(companyType) => {
+                    const searchKey = `${buyer.id}-${companyType}`;
+                    setFindingContacts(prev => new Set(prev).add(searchKey));
+                    supabase.functions.invoke('find-buyer-contacts', {
+                      body: { 
+                        buyerId: buyer.id, 
+                        platformCompanyName: buyer.platform_company_name,
+                        dealId: id 
+                      }
+                    }).then(({ data, error }) => {
+                      setFindingContacts(prev => {
+                        const newSet = new Set(prev);
+                        newSet.delete(searchKey);
+                        return newSet;
+                      });
+                      if (error) {
+                        toast({ title: "Error", description: error.message, variant: "destructive" });
+                      } else if (data?.success) {
+                        toast({ 
+                          title: `Found ${data.contacts_found} contacts`, 
+                          description: `Added ${data.contacts_inserted} new contacts`
+                        });
+                        loadData();
+                      }
+                    });
+                  }}
+                  onContactAdded={loadData}
+                  isFinding={findingContacts.has(`${buyer.id}-PE Firm`) || findingContacts.has(`${buyer.id}-Platform`)}
+                  findingType={findingContacts.has(`${buyer.id}-PE Firm`) ? "PE Firm" : findingContacts.has(`${buyer.id}-Platform`) ? "Platform" : undefined}
+                />
               )}
               
               {/* Pass reason if buyer passed */}
