@@ -5,7 +5,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, Loader2, FileSpreadsheet, Sparkles, ArrowRight, ArrowLeft } from "lucide-react";
-import type { TablesInsert } from "@/integrations/supabase/types";
+import type { TablesInsert, Tables } from "@/integrations/supabase/types";
+import { normalizeDomain } from "@/lib/normalizeDomain";
 
 interface CSVImportProps {
   trackerId: string;
@@ -125,7 +126,8 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
     setIsLoading(true);
 
     try {
-      const buyersToInsert: TablesInsert<'buyers'>[] = rows.map((row) => {
+      // Parse all rows into buyer objects
+      const parsedBuyers: Partial<TablesInsert<'buyers'>>[] = rows.map((row) => {
         const buyer: Partial<TablesInsert<'buyers'>> = {
           tracker_id: trackerId,
           pe_firm_name: 'Unknown PE', // Required field default
@@ -144,29 +146,93 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
                 buyer.hq_city = parts[0];
                 buyer.hq_state = parts[parts.length - 1]; // Take last part as state
               } else {
-                // No comma, treat as city
                 buyer.hq_city = value;
               }
             } else {
-              // All other basic fields are strings
               const field = fieldValue as keyof TablesInsert<'buyers'>;
               (buyer as any)[field] = value;
             }
           }
         });
         
-        return buyer as TablesInsert<'buyers'>;
+        return buyer;
       }).filter(b => b.platform_company_name || b.pe_firm_name !== 'Unknown PE');
 
-      if (buyersToInsert.length === 0) {
+      if (parsedBuyers.length === 0) {
         throw new Error('No valid buyers found. Make sure at least PE Firm or Platform Company is mapped.');
       }
 
-      const { error } = await supabase.from("buyers").insert(buyersToInsert);
+      // Fetch existing buyers in this tracker for duplicate detection
+      const { data: existingBuyers } = await supabase
+        .from("buyers")
+        .select("id, platform_company_name, platform_website, pe_firm_name")
+        .eq("tracker_id", trackerId);
+
+      // Build lookup maps for duplicate detection
+      const existingByPlatformName = new Map<string, Tables<'buyers'>>();
+      const existingByDomain = new Map<string, Tables<'buyers'>>();
       
-      if (error) throw error;
+      existingBuyers?.forEach(buyer => {
+        if (buyer.platform_company_name) {
+          existingByPlatformName.set(buyer.platform_company_name.toLowerCase().trim(), buyer as Tables<'buyers'>);
+        }
+        if (buyer.platform_website) {
+          const domain = normalizeDomain(buyer.platform_website);
+          if (domain) existingByDomain.set(domain, buyer as Tables<'buyers'>);
+        }
+      });
+
+      const toInsert: TablesInsert<'buyers'>[] = [];
+      const toMerge: { id: string; newPeFirmName: string }[] = [];
+
+      for (const buyer of parsedBuyers) {
+        // Check for existing buyer by platform name or website domain
+        let existingBuyer: Tables<'buyers'> | undefined;
+        
+        if (buyer.platform_company_name) {
+          existingBuyer = existingByPlatformName.get(buyer.platform_company_name.toLowerCase().trim());
+        }
+        if (!existingBuyer && buyer.platform_website) {
+          const domain = normalizeDomain(buyer.platform_website);
+          if (domain) existingBuyer = existingByDomain.get(domain);
+        }
+
+        if (existingBuyer) {
+          // Duplicate found - merge PE firm names if different
+          const newPeFirm = buyer.pe_firm_name?.trim();
+          const existingPeFirms = existingBuyer.pe_firm_name?.split('/').map(s => s.trim()) || [];
+          
+          if (newPeFirm && newPeFirm !== 'Unknown PE' && !existingPeFirms.some(pf => pf.toLowerCase() === newPeFirm.toLowerCase())) {
+            const combinedName = existingBuyer.pe_firm_name 
+              ? `${existingBuyer.pe_firm_name} / ${newPeFirm}`
+              : newPeFirm;
+            toMerge.push({ id: existingBuyer.id, newPeFirmName: combinedName });
+          }
+        } else {
+          // New buyer
+          toInsert.push(buyer as TablesInsert<'buyers'>);
+        }
+      }
+
+      // Insert new buyers
+      if (toInsert.length > 0) {
+        const { error: insertError } = await supabase.from("buyers").insert(toInsert);
+        if (insertError) throw insertError;
+      }
+
+      // Merge PE firms for duplicates
+      for (const merge of toMerge) {
+        await supabase
+          .from("buyers")
+          .update({ pe_firm_name: merge.newPeFirmName })
+          .eq("id", merge.id);
+      }
+
+      const message = toMerge.length > 0 
+        ? `${toInsert.length} new buyers imported, ${toMerge.length} existing buyers updated with additional PE firms.`
+        : `${toInsert.length} buyers imported.`;
       
-      toast({ title: "Import successful", description: `${buyersToInsert.length} buyers imported.` });
+      toast({ title: "Import successful", description: message });
       resetAndClose();
       onComplete();
     } catch (error: any) {
