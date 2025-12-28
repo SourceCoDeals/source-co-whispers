@@ -9,13 +9,14 @@ import { Switch } from "@/components/ui/switch";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
 import { EngagementSignalsBadge } from "@/components/EngagementSignalsBadge";
-import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle, XCircle, ThumbsUp, ThumbsDown, Eye, Trash2 } from "lucide-react";
+import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle, XCircle, ThumbsUp, ThumbsDown, Eye, Trash2, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PassReasonDialog } from "@/components/PassReasonDialog";
 import { BuyerQueryChat } from "@/components/BuyerQueryChat";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { AddContactDialog } from "@/components/AddContactDialog";
 import { cn } from "@/lib/utils";
 
 interface CategoryScore {
@@ -437,6 +438,8 @@ export default function DealMatching() {
   };
 
   const [findingContacts, setFindingContacts] = useState<Set<string>>(new Set());
+  const [contactSearchProgress, setContactSearchProgress] = useState<Record<string, string>>({});
+  const [lastScrapedPages, setLastScrapedPages] = useState<Record<string, string[]>>({});
 
   const renderContactSection = (buyer: any, companyType: string, companyName: string) => {
     const typeContacts = getContactsByType(buyer.id, companyType);
@@ -449,17 +452,28 @@ export default function DealMatching() {
     
     const hasContacts = sortedContacts.length > 0;
     const hasDealTeam = sortedContacts.some(c => c.is_deal_team);
-    const isSearching = findingContacts.has(`${buyer.id}-${companyType}`);
+    const searchKey = `${buyer.id}-${companyType}`;
+    const isSearching = findingContacts.has(searchKey);
+    const searchProgress = contactSearchProgress[searchKey] || '';
+    const scrapedPages = lastScrapedPages[searchKey] || [];
     
     const handleFindContacts = async (e: React.MouseEvent, useFallback = false) => {
       e.stopPropagation();
-      const searchKey = `${buyer.id}-${companyType}`;
       setFindingContacts(prev => new Set(prev).add(searchKey));
+      setContactSearchProgress(prev => ({ ...prev, [searchKey]: 'Mapping website...' }));
       
       toast({ 
         title: useFallback ? "Retrying with alternate pages..." : "Finding contacts...", 
         description: `Scanning ${companyName} website` 
       });
+      
+      // Simulate progress updates
+      setTimeout(() => {
+        setContactSearchProgress(prev => ({ ...prev, [searchKey]: 'Scraping team pages...' }));
+      }, 2000);
+      setTimeout(() => {
+        setContactSearchProgress(prev => ({ ...prev, [searchKey]: 'Extracting contacts with AI...' }));
+      }, 5000);
       
       const { data, error } = await supabase.functions.invoke('find-buyer-contacts', {
         body: { 
@@ -475,20 +489,30 @@ export default function DealMatching() {
         newSet.delete(searchKey);
         return newSet;
       });
+      setContactSearchProgress(prev => {
+        const newProgress = { ...prev };
+        delete newProgress[searchKey];
+        return newProgress;
+      });
       
       if (error) {
         toast({ title: "Error", description: error.message, variant: "destructive" });
       } else if (data?.success) {
+        // Store scraped pages for display
+        if (data.pages_scraped?.length > 0) {
+          setLastScrapedPages(prev => ({ ...prev, [searchKey]: data.pages_scraped }));
+        }
+        
         if (data.contacts_inserted === 0 && data.contacts_found === 0) {
           toast({ 
             title: "No contacts found", 
-            description: `Could not find contacts on ${companyName}. Try the retry button.`,
+            description: `Could not find contacts on ${companyName}. Try adding manually.`,
             variant: "destructive"
           });
         } else {
           toast({ 
-            title: "Contacts found", 
-            description: `Added ${data.contacts_inserted} new contacts from ${companyName} (${data.pages_scraped?.length || 0} pages scanned)`
+            title: `Found ${data.contacts_found} contacts`, 
+            description: `Added ${data.contacts_inserted} new contacts from ${data.pages_scraped?.length || 0} pages`
           });
         }
         loadData();
@@ -513,6 +537,24 @@ export default function DealMatching() {
             )}
           </span>
           <div className="flex items-center gap-1">
+            <AddContactDialog
+              buyerId={buyer.id}
+              onContactAdded={loadData}
+              existingContactsCount={sortedContacts.length}
+              peFirmName={companyType === 'PE Firm' ? companyName : buyer.pe_firm_name}
+              platformCompanyName={companyType === 'Platform' ? companyName : buyer.platform_company_name}
+              trigger={
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-7 text-xs"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  Add
+                </Button>
+              }
+            />
             <Button 
               variant="outline" 
               size="sm" 
@@ -527,13 +569,12 @@ export default function DealMatching() {
               )}
               {isSearching ? 'Searching...' : hasContacts ? 'Refresh' : 'Find Contacts'}
             </Button>
-            {hasContacts && sortedContacts.length < 3 && (
+            {hasContacts && sortedContacts.length < 5 && !isSearching && (
               <Button 
                 variant="ghost" 
                 size="sm" 
                 className="h-7 text-xs text-muted-foreground"
                 onClick={(e) => handleFindContacts(e, true)}
-                disabled={isSearching}
                 title="Try alternate pages to find more contacts"
               >
                 Retry
@@ -542,16 +583,31 @@ export default function DealMatching() {
           </div>
         </div>
         
-        {!hasContacts && !isSearching && (
-          <div className="text-xs text-muted-foreground italic py-2 px-3 bg-muted/30 rounded flex items-center justify-between">
-            <span>No contacts found yet. Click "Find Contacts" to scan the website.</span>
+        {/* Progress indicator during search */}
+        {isSearching && (
+          <div className="text-xs py-2 px-3 bg-primary/5 border border-primary/20 rounded flex items-center gap-2">
+            <Loader2 className="w-3 h-3 animate-spin text-primary" />
+            <span className="text-primary font-medium">{searchProgress || 'Scanning website...'}</span>
           </div>
         )}
         
-        {isSearching && !hasContacts && (
-          <div className="text-xs text-muted-foreground italic py-2 px-3 bg-muted/30 rounded flex items-center gap-2">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            <span>Scanning website for contacts...</span>
+        {/* Show last scraped pages if available and not currently searching */}
+        {!isSearching && scrapedPages.length > 0 && (
+          <div className="text-[10px] text-muted-foreground bg-muted/30 rounded px-2 py-1.5">
+            <span className="font-medium">Last scanned:</span>{' '}
+            {scrapedPages.slice(0, 3).map((url, i) => {
+              try {
+                const path = new URL(url).pathname;
+                return <span key={i}>{i > 0 && ', '}{path}</span>;
+              } catch { return null; }
+            })}
+            {scrapedPages.length > 3 && ` +${scrapedPages.length - 3} more`}
+          </div>
+        )}
+        
+        {!hasContacts && !isSearching && (
+          <div className="text-xs text-muted-foreground italic py-2 px-3 bg-muted/30 rounded flex items-center justify-between">
+            <span>No contacts found yet. Click "Find Contacts" or add manually.</span>
           </div>
         )}
         
