@@ -784,8 +784,20 @@ function validateQuality(content: string, industryName: string): QualityResult {
   score += hasBuyerTypes ? 4 : 0;
   score += hasPrimaryFocus ? 2 : 0;
   
+  const passed = score >= 70 && hasCriteria && hasBuyerTypes && missingElements.length <= 2;
+  
+  // Ensure issues array is populated when quality doesn't pass
+  if (!passed && issues.length === 0) {
+    if (score < 70) issues.push(`Quality score ${Math.round(score)}/100 below threshold of 70`);
+    if (!hasCriteria) issues.push("Missing required BUYER FIT CRITERIA section");
+    if (!hasBuyerTypes) issues.push("Missing required BUYER TYPES section");
+    if (missingElements.length > 2) issues.push(`Too many missing sections (${missingElements.length})`);
+  }
+  
+  console.log('[validateQuality] Result:', { passed, score: Math.round(score), issuesCount: issues.length, issues });
+  
   return {
-    passed: score >= 70 && hasCriteria && hasBuyerTypes && missingElements.length <= 2,
+    passed,
     score: Math.round(score),
     wordCount,
     sectionsFound,

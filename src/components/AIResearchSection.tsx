@@ -5,11 +5,12 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, ChevronDown, ChevronRight, Check, RotateCcw, DollarSign, MapPin, Users, Briefcase, Download, AlertTriangle, CheckCircle2, XCircle, Table2, FileText, Hash, Wand2 } from "lucide-react";
+import { Loader2, Sparkles, ChevronDown, ChevronRight, Check, RotateCcw, DollarSign, MapPin, Users, Briefcase, Download, AlertTriangle, CheckCircle2, XCircle, Table2, FileText, Hash, Wand2, ThumbsUp } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
 import { saveAs } from "file-saver";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 
 interface ExtractedCriteria {
@@ -76,6 +77,7 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
   const [isFixing, setIsFixing] = useState(false);
   const [fixingIssue, setFixingIssue] = useState<string>("");
   const [fixProgress, setFixProgress] = useState({ current: 0, total: 0 });
+  const [acceptedAnyway, setAcceptedAnyway] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -163,6 +165,7 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
                 setPhaseName("Quality Check");
                 break;
               case "quality_check_result":
+                console.log('[AIResearchSection] Quality check result:', parsed);
                 setQualityResult(parsed as QualityResult);
                 break;
               case "gap_fill_start":
@@ -175,6 +178,7 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
                 setGuideContent(fullContent);
                 break;
               case "final_quality":
+                console.log('[AIResearchSection] Final quality:', parsed);
                 setQualityResult(parsed as QualityResult);
                 break;
               case "criteria":
@@ -234,6 +238,7 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
                 setState("complete");
                 setOverallProgress(100);
                 if (parsed.quality) {
+                  console.log('[AIResearchSection] Complete quality:', parsed.quality);
                   setQualityResult(parsed.quality);
                 }
                 toast({ 
@@ -337,6 +342,16 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
     setIsFixing(false);
     setFixingIssue("");
     setFixProgress({ current: 0, total: 0 });
+    setAcceptedAnyway(false);
+  };
+
+  // Accept guide despite quality issues
+  const acceptAnyway = () => {
+    setAcceptedAnyway(true);
+    toast({ 
+      title: "Guide Accepted", 
+      description: "You've accepted the guide despite quality warnings. Criteria has been applied." 
+    });
   };
 
   // Fix specific issues using targeted gap-filling
@@ -741,15 +756,74 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
 
             {state === "complete" && (
               <div className="space-y-4">
+                {/* Prominent Alert Banner for Quality Issues */}
+                {qualityResult && !qualityResult.passed && !acceptedAnyway && (
+                  <Alert variant="destructive" className="border-yellow-500/50 bg-yellow-500/10">
+                    <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                    <AlertTitle className="text-yellow-700 dark:text-yellow-400">Quality Issues Detected</AlertTitle>
+                    <AlertDescription className="text-yellow-600 dark:text-yellow-300">
+                      {qualityResult.issues && qualityResult.issues.length > 0 ? (
+                        <div className="mt-2 space-y-1">
+                          {qualityResult.issues.slice(0, 5).map((issue, i) => (
+                            <div key={i} className="text-sm">• {issue}</div>
+                          ))}
+                          {qualityResult.issues.length > 5 && (
+                            <div className="text-sm text-muted-foreground">...and {qualityResult.issues.length - 5} more issues</div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-sm">
+                          Score: {qualityResult.score}/100 (requires 70+ to pass).
+                          {!qualityResult.hasCriteria && " Missing BUYER FIT CRITERIA section."}
+                          {!qualityResult.hasBuyerTypes && " Missing BUYER TYPES section."}
+                          {qualityResult.missingElements?.length > 0 && ` Missing: ${qualityResult.missingElements.join(', ')}`}
+                        </div>
+                      )}
+                      <div className="flex gap-2 mt-3">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={fixAllIssues}
+                          disabled={isFixing}
+                          className="gap-1 text-xs border-yellow-500/30 text-yellow-700 hover:bg-yellow-500/10"
+                        >
+                          {isFixing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+                          Fix All Issues
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={acceptAnyway}
+                          className="gap-1 text-xs text-yellow-700 hover:bg-yellow-500/10"
+                        >
+                          <ThumbsUp className="w-3 h-3" />
+                          Accept Anyway
+                        </Button>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Accepted Anyway Confirmation */}
+                {acceptedAnyway && !qualityResult?.passed && (
+                  <Alert className="border-green-500/50 bg-green-500/10">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <AlertTitle className="text-green-700 dark:text-green-400">Guide Accepted</AlertTitle>
+                    <AlertDescription className="text-green-600 dark:text-green-300 text-sm">
+                      You've accepted this guide despite quality warnings. The criteria has been applied.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    {qualityResult?.passed ? (
+                    {qualityResult?.passed || acceptedAnyway ? (
                       <CheckCircle2 className="w-5 h-5 text-green-600" />
                     ) : (
                       <AlertTriangle className="w-5 h-5 text-yellow-600" />
                     )}
                     <span className="font-medium">
-                      {qualityResult?.passed ? "M&A Guide Generated" : "Guide Generated (Quality Issues)"}
+                      {qualityResult?.passed ? "M&A Guide Generated" : acceptedAnyway ? "M&A Guide Accepted" : "Guide Generated (Quality Issues)"}
                     </span>
                   </div>
                   {qualityResult && (
@@ -807,12 +881,13 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
                   </div>
                 )}
 
-                {qualityResult?.issues && qualityResult.issues.length > 0 && (
+                {/* Detailed Issues List with Individual Fix Buttons */}
+                {qualityResult?.issues && qualityResult.issues.length > 0 && !acceptedAnyway && (
                   <div className="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-yellow-600 text-sm">
                         <AlertTriangle className="w-4 h-4" />
-                        Quality Issues ({qualityResult.issues.length})
+                        All Quality Issues ({qualityResult.issues.length})
                       </div>
                       <Button 
                         size="sm" 
@@ -960,17 +1035,28 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
                     <Download className="w-3 h-3" />
                     Download .docx
                   </Button>
-                  {qualityResult?.issues && qualityResult.issues.length > 0 && !qualityResult.passed && (
-                    <Button 
-                      variant="secondary" 
-                      size="sm" 
-                      onClick={fixAllIssues}
-                      disabled={isFixing}
-                      className="gap-1"
-                    >
-                      {isFixing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
-                      Fix Issues
-                    </Button>
+                  {qualityResult?.issues && qualityResult.issues.length > 0 && !qualityResult.passed && !acceptedAnyway && (
+                    <>
+                      <Button 
+                        variant="secondary" 
+                        size="sm" 
+                        onClick={fixAllIssues}
+                        disabled={isFixing}
+                        className="gap-1"
+                      >
+                        {isFixing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+                        Fix Issues
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={acceptAnyway}
+                        className="gap-1"
+                      >
+                        <ThumbsUp className="w-3 h-3" />
+                        Accept Anyway
+                      </Button>
+                    </>
                   )}
                   {extractedCriteria && (
                     <Button size="sm" onClick={applyExtracted} className="gap-1 ml-auto">
