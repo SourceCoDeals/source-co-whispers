@@ -82,6 +82,10 @@ export default function TrackerDetail() {
   const [dealSortColumn, setDealSortColumn] = useState<string>("deal_score");
   const [dealSortDirection, setDealSortDirection] = useState<"asc" | "desc">("desc");
   
+  // Buyer sorting state
+  const [buyerSortColumn, setBuyerSortColumn] = useState<string>("platform_company_name");
+  const [buyerSortDirection, setBuyerSortDirection] = useState<"asc" | "desc">("asc");
+  
   // Buyer highlighting state (from AI chat)
   const [highlightedBuyerIds, setHighlightedBuyerIds] = useState<Set<string>>(new Set());
   const [selectedBuyerIds, setSelectedBuyerIds] = useState<Set<string>>(new Set());
@@ -686,6 +690,42 @@ export default function TrackerDetail() {
       setDealSortDirection("desc");
     }
   };
+
+  // Buyer sorting handler
+  const handleBuyerSort = (column: string) => {
+    if (buyerSortColumn === column) {
+      setBuyerSortDirection(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setBuyerSortColumn(column);
+      setBuyerSortDirection("asc"); // Default to A-Z when changing columns
+    }
+  };
+
+  // Sorted buyers
+  const sortedBuyers = useMemo(() => {
+    return [...filteredBuyers].sort((a, b) => {
+      let aVal: string = "";
+      let bVal: string = "";
+      
+      switch (buyerSortColumn) {
+        case "platform_company_name":
+          aVal = (a.platform_company_name || a.pe_firm_name || "").toLowerCase();
+          bVal = (b.platform_company_name || b.pe_firm_name || "").toLowerCase();
+          break;
+        case "pe_firm_name":
+          aVal = (a.pe_firm_name || "").toLowerCase();
+          bVal = (b.pe_firm_name || "").toLowerCase();
+          break;
+        default:
+          aVal = (a.platform_company_name || a.pe_firm_name || "").toLowerCase();
+          bVal = (b.platform_company_name || b.pe_firm_name || "").toLowerCase();
+      }
+      
+      return buyerSortDirection === "asc" 
+        ? aVal.localeCompare(bVal) 
+        : bVal.localeCompare(aVal);
+    });
+  }, [filteredBuyers, buyerSortColumn, buyerSortDirection]);
 
   // Sorted deals
   const sortedAndFilteredDeals = useMemo(() => {
@@ -2029,21 +2069,41 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                     <TableRow className="bg-muted/50">
                       <TableHead className="w-[40px]">
                         <Checkbox 
-                          checked={selectedBuyerIds.size > 0 && selectedBuyerIds.size === filteredBuyers.length}
+                          checked={selectedBuyerIds.size > 0 && selectedBuyerIds.size === sortedBuyers.length}
                           onCheckedChange={(checked) => {
                             if (checked) {
-                              setSelectedBuyerIds(new Set(filteredBuyers.map(b => b.id)));
+                              setSelectedBuyerIds(new Set(sortedBuyers.map(b => b.id)));
                             } else {
                               setSelectedBuyerIds(new Set());
                             }
                           }}
                         />
                       </TableHead>
-                      <TableHead className="w-[220px]">
-                        <div className="flex items-center gap-1">Platform Company <ArrowUpDown className="w-3 h-3 text-muted-foreground" /></div>
+                      <TableHead 
+                        className="w-[220px] cursor-pointer hover:bg-muted/50 select-none"
+                        onClick={() => handleBuyerSort("platform_company_name")}
+                      >
+                        <div className="flex items-center gap-1">
+                          Platform Company 
+                          {buyerSortColumn === "platform_company_name" ? (
+                            buyerSortDirection === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-muted-foreground" />
+                          )}
+                        </div>
                       </TableHead>
-                      <TableHead className="w-[180px]">
-                        <div className="flex items-center gap-1">PE Firm <ArrowUpDown className="w-3 h-3 text-muted-foreground" /></div>
+                      <TableHead 
+                        className="w-[180px] cursor-pointer hover:bg-muted/50 select-none"
+                        onClick={() => handleBuyerSort("pe_firm_name")}
+                      >
+                        <div className="flex items-center gap-1">
+                          PE Firm 
+                          {buyerSortColumn === "pe_firm_name" ? (
+                            buyerSortDirection === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-muted-foreground" />
+                          )}
+                        </div>
                       </TableHead>
                       <TableHead className="w-[300px]">Description</TableHead>
                       <TableHead className="w-[120px] text-center">Intelligence</TableHead>
@@ -2051,7 +2111,7 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredBuyers.map((buyer) => {
+                    {sortedBuyers.map((buyer) => {
                       const isHighlighted = highlightedBuyerIds.has(buyer.id);
                       const isSelected = selectedBuyerIds.has(buyer.id);
                       return (
