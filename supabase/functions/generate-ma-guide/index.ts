@@ -877,6 +877,334 @@ CRITICAL: NO PLACEHOLDERS like [X], [List...], [Value] - use real, specific valu
 }
 
 // =============================================================================
+// FIX MODE HANDLER - Targeted fixes for specific issues
+// =============================================================================
+async function handleFixMode(
+  industryName: string, 
+  issues: string[], 
+  existingContent: string,
+  apiKey: string
+): Promise<Response> {
+  console.log(`[generate-ma-guide] Fix mode for issues:`, issues);
+  
+  const encoder = new TextEncoder();
+  
+  const stream = new ReadableStream({
+    async start(controller) {
+      const sendEvent = (data: object) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+      };
+
+      try {
+        sendEvent({ type: 'fix_start', issues });
+        
+        let additionalContent = "";
+        
+        for (let i = 0; i < issues.length; i++) {
+          const issue = issues[i];
+          console.log(`[generate-ma-guide] Fixing issue ${i + 1}/${issues.length}: ${issue}`);
+          
+          sendEvent({ 
+            type: 'fix_progress', 
+            current: i + 1, 
+            total: issues.length, 
+            issue 
+          });
+          
+          const fixPrompt = generateFixPrompt(issue, industryName, existingContent);
+          
+          try {
+            const response = await fetch(LOVABLE_AI_URL, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: 'google/gemini-2.5-flash',
+                messages: [
+                  { role: 'system', content: MASTER_SYSTEM_PROMPT },
+                  { role: 'user', content: fixPrompt }
+                ],
+                stream: false,
+              }),
+            });
+
+            if (response.status === 429) {
+              sendEvent({ type: 'fix_warning', message: 'Rate limited, waiting...' });
+              await new Promise(r => setTimeout(r, 5000));
+              continue;
+            }
+
+            if (response.status === 402) {
+              sendEvent({ type: 'error', message: 'AI credits exhausted. Please add credits.' });
+              controller.close();
+              return;
+            }
+
+            if (!response.ok) {
+              console.error(`[generate-ma-guide] Fix request failed:`, response.status);
+              sendEvent({ type: 'fix_warning', message: `Failed to fix: ${issue}` });
+              continue;
+            }
+
+            const data = await response.json();
+            const fixContent = data.choices?.[0]?.message?.content || "";
+            
+            if (fixContent) {
+              additionalContent += "\n\n" + fixContent;
+              sendEvent({ 
+                type: 'fix_content', 
+                content: "\n\n" + fixContent,
+                issue,
+                wordCount: fixContent.split(/\s+/).length
+              });
+            }
+            
+            // Small delay between fixes
+            if (i < issues.length - 1) {
+              await new Promise(r => setTimeout(r, 500));
+            }
+          } catch (error) {
+            console.error(`[generate-ma-guide] Fix error for ${issue}:`, error);
+            sendEvent({ type: 'fix_warning', message: `Error fixing: ${issue}` });
+          }
+        }
+        
+        // Re-validate with new content
+        const fullContent = existingContent + additionalContent;
+        const quality = validateQuality(fullContent, industryName);
+        
+        // Re-extract criteria
+        const extractedCriteria = await extractCriteriaWithAI(fullContent, apiKey);
+        
+        sendEvent({
+          type: 'fix_complete',
+          additionalContent,
+          quality,
+          criteria: extractedCriteria,
+          wordCount: fullContent.split(/\s+/).length
+        });
+        
+        sendEvent({ type: '[DONE]' });
+        controller.close();
+        
+      } catch (error) {
+        console.error('[generate-ma-guide] Fix mode error:', error);
+        sendEvent({ 
+          type: 'error', 
+          message: error instanceof Error ? error.message : 'Fix mode failed' 
+        });
+        controller.close();
+      }
+    }
+  });
+
+  return new Response(stream, {
+    headers: { 
+      ...corsHeaders, 
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
+    },
+  });
+}
+
+function generateFixPrompt(issue: string, industryName: string, existingContent: string): string {
+  const lowerIssue = issue.toLowerCase();
+  
+  // Determine what type of fix is needed
+  if (lowerIssue.includes('word count') || lowerIssue.includes('below target')) {
+    return `You are expanding an M&A guide for the ${industryName} industry.
+
+The current guide needs MORE CONTENT. Generate additional comprehensive analysis including:
+- More specific financial benchmarks and valuation multiples
+- Additional operational KPIs with real numbers
+- More geographic analysis with specific metro areas
+- Deeper buyer type analysis
+- More detailed deal structure examples
+
+Generate 5,000-8,000 additional words of high-quality M&A intelligence.
+CRITICAL: Use specific numbers, real city names, actual benchmarks - NO PLACEHOLDERS.
+Focus on sections that add the most value for M&A professionals.`;
+  }
+  
+  if (lowerIssue.includes('primary_focus') || lowerIssue.includes('primary focus')) {
+    return `Generate the PRIMARY_FOCUS_SERVICES section for the ${industryName} industry.
+
+Output this exact format:
+PRIMARY_FOCUS_SERVICES:
+- [Service 1 Name] - [Brief description]
+- [Service 2 Name] - [Brief description]
+- [Service 3 Name] - [Brief description]
+- [Service 4 Name] - [Brief description]
+- [Service 5 Name] - [Brief description]
+
+These should be the 4-6 CORE services that PE buyers prioritize when acquiring ${industryName} companies.
+Use actual service names specific to ${industryName}, not placeholders.
+Focus on recurring, scalable, high-margin services.`;
+  }
+  
+  if (lowerIssue.includes('buyer types') || lowerIssue.includes('buyer type')) {
+    return `Generate a comprehensive BUYER TYPES section for the ${industryName} industry.
+
+Format as:
+### BUYER TYPES
+
+**Priority 1: [Buyer Type Name]**
+- Profile: [Specific description]
+- Target EBITDA: [$X-$Y range]
+- Geographic focus: [Specific regions/states]
+- Acquisition frequency: [X deals per year]
+- Example buyers: [2-3 real or realistic firm names]
+
+Include 5 buyer categories with Priority 1-5 rankings.
+CRITICAL: Use specific dollar amounts, real geographic areas, and concrete examples.
+No placeholders like [X] or [Value] - use real data.`;
+  }
+  
+  if (lowerIssue.includes('placeholder')) {
+    return `Review and replace all placeholders in an M&A guide for ${industryName}.
+
+The existing content has placeholders like [X], $X, XX,XXX, [Value], etc.
+
+Generate replacement content with:
+- Specific dollar amounts (e.g., "$1.5M-$3M", "$750,000")
+- Real percentages (e.g., "18-22%", "3-5x EBITDA")
+- Actual city/metro names (e.g., "Phoenix, AZ", "Dallas-Fort Worth")
+- Concrete benchmarks and examples
+
+Generate a complete section with ALL real values for ${industryName}.`;
+  }
+  
+  if (lowerIssue.includes('table') || lowerIssue.includes('data row')) {
+    return `Generate comprehensive data tables for the ${industryName} industry M&A guide.
+
+Create 3-4 tables with real data:
+
+1. **EBITDA-to-Buyer Matrix**
+| EBITDA Range | Primary Buyer Type | Typical Multiple | Competition Level |
+(6+ rows with specific values)
+
+2. **Industry KPI Benchmarks**
+| KPI | Bottom Quartile | Median | Top Quartile | Top Decile |
+(8+ rows with specific metrics)
+
+3. **Geographic Market Analysis**
+| Metro Area | Population | Growth Rate | PE Activity | Multiple Premium |
+(10+ metros with real data)
+
+4. **Financial Benchmarks by Scale**
+| Revenue Level | EBITDA Margin | Revenue/Employee | Management Depth |
+(5+ tiers)
+
+CRITICAL: All cells must have specific real values - NO PLACEHOLDERS.`;
+  }
+  
+  if (lowerIssue.includes('industry') && lowerIssue.includes('mention')) {
+    return `Generate additional ${industryName}-specific content that explicitly references the industry.
+
+Write 2,000 words that heavily reference "${industryName}" throughout, including:
+- ${industryName}-specific market dynamics
+- ${industryName} industry consolidation trends
+- ${industryName} customer behavior patterns
+- ${industryName} competitive landscape
+- ${industryName} valuation considerations
+- ${industryName} buyer preferences
+
+Every paragraph should mention "${industryName}" at least once.
+Use specific data and examples relevant to ${industryName}.`;
+  }
+  
+  if (lowerIssue.includes('size criteria')) {
+    return `Generate the SIZE CRITERIA section for ${industryName} industry M&A.
+
+### SIZE CRITERIA
+
+**Revenue Thresholds:**
+- Minimum: [Specific $ amount]
+- Sweet Spot: [Specific $ range]
+- Premium Tier: [Specific $ amount+]
+
+**EBITDA Thresholds:**
+- Minimum: [Specific $ amount]
+- Sweet Spot: [Specific $ range]
+- Premium Tier: [Specific $ amount+]
+
+**Employee Count:**
+- Minimum: [Specific number]
+- Typical Range: [Specific range]
+
+**Location Count:**
+- Single location acceptable: [Yes/No with conditions]
+- Multi-location premium: [Yes/No with details]
+
+Include specific dollar amounts, numbers, and conditions that PE buyers use.
+No placeholders - use realistic benchmarks for ${industryName}.`;
+  }
+  
+  if (lowerIssue.includes('geography') || lowerIssue.includes('geographic')) {
+    return `Generate the GEOGRAPHY CRITERIA section for ${industryName} industry M&A.
+
+### GEOGRAPHY CRITERIA
+
+**Priority 1 Markets (Premium Multiples):**
+- [City 1, State] - Population X.XM, [Growth rate], [Why priority]
+- [City 2, State] - Population X.XM, [Growth rate], [Why priority]
+(List 8-10 Tier 1 markets)
+
+**Priority 2 Markets (Strong Interest):**
+- [City, State] - Population X.XM, [Growth rate]
+(List 10-12 Tier 2 markets)
+
+**Regions by PE Activity:**
+- Southeast: [Specific states, activity level]
+- Texas: [Specific metros, activity level]
+- Sun Belt: [Specific details]
+- Midwest: [Specific details]
+
+**Geographic Red Flags:**
+- [Specific geographic concerns]
+
+Use real city names with actual population figures.`;
+  }
+  
+  if (lowerIssue.includes('service criteria') || lowerIssue.includes('service mix')) {
+    return `Generate the SERVICE CRITERIA section for ${industryName} industry M&A.
+
+### SERVICE CRITERIA
+
+**Premium Services (Multiple Boost):**
+| Service Type | Margin Impact | Recurring % | Multiple Premium |
+(4-6 services with specific data)
+
+**Standard Services (Baseline):**
+| Service Type | Typical Margin | Notes |
+(4-5 services)
+
+**Services to Avoid:**
+- [Service 1] - [Why it's a concern]
+- [Service 2] - [Why it's a concern]
+
+**Ideal Service Mix:**
+- X% recurring/maintenance
+- X% commercial vs residential
+- X% specialty/premium services
+
+Use specific percentages and service types relevant to ${industryName}.`;
+  }
+  
+  // Default generic fix prompt
+  return `Generate additional content to improve the M&A guide for ${industryName}.
+
+The guide has the following issue: ${issue}
+
+Generate 2,000-3,000 words of high-quality content to address this issue.
+Use specific numbers, real geographic locations, and concrete benchmarks.
+NO PLACEHOLDERS - every value must be specific and realistic for ${industryName}.`;
+}
+
+// =============================================================================
 // CRITERIA EXTRACTION
 // =============================================================================
 async function extractCriteriaWithAI(content: string, apiKey: string): Promise<{
@@ -1086,7 +1414,7 @@ serve(async (req) => {
   }
 
   try {
-    const { industryName } = await req.json();
+    const { industryName, fixMode, issues, existingContent } = await req.json();
 
     if (!industryName) {
       return new Response(
@@ -1101,6 +1429,13 @@ serve(async (req) => {
         JSON.stringify({ error: 'LOVABLE_API_KEY is not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Handle FIX MODE - targeted fixes for specific issues
+    if (fixMode && issues && Array.isArray(issues) && existingContent) {
+      console.log(`[generate-ma-guide] FIX MODE for: "${industryName}" - fixing ${issues.length} issues`);
+      
+      return handleFixMode(industryName, issues, existingContent, LOVABLE_API_KEY);
     }
 
     console.log(`[generate-ma-guide] Starting for: "${industryName}" with ${SUB_PHASES.length} sub-phases`);
