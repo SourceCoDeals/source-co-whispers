@@ -74,3 +74,6 @@ verify_jwt = true
 
 [functions.dedupe-buyers]
 verify_jwt = true
+
+[functions.verify-platform-website]
+verify_jwt = true

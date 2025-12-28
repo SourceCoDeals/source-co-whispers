@@ -65,6 +65,78 @@ function normalizeName(input: string | null | undefined): string | null {
 }
 
 /**
+ * Normalize PE firm name for matching - removes common suffixes like Capital, Partners, etc.
+ */
+function normalizePEFirmName(input: string | null | undefined): string | null {
+  if (!input) return null;
+  
+  return input
+    .toLowerCase()
+    .trim()
+    // Remove common PE firm suffixes
+    .replace(/\s*(capital|partners|group|investments|equity|holdings|management|advisors|private|fund|llc|lp|inc|co)\s*/gi, '')
+    .replace(/[^a-z0-9]/g, '') // Remove all non-alphanumeric chars
+    || null;
+}
+
+/**
+ * Calculate Levenshtein distance between two strings.
+ * Used for fuzzy name matching.
+ */
+function levenshteinDistance(str1: string, str2: string): number {
+  const m = str1.length;
+  const n = str2.length;
+  
+  // Create a matrix of size (m+1) x (n+1)
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  
+  // Initialize first row and column
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  
+  // Fill the matrix
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (str1[i - 1] === str2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+  }
+  
+  return dp[m][n];
+}
+
+/**
+ * Check if two names are similar enough to be considered duplicates.
+ * Uses Levenshtein distance with a threshold based on string length.
+ */
+function areSimilarNames(name1: string | null, name2: string | null): boolean {
+  if (!name1 || !name2) return false;
+  
+  const n1 = normalizeName(name1);
+  const n2 = normalizeName(name2);
+  
+  if (!n1 || !n2) return false;
+  
+  // Exact match after normalization
+  if (n1 === n2) return true;
+  
+  // One contains the other
+  if (n1.includes(n2) || n2.includes(n1)) return true;
+  
+  // Levenshtein distance check - allow more distance for longer strings
+  const maxLength = Math.max(n1.length, n2.length);
+  const distance = levenshteinDistance(n1, n2);
+  
+  // Allow up to 20% difference or max 3 characters
+  const threshold = Math.min(3, Math.floor(maxLength * 0.2));
+  
+  return distance <= threshold;
+}
+
+/**
  * Count meaningful (non-null, non-empty) fields in a buyer record.
  * Used to determine which record is "most complete".
  */
@@ -91,6 +163,7 @@ function countMeaningfulFields(buyer: any): number {
     'acquisition_timeline',
     'deal_breakers',
     'key_quotes',
+    'platform_website', // Prioritize records with websites
   ];
   
   let count = 0;
@@ -100,13 +173,15 @@ function countMeaningfulFields(buyer: any): number {
     if (typeof value === 'string' && value.trim() === '') continue;
     if (Array.isArray(value) && value.length === 0) continue;
     count++;
+    // Give extra weight to website
+    if (field === 'platform_website') count += 2;
   }
   return count;
 }
 
 interface DuplicateGroup {
   key: string; // domain or normalized name
-  matchType: 'domain' | 'name';
+  matchType: 'domain' | 'name' | 'pe_firm' | 'fuzzy';
   buyers: any[];
   keeperId: string;
   duplicateIds: string[];
@@ -158,27 +233,177 @@ Deno.serve(async (req) => {
 
     console.log(`[dedupe-buyers] Found ${buyers.length} buyers`);
 
-    // Group buyers by normalized domain (primary) or name (fallback)
-    const domainGroups = new Map<string, any[]>();
-    const nameOnlyBuyers: any[] = [];
+    // Track which buyers have been assigned to a group
+    const assignedBuyerIds = new Set<string>();
+    const duplicateGroups: DuplicateGroup[] = [];
 
+    // Pass 1: Group by platform_website domain (strongest signal)
+    const domainGroups = new Map<string, any[]>();
     for (const buyer of buyers) {
       const platformDomain = normalizeDomain(buyer.platform_website);
-      
       if (platformDomain) {
         if (!domainGroups.has(platformDomain)) {
           domainGroups.set(platformDomain, []);
         }
         domainGroups.get(platformDomain)!.push(buyer);
-      } else {
-        // No domain - will group by name later
-        nameOnlyBuyers.push(buyer);
       }
     }
 
-    // Group name-only buyers by normalized name
+    for (const [domain, groupBuyers] of domainGroups) {
+      if (groupBuyers.length >= 2) {
+        groupBuyers.sort((a, b) => countMeaningfulFields(b) - countMeaningfulFields(a));
+        const keeper = groupBuyers[0];
+        const duplicates = groupBuyers.slice(1);
+        
+        const peFirmNames = new Set<string>();
+        for (const b of groupBuyers) {
+          if (b.pe_firm_name) peFirmNames.add(b.pe_firm_name.trim());
+        }
+
+        duplicateGroups.push({
+          key: domain,
+          matchType: 'domain',
+          buyers: groupBuyers,
+          keeperId: keeper.id,
+          duplicateIds: duplicates.map(d => d.id),
+          mergedPeFirmName: Array.from(peFirmNames).join(' / '),
+        });
+
+        groupBuyers.forEach(b => assignedBuyerIds.add(b.id));
+      }
+    }
+
+    // Pass 2: Group by PE firm website domain
+    const peFirmDomainGroups = new Map<string, any[]>();
+    for (const buyer of buyers) {
+      if (assignedBuyerIds.has(buyer.id)) continue;
+      
+      const peFirmDomain = normalizeDomain(buyer.pe_firm_website);
+      if (peFirmDomain) {
+        if (!peFirmDomainGroups.has(peFirmDomain)) {
+          peFirmDomainGroups.set(peFirmDomain, []);
+        }
+        peFirmDomainGroups.get(peFirmDomain)!.push(buyer);
+      }
+    }
+
+    for (const [domain, groupBuyers] of peFirmDomainGroups) {
+      if (groupBuyers.length >= 2) {
+        // Additional check: platform names should be similar
+        const similarGroups: any[][] = [];
+        const processed = new Set<number>();
+        
+        for (let i = 0; i < groupBuyers.length; i++) {
+          if (processed.has(i)) continue;
+          
+          const group = [groupBuyers[i]];
+          processed.add(i);
+          
+          for (let j = i + 1; j < groupBuyers.length; j++) {
+            if (processed.has(j)) continue;
+            if (areSimilarNames(groupBuyers[i].platform_company_name, groupBuyers[j].platform_company_name)) {
+              group.push(groupBuyers[j]);
+              processed.add(j);
+            }
+          }
+          
+          if (group.length >= 2) {
+            similarGroups.push(group);
+          }
+        }
+
+        for (const group of similarGroups) {
+          group.sort((a, b) => countMeaningfulFields(b) - countMeaningfulFields(a));
+          const keeper = group[0];
+          const duplicates = group.slice(1);
+          
+          const peFirmNames = new Set<string>();
+          for (const b of group) {
+            if (b.pe_firm_name) peFirmNames.add(b.pe_firm_name.trim());
+          }
+
+          duplicateGroups.push({
+            key: domain,
+            matchType: 'pe_firm',
+            buyers: group,
+            keeperId: keeper.id,
+            duplicateIds: duplicates.map(d => d.id),
+            mergedPeFirmName: Array.from(peFirmNames).join(' / '),
+          });
+
+          group.forEach(b => assignedBuyerIds.add(b.id));
+        }
+      }
+    }
+
+    // Pass 3: Group by normalized PE firm name + similar platform names
+    const peFirmNameGroups = new Map<string, any[]>();
+    for (const buyer of buyers) {
+      if (assignedBuyerIds.has(buyer.id)) continue;
+      
+      const normalizedPE = normalizePEFirmName(buyer.pe_firm_name);
+      if (normalizedPE) {
+        if (!peFirmNameGroups.has(normalizedPE)) {
+          peFirmNameGroups.set(normalizedPE, []);
+        }
+        peFirmNameGroups.get(normalizedPE)!.push(buyer);
+      }
+    }
+
+    for (const [peName, groupBuyers] of peFirmNameGroups) {
+      if (groupBuyers.length >= 2) {
+        // Group by similar platform names within the PE firm
+        const similarGroups: any[][] = [];
+        const processed = new Set<number>();
+        
+        for (let i = 0; i < groupBuyers.length; i++) {
+          if (processed.has(i)) continue;
+          
+          const group = [groupBuyers[i]];
+          processed.add(i);
+          
+          for (let j = i + 1; j < groupBuyers.length; j++) {
+            if (processed.has(j)) continue;
+            if (areSimilarNames(groupBuyers[i].platform_company_name, groupBuyers[j].platform_company_name)) {
+              group.push(groupBuyers[j]);
+              processed.add(j);
+            }
+          }
+          
+          if (group.length >= 2) {
+            similarGroups.push(group);
+          }
+        }
+
+        for (const group of similarGroups) {
+          group.sort((a, b) => countMeaningfulFields(b) - countMeaningfulFields(a));
+          const keeper = group[0];
+          const duplicates = group.slice(1);
+          
+          const peFirmNames = new Set<string>();
+          for (const b of group) {
+            if (b.pe_firm_name) peFirmNames.add(b.pe_firm_name.trim());
+          }
+
+          duplicateGroups.push({
+            key: `${peName} (PE firm)`,
+            matchType: 'fuzzy',
+            buyers: group,
+            keeperId: keeper.id,
+            duplicateIds: duplicates.map(d => d.id),
+            mergedPeFirmName: Array.from(peFirmNames).join(' / '),
+          });
+
+          group.forEach(b => assignedBuyerIds.add(b.id));
+        }
+      }
+    }
+
+    // Pass 4: Group remaining buyers by normalized platform name
     const nameGroups = new Map<string, any[]>();
-    for (const buyer of nameOnlyBuyers) {
+    for (const buyer of buyers) {
+      if (assignedBuyerIds.has(buyer.id)) continue;
+      
       const normalizedName = normalizeName(buyer.platform_company_name);
       if (normalizedName) {
         if (!nameGroups.has(normalizedName)) {
@@ -188,53 +413,16 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Find duplicate groups (2+ buyers in same group)
-    const duplicateGroups: DuplicateGroup[] = [];
-
-    // Check domain groups
-    for (const [domain, groupBuyers] of domainGroups) {
-      if (groupBuyers.length >= 2) {
-        // Sort by completeness (most complete first)
-        groupBuyers.sort((a, b) => countMeaningfulFields(b) - countMeaningfulFields(a));
-        
-        const keeper = groupBuyers[0];
-        const duplicates = groupBuyers.slice(1);
-        
-        // Combine PE firm names
-        const peFirmNames = new Set<string>();
-        for (const b of groupBuyers) {
-          if (b.pe_firm_name) {
-            peFirmNames.add(b.pe_firm_name.trim());
-          }
-        }
-        const mergedPeFirmName = Array.from(peFirmNames).join(' / ');
-
-        duplicateGroups.push({
-          key: domain,
-          matchType: 'domain',
-          buyers: groupBuyers,
-          keeperId: keeper.id,
-          duplicateIds: duplicates.map(d => d.id),
-          mergedPeFirmName,
-        });
-      }
-    }
-
-    // Check name groups
     for (const [name, groupBuyers] of nameGroups) {
       if (groupBuyers.length >= 2) {
         groupBuyers.sort((a, b) => countMeaningfulFields(b) - countMeaningfulFields(a));
-        
         const keeper = groupBuyers[0];
         const duplicates = groupBuyers.slice(1);
         
         const peFirmNames = new Set<string>();
         for (const b of groupBuyers) {
-          if (b.pe_firm_name) {
-            peFirmNames.add(b.pe_firm_name.trim());
-          }
+          if (b.pe_firm_name) peFirmNames.add(b.pe_firm_name.trim());
         }
-        const mergedPeFirmName = Array.from(peFirmNames).join(' / ');
 
         duplicateGroups.push({
           key: name,
@@ -242,8 +430,10 @@ Deno.serve(async (req) => {
           buyers: groupBuyers,
           keeperId: keeper.id,
           duplicateIds: duplicates.map(d => d.id),
-          mergedPeFirmName,
+          mergedPeFirmName: Array.from(peFirmNames).join(' / '),
         });
+
+        groupBuyers.forEach(b => assignedBuyerIds.add(b.id));
       }
     }
 
@@ -259,10 +449,12 @@ Deno.serve(async (req) => {
             matchType: g.matchType,
             count: g.buyers.length,
             platformNames: g.buyers.map(b => b.platform_company_name || b.pe_firm_name),
+            platformWebsites: g.buyers.map(b => b.platform_website),
             peFirmNames: g.buyers.map(b => b.pe_firm_name),
             mergedPeFirmName: g.mergedPeFirmName,
             keeperId: g.keeperId,
             keeperName: g.buyers[0].platform_company_name || g.buyers[0].pe_firm_name,
+            keeperWebsite: g.buyers[0].platform_website,
           })),
           stats: {
             groupsFound: duplicateGroups.length,
@@ -280,7 +472,7 @@ Deno.serve(async (req) => {
 
     for (const group of duplicateGroups) {
       try {
-        console.log(`[dedupe-buyers] Processing group "${group.key}" - keeping ${group.keeperId}, deleting ${group.duplicateIds.length}`);
+        console.log(`[dedupe-buyers] Processing group "${group.key}" (${group.matchType}) - keeping ${group.keeperId}, deleting ${group.duplicateIds.length}`);
 
         // 1. Update keeper with merged PE firm name
         const { error: updateError } = await supabase
