@@ -5,7 +5,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, ChevronDown, ChevronRight, Check, RotateCcw, DollarSign, MapPin, Users, Briefcase, Download, AlertTriangle, CheckCircle2, XCircle, Table2, FileText, Hash } from "lucide-react";
+import { Loader2, Sparkles, ChevronDown, ChevronRight, Check, RotateCcw, DollarSign, MapPin, Users, Briefcase, Download, AlertTriangle, CheckCircle2, XCircle, Table2, FileText, Hash, Wand2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
 import { saveAs } from "file-saver";
@@ -60,7 +60,7 @@ interface AIResearchSectionProps {
   onGuideDocumentUploaded?: (doc: UploadedGuideDoc) => void;
 }
 
-type ResearchState = "idle" | "generating" | "quality_check" | "gap_filling" | "complete";
+type ResearchState = "idle" | "generating" | "quality_check" | "gap_filling" | "fixing" | "complete";
 
 export function AIResearchSection({ industryName, trackerId, onApply, onGuideGenerated, onGuideDocumentUploaded }: AIResearchSectionProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -73,6 +73,9 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
   const [qualityResult, setQualityResult] = useState<QualityResult | null>(null);
   const [gapFillAttempt, setGapFillAttempt] = useState(0);
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+  const [isFixing, setIsFixing] = useState(false);
+  const [fixingIssue, setFixingIssue] = useState<string>("");
+  const [fixProgress, setFixProgress] = useState({ current: 0, total: 0 });
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -331,6 +334,142 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
     setPhaseName("");
     setQualityResult(null);
     setGapFillAttempt(0);
+    setIsFixing(false);
+    setFixingIssue("");
+    setFixProgress({ current: 0, total: 0 });
+  };
+
+  // Fix specific issues using targeted gap-filling
+  const fixIssues = async (issuesToFix: string[]) => {
+    if (!guideContent || issuesToFix.length === 0) return;
+    
+    setIsFixing(true);
+    setState("fixing");
+    setFixProgress({ current: 0, total: issuesToFix.length });
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ma-guide`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ 
+          industryName,
+          fixMode: true,
+          issues: issuesToFix,
+          existingContent: guideContent
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let newContent = guideContent;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex: number;
+        while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, newlineIndex);
+          buffer = buffer.slice(newlineIndex + 1);
+
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") continue;
+
+          try {
+            const parsed = JSON.parse(jsonStr);
+            
+            switch (parsed.type) {
+              case "fix_start":
+                toast({ title: "Fixing issues", description: `Addressing ${parsed.issues?.length || 0} quality issues...` });
+                break;
+              case "fix_progress":
+                setFixProgress({ current: parsed.current, total: parsed.total });
+                setFixingIssue(parsed.issue || "");
+                break;
+              case "fix_content":
+                newContent += parsed.content || "";
+                setGuideContent(newContent);
+                toast({ 
+                  title: `Fixed: ${parsed.issue?.slice(0, 40)}...`, 
+                  description: `Added ${parsed.wordCount?.toLocaleString()} words` 
+                });
+                break;
+              case "fix_warning":
+                toast({ title: "Warning", description: parsed.message, variant: "destructive" });
+                break;
+              case "fix_complete":
+                setQualityResult(parsed.quality);
+                if (parsed.criteria) {
+                  setExtractedCriteria(parsed.criteria);
+                  // Auto-apply fixed criteria
+                  if (parsed.criteria.sizeCriteria || parsed.criteria.serviceCriteria) {
+                    onApply({
+                      sizeCriteria: parsed.criteria.sizeCriteria || "",
+                      serviceCriteria: parsed.criteria.serviceCriteria || "",
+                      geographyCriteria: parsed.criteria.geographyCriteria || "",
+                      buyerTypesCriteria: parsed.criteria.buyerTypesCriteria || "",
+                      primaryFocusServices: parsed.criteria.primaryFocusServices || [],
+                      excludedServices: parsed.criteria.excludedServices || [],
+                    });
+                  }
+                }
+                toast({ 
+                  title: "Issues fixed!", 
+                  description: `New score: ${parsed.quality?.score}/100. ${parsed.wordCount?.toLocaleString()} total words.` 
+                });
+                break;
+              case "error":
+                toast({ title: "Fix failed", description: parsed.message, variant: "destructive" });
+                break;
+            }
+          } catch {
+            buffer = line + "\n" + buffer;
+            break;
+          }
+        }
+      }
+
+      setState("complete");
+    } catch (err) {
+      console.error('Fix issues error:', err);
+      toast({ 
+        title: "Fix failed", 
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive" 
+      });
+      setState("complete");
+    } finally {
+      setIsFixing(false);
+      setFixingIssue("");
+      setFixProgress({ current: 0, total: 0 });
+    }
+  };
+
+  const fixSingleIssue = (issue: string) => {
+    fixIssues([issue]);
+  };
+
+  const fixAllIssues = () => {
+    if (qualityResult?.issues) {
+      fixIssues(qualityResult.issues);
+    }
   };
 
   // Upload the generated guide as a document to storage
@@ -465,7 +604,7 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
     toast({ title: "Downloaded", description: fileName });
   };
 
-  const isGenerating = state === "generating" || state === "quality_check" || state === "gap_filling";
+  const isGenerating = state === "generating" || state === "quality_check" || state === "gap_filling" || state === "fixing";
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return "text-green-600";
@@ -533,6 +672,7 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
                       <Loader2 className="w-4 h-4 animate-spin" />
                       {state === "quality_check" ? "Validating quality..." : 
                        state === "gap_filling" ? `Improving content (Attempt ${gapFillAttempt})...` :
+                       state === "fixing" ? `Fixing: ${fixingIssue.slice(0, 50)}${fixingIssue.length > 50 ? '...' : ''} (${fixProgress.current}/${fixProgress.total})` :
                        `Phase ${currentPhase}/3: ${phaseName}`}
                     </span>
                     <span className="font-medium">{Math.round(overallProgress)}%</span>
@@ -668,16 +808,46 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
                 )}
 
                 {qualityResult?.issues && qualityResult.issues.length > 0 && (
-                  <div className="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
-                    <div className="flex items-center gap-2 text-yellow-600 text-sm mb-2">
-                      <AlertTriangle className="w-4 h-4" />
-                      Quality Notes ({qualityResult.issues.length})
+                  <div className="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-yellow-600 text-sm">
+                        <AlertTriangle className="w-4 h-4" />
+                        Quality Issues ({qualityResult.issues.length})
+                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={fixAllIssues}
+                        disabled={isFixing}
+                        className="gap-1 text-xs h-7 border-yellow-500/30 text-yellow-700 hover:bg-yellow-500/10"
+                      >
+                        {isFixing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+                        Fix All Issues
+                      </Button>
                     </div>
-                    <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
+                    <div className="space-y-2">
                       {qualityResult.issues.map((issue, i) => (
-                        <li key={i}>{issue}</li>
+                        <div key={i} className="flex items-center justify-between gap-2 p-2 bg-background/50 rounded text-xs">
+                          <span className="text-muted-foreground flex-1">{issue}</span>
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            onClick={() => fixSingleIssue(issue)}
+                            disabled={isFixing}
+                            className="h-6 px-2 text-xs hover:bg-yellow-500/10"
+                          >
+                            {isFixing && fixingIssue === issue ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <>
+                                <Wand2 className="w-3 h-3 mr-1" />
+                                Fix
+                              </>
+                            )}
+                          </Button>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 )}
 
@@ -781,7 +951,7 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
                   </div>
                 )}
 
-                <div className="flex gap-2 pt-2">
+                <div className="flex flex-wrap gap-2 pt-2">
                   <Button variant="outline" size="sm" onClick={reset} className="gap-1">
                     <RotateCcw className="w-3 h-3" />
                     Reset
@@ -790,6 +960,18 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
                     <Download className="w-3 h-3" />
                     Download .docx
                   </Button>
+                  {qualityResult?.issues && qualityResult.issues.length > 0 && !qualityResult.passed && (
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      onClick={fixAllIssues}
+                      disabled={isFixing}
+                      className="gap-1"
+                    >
+                      {isFixing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+                      Fix Issues
+                    </Button>
+                  )}
                   {extractedCriteria && (
                     <Button size="sm" onClick={applyExtracted} className="gap-1 ml-auto">
                       <Check className="w-3 h-3" />
