@@ -427,11 +427,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { buyerId, platformCompanyName, dealId, useFallbackPaths } = await req.json();
+    const { buyerId, platformCompanyName, dealId, useFallbackPaths, peFirmId, peFirmWebsite, peFirmName, platformId, platformWebsite, platformName } = await req.json();
 
-    if (!buyerId) {
+    // Determine which mode we're in: legacy buyer mode, pe_firm mode, or platform mode
+    const isPeFirmMode = !!peFirmId && !!peFirmWebsite;
+    const isPlatformMode = !!platformId && !!platformWebsite;
+    const isLegacyMode = !!buyerId;
+
+    if (!isPeFirmMode && !isPlatformMode && !isLegacyMode) {
       return new Response(
-        JSON.stringify({ success: false, error: 'buyerId is required' }),
+        JSON.stringify({ success: false, error: 'buyerId, peFirmId, or platformId is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -444,6 +449,75 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Handle PE Firm mode - store in pe_firm_contacts
+    if (isPeFirmMode) {
+      console.log(`\n=== PE FIRM MODE: ${peFirmName} ===`);
+      const allContacts: Array<Contact & { source_url: string }> = [];
+      const scrapedPages: string[] = [];
+      
+      const pePages = await findTeamPages(peFirmWebsite, firecrawlKey);
+      for (const page of pePages) {
+        scrapedPages.push(page.url);
+        const extraction = await extractContactsWithAI(page.content, peFirmName, null, true, page.url);
+        for (const contact of extraction.contacts) {
+          const exists = allContacts.some(c => c.name.toLowerCase() === contact.name.toLowerCase());
+          if (!exists) allContacts.push({ ...contact, source_url: page.url });
+        }
+      }
+
+      // Insert into pe_firm_contacts
+      let insertedCount = 0;
+      for (const contact of allContacts) {
+        const { data: existing } = await supabase.from('pe_firm_contacts').select('id').eq('pe_firm_id', peFirmId).eq('name', contact.name).single();
+        if (existing) continue;
+        
+        const priority = contact.is_deal_team ? 1 : ['junior_investment', 'business_dev'].includes(contact.role_category) ? 2 : contact.role_category === 'executive' ? 4 : 3;
+        const { error } = await supabase.from('pe_firm_contacts').insert({
+          pe_firm_id: peFirmId, name: contact.name, title: contact.title, email: contact.email || null,
+          linkedin_url: contact.linkedin_url || null, role_category: contact.role_category || 'other',
+          priority_level: priority, source: 'website', source_url: contact.source_url
+        });
+        if (!error) insertedCount++;
+      }
+
+      return new Response(JSON.stringify({ success: true, contacts_found: allContacts.length, contacts_inserted: insertedCount, pages_scraped: scrapedPages }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // Handle Platform mode - store in platform_contacts
+    if (isPlatformMode) {
+      console.log(`\n=== PLATFORM MODE: ${platformName} ===`);
+      const allContacts: Array<Contact & { source_url: string }> = [];
+      const scrapedPages: string[] = [];
+      
+      const platformPages = await findTeamPages(platformWebsite, firecrawlKey);
+      for (const page of platformPages) {
+        scrapedPages.push(page.url);
+        const extraction = await extractContactsWithAI(page.content, platformName, null, false, page.url);
+        for (const contact of extraction.contacts) {
+          const exists = allContacts.some(c => c.name.toLowerCase() === contact.name.toLowerCase());
+          if (!exists) allContacts.push({ ...contact, source_url: page.url });
+        }
+      }
+
+      // Insert into platform_contacts
+      let insertedCount = 0;
+      for (const contact of allContacts) {
+        const { data: existing } = await supabase.from('platform_contacts').select('id').eq('platform_id', platformId).eq('name', contact.name).single();
+        if (existing) continue;
+        
+        const priority = contact.is_deal_team ? 1 : ['junior_investment', 'business_dev'].includes(contact.role_category) ? 2 : contact.role_category === 'executive' ? 4 : 3;
+        const { error } = await supabase.from('platform_contacts').insert({
+          platform_id: platformId, name: contact.name, title: contact.title, email: contact.email || null,
+          linkedin_url: contact.linkedin_url || null, role_category: contact.role_category || 'other',
+          priority_level: priority, source: 'website', source_url: contact.source_url
+        });
+        if (!error) insertedCount++;
+      }
+
+      return new Response(JSON.stringify({ success: true, contacts_found: allContacts.length, contacts_inserted: insertedCount, pages_scraped: scrapedPages }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // Legacy buyer mode - keep existing behavior for backwards compatibility
     // Verify user has access to this buyer via RLS
     const { data: userBuyer, error: accessError } = await supabase
       .from('buyers')
