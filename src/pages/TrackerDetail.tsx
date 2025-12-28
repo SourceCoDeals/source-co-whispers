@@ -13,7 +13,7 @@ import { KPIConfigPanel } from "@/components/KPIConfigPanel";
 import { ScoringBehaviorPanel } from "@/components/ScoringBehaviorPanel";
 import { TrackerQueryChat } from "@/components/TrackerQueryChat";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload, TrendingUp, ArrowUp, ArrowDown, Filter, BookOpen, CheckSquare, Square } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload, TrendingUp, ArrowUp, ArrowDown, Filter, BookOpen, CheckSquare, Square, GitMerge } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -86,6 +86,22 @@ export default function TrackerDetail() {
   const [highlightedBuyerIds, setHighlightedBuyerIds] = useState<Set<string>>(new Set());
   const [selectedBuyerIds, setSelectedBuyerIds] = useState<Set<string>>(new Set());
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  
+  // Deduplication state
+  const [isDeduping, setIsDeduping] = useState(false);
+  const [dedupeDialogOpen, setDedupeDialogOpen] = useState(false);
+  const [dedupePreview, setDedupePreview] = useState<{
+    duplicateGroups: Array<{
+      key: string;
+      matchType: 'domain' | 'name';
+      count: number;
+      platformNames: string[];
+      peFirmNames: string[];
+      mergedPeFirmName: string;
+      keeperName: string;
+    }>;
+    stats: { groupsFound: number; totalDuplicates: number };
+  } | null>(null);
 
   useEffect(() => { loadData(); }, [id]);
   
@@ -530,6 +546,78 @@ export default function TrackerDetail() {
       setIsBulkEnriching(false);
       setEnrichingBuyers(new Set());
       setBuyerEnrichmentProgress({ current: 0, total: 0 });
+    }
+  };
+
+  // Deduplicate buyers functions
+  const checkForDuplicates = async () => {
+    setIsDeduping(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('dedupe-buyers', {
+        body: { tracker_id: id, preview_only: true }
+      });
+
+      if (error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+        return;
+      }
+
+      if (!data.success) {
+        toast({ title: "Error", description: data.error, variant: "destructive" });
+        return;
+      }
+
+      if (data.stats.groupsFound === 0) {
+        toast({ title: "No duplicates found", description: "All buyers are unique" });
+        return;
+      }
+
+      setDedupePreview(data);
+      setDedupeDialogOpen(true);
+    } catch (err) {
+      toast({ 
+        title: "Error checking duplicates", 
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive" 
+      });
+    } finally {
+      setIsDeduping(false);
+    }
+  };
+
+  const executeDedupe = async () => {
+    setIsDeduping(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('dedupe-buyers', {
+        body: { tracker_id: id, preview_only: false }
+      });
+
+      if (error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+        return;
+      }
+
+      if (!data.success) {
+        toast({ title: "Error", description: data.error, variant: "destructive" });
+        return;
+      }
+
+      toast({ 
+        title: "Duplicates merged", 
+        description: `Merged ${data.stats.groupsMerged} groups, removed ${data.stats.duplicatesDeleted} duplicate records` 
+      });
+      
+      setDedupeDialogOpen(false);
+      setDedupePreview(null);
+      loadData();
+    } catch (err) {
+      toast({ 
+        title: "Error merging duplicates", 
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive" 
+      });
+    } finally {
+      setIsDeduping(false);
     }
   };
 
@@ -1835,6 +1923,85 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      onClick={checkForDuplicates}
+                      disabled={isDeduping || buyers.length < 2}
+                    >
+                      {isDeduping ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <GitMerge className="w-4 h-4 mr-2" />
+                      )}
+                      Deduplicate
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Find and merge duplicate platform entries</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              
+              {/* Dedupe Confirmation Dialog */}
+              <Dialog open={dedupeDialogOpen} onOpenChange={setDedupeDialogOpen}>
+                <DialogContent className="max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <GitMerge className="w-5 h-5" />
+                      Duplicate Buyers Found
+                    </DialogTitle>
+                    <DialogDescription>
+                      {dedupePreview?.stats.groupsFound} duplicate group{dedupePreview?.stats.groupsFound === 1 ? '' : 's'} found ({dedupePreview?.stats.totalDuplicates} redundant record{dedupePreview?.stats.totalDuplicates === 1 ? '' : 's'} will be removed)
+                    </DialogDescription>
+                  </DialogHeader>
+                  
+                  <div className="max-h-[300px] overflow-y-auto space-y-3 py-2">
+                    {dedupePreview?.duplicateGroups.map((group, idx) => (
+                      <div key={idx} className="p-3 bg-muted/50 rounded-lg border">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-medium">{group.keeperName}</span>
+                          <Badge variant="secondary" className="text-xs">
+                            {group.count} records → 1
+                          </Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground space-y-1">
+                          <div className="flex items-center gap-1">
+                            <span className="font-medium">Match by:</span>
+                            <Badge variant="outline" className="text-xs px-1.5 py-0">
+                              {group.matchType === 'domain' ? 'Domain' : 'Name'}
+                            </Badge>
+                            <span className="text-muted-foreground/70">{group.key}</span>
+                          </div>
+                          <div>
+                            <span className="font-medium">PE Firms:</span> {group.peFirmNames.join(', ')}
+                          </div>
+                          <div>
+                            <span className="font-medium">Will merge to:</span> {group.mergedPeFirmName}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setDedupeDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={executeDedupe} disabled={isDeduping}>
+                      {isDeduping ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <GitMerge className="w-4 h-4 mr-2" />
+                      )}
+                      Merge Duplicates
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              
               <CSVImport trackerId={id!} onComplete={loadData} />
               <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                 <DialogTrigger asChild><Button><Plus className="w-4 h-4 mr-2" />Add Buyer</Button></DialogTrigger>
