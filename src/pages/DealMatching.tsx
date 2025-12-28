@@ -436,6 +436,8 @@ export default function DealMatching() {
     return `mailto:?subject=${subject}&body=${body}`;
   };
 
+  const [findingContacts, setFindingContacts] = useState<Set<string>>(new Set());
+
   const renderContactSection = (buyer: any, companyType: string, companyName: string) => {
     const typeContacts = getContactsByType(buyer.id, companyType);
     // Sort by priority_level and is_deal_team
@@ -447,26 +449,48 @@ export default function DealMatching() {
     
     const hasContacts = sortedContacts.length > 0;
     const hasDealTeam = sortedContacts.some(c => c.is_deal_team);
+    const isSearching = findingContacts.has(`${buyer.id}-${companyType}`);
     
-    const handleFindContacts = async (e: React.MouseEvent) => {
+    const handleFindContacts = async (e: React.MouseEvent, useFallback = false) => {
       e.stopPropagation();
-      toast({ title: "Finding contacts...", description: `Scanning ${companyName} website` });
+      const searchKey = `${buyer.id}-${companyType}`;
+      setFindingContacts(prev => new Set(prev).add(searchKey));
+      
+      toast({ 
+        title: useFallback ? "Retrying with alternate pages..." : "Finding contacts...", 
+        description: `Scanning ${companyName} website` 
+      });
       
       const { data, error } = await supabase.functions.invoke('find-buyer-contacts', {
         body: { 
           buyerId: buyer.id, 
           platformCompanyName: buyer.platform_company_name,
-          dealId: id 
+          dealId: id,
+          useFallbackPaths: useFallback
         }
+      });
+      
+      setFindingContacts(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(searchKey);
+        return newSet;
       });
       
       if (error) {
         toast({ title: "Error", description: error.message, variant: "destructive" });
       } else if (data?.success) {
-        toast({ 
-          title: "Contacts found", 
-          description: `Added ${data.contacts_inserted} new contacts from ${companyName}`
-        });
+        if (data.contacts_inserted === 0 && data.contacts_found === 0) {
+          toast({ 
+            title: "No contacts found", 
+            description: `Could not find contacts on ${companyName}. Try the retry button.`,
+            variant: "destructive"
+          });
+        } else {
+          toast({ 
+            title: "Contacts found", 
+            description: `Added ${data.contacts_inserted} new contacts from ${companyName} (${data.pages_scraped?.length || 0} pages scanned)`
+          });
+        }
         loadData();
       }
     };
@@ -488,20 +512,46 @@ export default function DealMatching() {
               </Badge>
             )}
           </span>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="h-7 text-xs"
-            onClick={handleFindContacts}
-          >
-            <UserSearch className="w-3 h-3 mr-1" />
-            {hasContacts ? 'Refresh' : 'Find Contacts'}
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="h-7 text-xs"
+              onClick={(e) => handleFindContacts(e, false)}
+              disabled={isSearching}
+            >
+              {isSearching ? (
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              ) : (
+                <UserSearch className="w-3 h-3 mr-1" />
+              )}
+              {isSearching ? 'Searching...' : hasContacts ? 'Refresh' : 'Find Contacts'}
+            </Button>
+            {hasContacts && sortedContacts.length < 3 && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-7 text-xs text-muted-foreground"
+                onClick={(e) => handleFindContacts(e, true)}
+                disabled={isSearching}
+                title="Try alternate pages to find more contacts"
+              >
+                Retry
+              </Button>
+            )}
+          </div>
         </div>
         
-        {!hasContacts && (
-          <div className="text-xs text-muted-foreground italic py-2 px-3 bg-muted/30 rounded">
-            No contacts found yet. Click "Find Contacts" to scan the website.
+        {!hasContacts && !isSearching && (
+          <div className="text-xs text-muted-foreground italic py-2 px-3 bg-muted/30 rounded flex items-center justify-between">
+            <span>No contacts found yet. Click "Find Contacts" to scan the website.</span>
+          </div>
+        )}
+        
+        {isSearching && !hasContacts && (
+          <div className="text-xs text-muted-foreground italic py-2 px-3 bg-muted/30 rounded flex items-center gap-2">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span>Scanning website for contacts...</span>
           </div>
         )}
         
