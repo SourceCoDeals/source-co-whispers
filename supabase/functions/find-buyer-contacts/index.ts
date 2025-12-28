@@ -20,8 +20,6 @@ interface ExtractionResult {
   source_url: string;
 }
 
-// Role priority mappings are handled by AI extraction
-
 // Keywords for scoring team page URLs
 const POSITIVE_KEYWORDS = ['team', 'leadership', 'executive', 'management', 'people', 'board', 'officers', 'directors', 'staff', 'who-we-are', 'about-us'];
 const NEGATIVE_KEYWORDS = ['careers', 'jobs', 'job', 'hiring', 'news', 'blog', 'press', 'contact', 'locations', 'services', 'products', 'case-study', 'testimonial', 'faq', 'privacy', 'terms', 'login', 'signin', 'cart', 'checkout'];
@@ -30,22 +28,59 @@ function scoreUrl(url: string): number {
   const path = url.toLowerCase();
   let score = 0;
   
+  // Check for positive keywords
   for (const kw of POSITIVE_KEYWORDS) {
     if (path.includes(kw)) score += 10;
   }
+  
+  // Check for negative keywords
   for (const kw of NEGATIVE_KEYWORDS) {
     if (path.includes(kw)) score -= 20;
   }
   
-  // Bonus for shorter paths (more likely to be main team pages)
-  const pathParts = new URL(url).pathname.split('/').filter(Boolean);
-  if (pathParts.length <= 2) score += 5;
+  // CRITICAL: Heavily penalize individual profile pages
+  // These match patterns like /team-members/john-doe, /people/jane-smith, /staff/member-name
+  try {
+    const urlPath = new URL(url).pathname;
+    const pathParts = urlPath.split('/').filter(Boolean);
+    
+    // Check if this looks like an individual profile page (has a person's name slug at the end)
+    if (pathParts.length >= 2) {
+      const lastSegment = pathParts[pathParts.length - 1];
+      const parentSegment = pathParts[pathParts.length - 2];
+      
+      // If parent is a team-related keyword and last segment looks like a name (contains hyphen or is long)
+      const teamParentKeywords = ['team', 'team-members', 'people', 'staff', 'leadership', 'executives', 'management', 'board', 'directors', 'members'];
+      if (teamParentKeywords.some(kw => parentSegment.includes(kw))) {
+        // This is likely an individual profile page - heavy penalty
+        console.log(`Penalizing individual profile page: ${url}`);
+        score -= 30;
+      }
+    }
+    
+    // Bonus for root team pages (not individual profiles)
+    // e.g., /team, /leadership, /people (single path segment)
+    if (pathParts.length === 1) {
+      const segment = pathParts[0];
+      if (['team', 'leadership', 'people', 'executives', 'management', 'about', 'staff', 'board'].includes(segment)) {
+        console.log(`Bonus for root team page: ${url}`);
+        score += 20;
+      }
+    }
+    
+    // Bonus for shorter paths (more likely to be main team pages)
+    if (pathParts.length <= 2) score += 5;
+    
+  } catch (e) {
+    // If URL parsing fails, just continue with basic scoring
+  }
   
   return score;
 }
 
 async function scrapeUrl(url: string, apiKey: string): Promise<string | null> {
   try {
+    console.log(`Scraping: ${url}`);
     const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
       headers: {
@@ -65,7 +100,11 @@ async function scrapeUrl(url: string, apiKey: string): Promise<string | null> {
     }
 
     const data = await response.json();
-    return data.data?.markdown || data.markdown || null;
+    const content = data.data?.markdown || data.markdown || null;
+    if (content) {
+      console.log(`Scraped ${url}: ${content.length} chars`);
+    }
+    return content;
   } catch (error) {
     console.error(`Error scraping ${url}:`, error);
     return null;
@@ -118,69 +157,83 @@ async function discoverTeamPages(baseUrl: string, apiKey: string): Promise<strin
       .filter((item: { url: string; score: number }) => item.score > -10) // Filter out clearly irrelevant pages
       .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
 
-    console.log(`Top scored URLs:`, scoredUrls.slice(0, 5).map((u: { url: string; score: number }) => `${u.url} (${u.score})`));
+    console.log(`Top 5 scored URLs:`, scoredUrls.slice(0, 5).map((u: { url: string; score: number }) => `${u.url} (${u.score})`));
 
-    // Return top 3 URLs for scraping
-    return scoredUrls.slice(0, 3).map((item: { url: string }) => item.url);
+    // Return top 5 URLs for scraping (increased from 3)
+    return scoredUrls.slice(0, 5).map((item: { url: string }) => item.url);
   } catch (error) {
     console.error(`Error mapping ${normalizedBase}:`, error);
     return [];
   }
 }
 
-async function findBestTeamPage(baseUrl: string, apiKey: string): Promise<{ url: string; content: string } | null> {
+async function scrapeMultiplePages(urls: string[], apiKey: string): Promise<Array<{ url: string; content: string }>> {
+  const results: Array<{ url: string; content: string }> = [];
+  
+  // Scrape up to 3 pages in parallel
+  const scrapePromises = urls.slice(0, 3).map(async (url) => {
+    const content = await scrapeUrl(url, apiKey);
+    if (content && content.length > 300) {
+      return { url, content };
+    }
+    return null;
+  });
+  
+  const scrapeResults = await Promise.all(scrapePromises);
+  
+  for (const result of scrapeResults) {
+    if (result) {
+      results.push(result);
+    }
+  }
+  
+  console.log(`Successfully scraped ${results.length} pages with content`);
+  return results;
+}
+
+async function findTeamPages(baseUrl: string, apiKey: string): Promise<Array<{ url: string; content: string }>> {
   // First try the smart discovery approach
   const discoveredUrls = await discoverTeamPages(baseUrl, apiKey);
   
-  // Try each discovered URL
-  for (const url of discoveredUrls) {
-    console.log(`Scraping discovered URL: ${url}`);
-    const content = await scrapeUrl(url, apiKey);
-    if (content && content.length > 300) {
-      console.log(`Found content at ${url} (${content.length} chars)`);
-      return { url, content };
+  if (discoveredUrls.length > 0) {
+    const results = await scrapeMultiplePages(discoveredUrls, apiKey);
+    if (results.length > 0) {
+      return results;
     }
   }
   
   // Fallback: try common paths if map didn't find good results
-  if (discoveredUrls.length === 0) {
-    console.log(`Map returned no results for ${baseUrl}, trying fallback paths`);
-    
-    let normalizedBase = baseUrl.trim();
-    if (!normalizedBase.startsWith('http://') && !normalizedBase.startsWith('https://')) {
-      normalizedBase = `https://${normalizedBase}`;
-    }
-    normalizedBase = normalizedBase.replace(/\/$/, '');
-    
-    const fallbackPaths = [
-      '/team', '/leadership', '/about', '/about-us', '/our-team',
-      '/executive-team', '/our-executive-team', '/leadership-team',
-      '/management', '/executives', '/people', '/who-we-are'
-    ];
-    
-    for (const path of fallbackPaths) {
-      const fullUrl = `${normalizedBase}${path}`;
-      const content = await scrapeUrl(fullUrl, apiKey);
-      if (content && content.length > 300) {
-        console.log(`Fallback found content at ${fullUrl} (${content.length} chars)`);
-        return { url: fullUrl, content };
-      }
-    }
-  }
+  console.log(`Map returned no usable results for ${baseUrl}, trying fallback paths`);
   
-  return null;
+  let normalizedBase = baseUrl.trim();
+  if (!normalizedBase.startsWith('http://') && !normalizedBase.startsWith('https://')) {
+    normalizedBase = `https://${normalizedBase}`;
+  }
+  normalizedBase = normalizedBase.replace(/\/$/, '');
+  
+  const fallbackPaths = [
+    '/team', '/leadership', '/about', '/about-us', '/our-team',
+    '/executive-team', '/our-executive-team', '/leadership-team',
+    '/management', '/executives', '/people', '/who-we-are'
+  ];
+  
+  const fallbackUrls = fallbackPaths.map(path => `${normalizedBase}${path}`);
+  const results = await scrapeMultiplePages(fallbackUrls, apiKey);
+  
+  return results;
 }
 
 async function extractContactsWithAI(
   content: string,
   companyName: string,
   platformCompanyName: string | null,
-  isPEFirm: boolean
+  isPEFirm: boolean,
+  sourceUrl: string
 ): Promise<ExtractionResult> {
   const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!lovableApiKey) {
     console.error('LOVABLE_API_KEY not configured');
-    return { contacts: [], deal_team_found: false, source_url: '' };
+    return { contacts: [], deal_team_found: false, source_url: sourceUrl };
   }
 
   const roleContext = isPEFirm
@@ -242,7 +295,7 @@ ${content.slice(0, 15000)}`;
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`AI extraction failed (${response.status}):`, errorText);
-      return { contacts: [], deal_team_found: false, source_url: '' };
+      return { contacts: [], deal_team_found: false, source_url: sourceUrl };
     }
 
     const data = await response.json();
@@ -252,17 +305,18 @@ ${content.slice(0, 15000)}`;
     const jsonMatch = content2.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
+      console.log(`AI extracted ${parsed.contacts?.length || 0} contacts from ${sourceUrl}`);
       return {
         contacts: parsed.contacts || [],
         deal_team_found: parsed.deal_team_found || false,
-        source_url: '',
+        source_url: sourceUrl,
       };
     }
   } catch (error) {
     console.error('Error in AI extraction:', error);
   }
 
-  return { contacts: [], deal_team_found: false, source_url: '' };
+  return { contacts: [], deal_team_found: false, source_url: sourceUrl };
 }
 
 Deno.serve(async (req) => {
@@ -294,7 +348,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { buyerId, platformCompanyName, dealId } = await req.json();
+    const { buyerId, platformCompanyName, dealId, useFallbackPaths } = await req.json();
 
     if (!buyerId) {
       return new Response(
@@ -341,59 +395,84 @@ Deno.serve(async (req) => {
     }
 
     console.log(`Finding contacts for buyer: ${buyer.pe_firm_name} / ${buyer.platform_company_name}`);
+    console.log(`PE website: ${buyer.pe_firm_website}, Platform website: ${buyer.platform_website}`);
+    if (useFallbackPaths) {
+      console.log(`Using fallback paths mode`);
+    }
 
     const allContacts: Array<Contact & { company_type: string; source_url: string }> = [];
     let dealTeamFound = false;
+    const scrapedPages: string[] = [];
 
-    // PE Firm contact discovery using smart page discovery
+    // PE Firm contact discovery - scrape multiple pages
     if (buyer.pe_firm_website) {
-      const peResult = await findBestTeamPage(buyer.pe_firm_website, firecrawlKey);
+      console.log(`=== PE FIRM: ${buyer.pe_firm_name} ===`);
+      const pePages = await findTeamPages(buyer.pe_firm_website, firecrawlKey);
       
-      if (peResult) {
-        console.log(`Extracting PE contacts from: ${peResult.url}`);
+      for (const page of pePages) {
+        scrapedPages.push(page.url);
+        console.log(`Extracting PE contacts from: ${page.url}`);
         const extraction = await extractContactsWithAI(
-          peResult.content,
+          page.content,
           buyer.pe_firm_name,
           buyer.platform_company_name || platformCompanyName,
-          true
+          true,
+          page.url
         );
 
-        dealTeamFound = extraction.deal_team_found;
+        if (extraction.deal_team_found) {
+          dealTeamFound = true;
+        }
         
         for (const contact of extraction.contacts) {
-          allContacts.push({
-            ...contact,
-            company_type: 'PE Firm',
-            source_url: peResult.url,
-          });
+          // Check for duplicate by name (case-insensitive)
+          const exists = allContacts.some(c => c.name.toLowerCase() === contact.name.toLowerCase());
+          if (!exists) {
+            allContacts.push({
+              ...contact,
+              company_type: 'PE Firm',
+              source_url: page.url,
+            });
+          }
         }
       }
+      console.log(`PE Firm: Found ${allContacts.length} unique contacts from ${pePages.length} pages`);
     }
 
-    // Platform company contact discovery using smart page discovery
+    // Platform company contact discovery - scrape multiple pages
     if (buyer.platform_website) {
-      const platformResult = await findBestTeamPage(buyer.platform_website, firecrawlKey);
+      console.log(`=== PLATFORM: ${buyer.platform_company_name} ===`);
+      const platformPages = await findTeamPages(buyer.platform_website, firecrawlKey);
       
-      if (platformResult) {
-        console.log(`Extracting platform contacts from: ${platformResult.url}`);
+      const platformContactsCount = allContacts.length;
+      for (const page of platformPages) {
+        scrapedPages.push(page.url);
+        console.log(`Extracting platform contacts from: ${page.url}`);
         const extraction = await extractContactsWithAI(
-          platformResult.content,
+          page.content,
           buyer.platform_company_name || buyer.pe_firm_name,
           null,
-          false
+          false,
+          page.url
         );
 
         for (const contact of extraction.contacts) {
-          allContacts.push({
-            ...contact,
-            company_type: 'Platform',
-            source_url: platformResult.url,
-          });
+          // Check for duplicate by name (case-insensitive)
+          const exists = allContacts.some(c => c.name.toLowerCase() === contact.name.toLowerCase());
+          if (!exists) {
+            allContacts.push({
+              ...contact,
+              company_type: 'Platform',
+              source_url: page.url,
+            });
+          }
         }
       }
+      console.log(`Platform: Found ${allContacts.length - platformContactsCount} unique contacts from ${platformPages.length} pages`);
     }
 
-    console.log(`Found ${allContacts.length} contacts total. Deal team found: ${dealTeamFound}`);
+    console.log(`=== TOTAL: ${allContacts.length} contacts found. Deal team: ${dealTeamFound} ===`);
+    console.log(`Pages scraped: ${scrapedPages.join(', ')}`);
 
     // Insert contacts into database
     const insertedContacts = [];
@@ -446,6 +525,7 @@ Deno.serve(async (req) => {
         contacts_inserted: insertedContacts.length,
         deal_team_found: dealTeamFound,
         contacts: insertedContacts,
+        pages_scraped: scrapedPages,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
