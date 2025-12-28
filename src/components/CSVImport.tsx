@@ -1,10 +1,10 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, Loader2, FileSpreadsheet, Sparkles, ArrowRight, ArrowLeft } from "lucide-react";
+import { Upload, Loader2, FileSpreadsheet, Sparkles, ArrowRight, ArrowLeft, AlertTriangle } from "lucide-react";
 import type { TablesInsert, Tables } from "@/integrations/supabase/types";
 import { normalizeDomain } from "@/lib/normalizeDomain";
 
@@ -121,13 +121,41 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
     setMapping(prev => ({ ...prev, [header]: field }));
   };
 
+  // Helper to check if a row has a website based on current mapping
+  const getRowWebsite = (row: string[]): string | null => {
+    for (let i = 0; i < headers.length; i++) {
+      const fieldValue = mapping[headers[i]];
+      if (fieldValue === 'platform_website' || fieldValue === 'pe_firm_website') {
+        const value = row[i]?.trim();
+        if (value) return value;
+      }
+    }
+    return null;
+  };
+
+  // Compute valid/skipped rows based on website requirement
+  const { validRows, skippedRows } = useMemo(() => {
+    const valid: string[][] = [];
+    const skipped: string[][] = [];
+    
+    for (const row of rows) {
+      if (getRowWebsite(row)) {
+        valid.push(row);
+      } else {
+        skipped.push(row);
+      }
+    }
+    
+    return { validRows: valid, skippedRows: skipped };
+  }, [rows, mapping, headers]);
+
   const handleImport = async () => {
-    if (rows.length === 0) return;
+    if (validRows.length === 0) return;
     setIsLoading(true);
 
     try {
-      // Parse all rows into buyer objects
-      const parsedBuyers: Partial<TablesInsert<'buyers'>>[] = rows.map((row) => {
+      // Parse only valid rows (those with websites) into buyer objects
+      const parsedBuyers: Partial<TablesInsert<'buyers'>>[] = validRows.map((row) => {
         const buyer: Partial<TablesInsert<'buyers'>> = {
           tracker_id: trackerId,
           pe_firm_name: 'Unknown PE', // Required field default
@@ -159,7 +187,7 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
       }).filter(b => b.platform_company_name || b.pe_firm_name !== 'Unknown PE');
 
       if (parsedBuyers.length === 0) {
-        throw new Error('No valid buyers found. Make sure at least PE Firm or Platform Company is mapped.');
+        throw new Error('No valid buyers found. Make sure at least PE Firm or Platform Company is mapped and rows have websites.');
       }
 
       // Fetch existing buyers in this tracker for duplicate detection
@@ -228,9 +256,13 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
           .eq("id", merge.id);
       }
 
-      const message = toMerge.length > 0 
+      let message = toMerge.length > 0 
         ? `${toInsert.length} new buyers imported, ${toMerge.length} existing buyers updated with additional PE firms.`
         : `${toInsert.length} buyers imported.`;
+      
+      if (skippedRows.length > 0) {
+        message += ` ${skippedRows.length} rows skipped (no website).`;
+      }
       
       toast({ title: "Import successful", description: message });
       resetAndClose();
@@ -357,16 +389,36 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
                 </table>
               </div>
 
-              <p className="text-sm text-muted-foreground">
-                {rows.length} rows will be imported
-              </p>
+              {skippedRows.length > 0 ? (
+                <div className="flex items-center gap-2 p-3 bg-amber-500/10 rounded-lg border border-amber-500/30">
+                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  <p className="text-sm">
+                    <span className="font-medium text-amber-500">{skippedRows.length} rows will be skipped</span>
+                    {' '}(no website). Only <span className="font-medium">{validRows.length}</span> rows will be imported.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {validRows.length} rows will be imported
+                </p>
+              )}
             </div>
           )}
 
           {/* Step 3: Preview (optional, can skip) */}
           {step === 'preview' && (
             <div className="space-y-3">
-              <p className="text-sm font-medium">{rows.length} buyers ready to import</p>
+              {skippedRows.length > 0 ? (
+                <div className="flex items-center gap-2 p-3 bg-amber-500/10 rounded-lg border border-amber-500/30">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                  <p className="text-sm">
+                    <span className="font-medium">{validRows.length}</span> buyers will be imported. 
+                    <span className="text-amber-500 font-medium"> {skippedRows.length} skipped</span> (no website).
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm font-medium">{validRows.length} buyers ready to import</p>
+              )}
               <div className="max-h-60 overflow-auto border rounded-lg">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 sticky top-0">
@@ -381,7 +433,7 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {rows.slice(0, 10).map((row, rowIdx) => (
+                    {validRows.slice(0, 10).map((row, rowIdx) => (
                       <tr key={rowIdx}>
                         {headers.map((header, colIdx) => {
                           if (mapping[header] === 'skip') return null;
@@ -393,10 +445,10 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
                         })}
                       </tr>
                     ))}
-                    {rows.length > 10 && (
+                    {validRows.length > 10 && (
                       <tr>
                         <td colSpan={headers.length} className="p-2 text-center text-muted-foreground">
-                          ...and {rows.length - 10} more
+                          ...and {validRows.length - 10} more
                         </td>
                       </tr>
                     )}
@@ -429,9 +481,9 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
               </Button>
             )}
             {step === 'preview' && (
-              <Button onClick={handleImport} disabled={rows.length === 0 || isLoading}>
+              <Button onClick={handleImport} disabled={validRows.length === 0 || isLoading}>
                 {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Import {rows.length} Buyers
+                Import {validRows.length} Buyers
               </Button>
             )}
           </div>
