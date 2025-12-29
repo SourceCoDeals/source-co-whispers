@@ -121,32 +121,59 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
     setMapping(prev => ({ ...prev, [header]: field }));
   };
 
-  // Helper to check if a row has a website based on current mapping
-  const getRowWebsite = (row: string[]): string | null => {
+  // Helper to get website values from a row based on current mapping
+  const getRowWebsites = (row: string[]): { platform: string | null; peFirm: string | null } => {
+    let platform: string | null = null;
+    let peFirm: string | null = null;
+    
     for (let i = 0; i < headers.length; i++) {
       const fieldValue = mapping[headers[i]];
-      if (fieldValue === 'platform_website' || fieldValue === 'pe_firm_website') {
+      if (fieldValue === 'platform_website') {
         const value = row[i]?.trim();
-        if (value) return value;
+        if (value) platform = value;
+      }
+      if (fieldValue === 'pe_firm_website') {
+        const value = row[i]?.trim();
+        if (value) peFirm = value;
       }
     }
-    return null;
+    return { platform, peFirm };
   };
 
-  // Compute valid/skipped rows based on website requirement
-  const { validRows, skippedRows } = useMemo(() => {
+  // Compute valid/skipped rows based on website requirement (require BOTH websites)
+  const { validRows, skippedRows, missingPlatformCount, missingPeFirmCount, missingBothCount } = useMemo(() => {
     const valid: string[][] = [];
     const skipped: string[][] = [];
+    let missingPlatform = 0;
+    let missingPeFirm = 0;
+    let missingBoth = 0;
     
     for (const row of rows) {
-      if (getRowWebsite(row)) {
+      const { platform, peFirm } = getRowWebsites(row);
+      const hasPlatform = !!platform;
+      const hasPeFirm = !!peFirm;
+      
+      if (hasPlatform && hasPeFirm) {
         valid.push(row);
       } else {
         skipped.push(row);
+        if (!hasPlatform && !hasPeFirm) {
+          missingBoth++;
+        } else if (!hasPlatform) {
+          missingPlatform++;
+        } else {
+          missingPeFirm++;
+        }
       }
     }
     
-    return { validRows: valid, skippedRows: skipped };
+    return { 
+      validRows: valid, 
+      skippedRows: skipped,
+      missingPlatformCount: missingPlatform,
+      missingPeFirmCount: missingPeFirm,
+      missingBothCount: missingBoth
+    };
   }, [rows, mapping, headers]);
 
   const handleImport = async () => {
@@ -154,7 +181,7 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
     setIsLoading(true);
 
     try {
-      // Parse only valid rows (those with websites) into buyer objects
+      // Parse only valid rows (those with BOTH websites) into buyer objects
       const parsedBuyers: Partial<TablesInsert<'buyers'>>[] = validRows.map((row) => {
         const buyer: Partial<TablesInsert<'buyers'>> = {
           tracker_id: trackerId,
@@ -187,9 +214,66 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
       }).filter(b => b.platform_company_name || b.pe_firm_name !== 'Unknown PE');
 
       if (parsedBuyers.length === 0) {
-        throw new Error('No valid buyers found. Make sure at least PE Firm or Platform Company is mapped and rows have websites.');
+        throw new Error('No valid buyers found. Make sure at least PE Firm or Platform Company is mapped and rows have both websites.');
       }
 
+      // ============================================
+      // STEP 1: DEDUPLICATE WITHIN CSV BY PLATFORM DOMAIN
+      // ============================================
+      // Group CSV rows by normalized platform domain BEFORE checking against database
+      const csvByDomain = new Map<string, Partial<TablesInsert<'buyers'>>[]>();
+      
+      for (const buyer of parsedBuyers) {
+        const domain = normalizeDomain(buyer.platform_website as string);
+        if (domain) {
+          if (!csvByDomain.has(domain)) {
+            csvByDomain.set(domain, []);
+          }
+          csvByDomain.get(domain)!.push(buyer);
+        } else {
+          // Fallback: use platform name if no domain
+          const name = (buyer.platform_company_name || '').toLowerCase().trim();
+          if (name) {
+            const key = `name:${name}`;
+            if (!csvByDomain.has(key)) {
+              csvByDomain.set(key, []);
+            }
+            csvByDomain.get(key)!.push(buyer);
+          }
+        }
+      }
+
+      // For each domain group, merge all PE firm names into one record
+      const dedupedCsvBuyers: Partial<TablesInsert<'buyers'>>[] = [];
+      let csvMergeCount = 0;
+      
+      for (const [_, domainBuyers] of csvByDomain) {
+        // Pick the first as the "keeper"
+        const keeper = { ...domainBuyers[0] };
+        
+        // Collect unique PE firm names from all rows
+        const peFirmNames = new Set<string>();
+        for (const b of domainBuyers) {
+          const name = b.pe_firm_name?.trim();
+          if (name && name !== 'Unknown PE') {
+            peFirmNames.add(name);
+          }
+        }
+        
+        // If multiple PE firms found, combine them
+        if (peFirmNames.size > 0) {
+          keeper.pe_firm_name = Array.from(peFirmNames).join(' / ');
+          if (peFirmNames.size > 1) {
+            csvMergeCount += (domainBuyers.length - 1);
+          }
+        }
+        
+        dedupedCsvBuyers.push(keeper);
+      }
+
+      // ============================================
+      // STEP 2: CHECK AGAINST DATABASE
+      // ============================================
       // Fetch existing buyers in this tracker for duplicate detection
       const { data: existingBuyers } = await supabase
         .from("buyers")
@@ -213,32 +297,59 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
       const toInsert: TablesInsert<'buyers'>[] = [];
       const toMerge: { id: string; newPeFirmName: string }[] = [];
 
-      for (const buyer of parsedBuyers) {
+      for (const buyer of dedupedCsvBuyers) {
         // Check for existing buyer by platform name or website domain
         let existingBuyer: Tables<'buyers'> | undefined;
         
-        if (buyer.platform_company_name) {
-          existingBuyer = existingByPlatformName.get(buyer.platform_company_name.toLowerCase().trim());
-        }
-        if (!existingBuyer && buyer.platform_website) {
-          const domain = normalizeDomain(buyer.platform_website);
+        // Check by domain first (primary)
+        if (buyer.platform_website) {
+          const domain = normalizeDomain(buyer.platform_website as string);
           if (domain) existingBuyer = existingByDomain.get(domain);
+        }
+        // Fallback to name
+        if (!existingBuyer && buyer.platform_company_name) {
+          existingBuyer = existingByPlatformName.get((buyer.platform_company_name as string).toLowerCase().trim());
         }
 
         if (existingBuyer) {
           // Duplicate found - merge PE firm names if different
-          const newPeFirm = buyer.pe_firm_name?.trim();
+          const newPeFirms = (buyer.pe_firm_name as string)?.split('/').map(s => s.trim()).filter(s => s && s !== 'Unknown PE') || [];
           const existingPeFirms = existingBuyer.pe_firm_name?.split('/').map(s => s.trim()) || [];
           
-          if (newPeFirm && newPeFirm !== 'Unknown PE' && !existingPeFirms.some(pf => pf.toLowerCase() === newPeFirm.toLowerCase())) {
+          // Find PE firms that are new (not already in existing)
+          const uniqueNewFirms = newPeFirms.filter(nf => 
+            !existingPeFirms.some(ef => ef.toLowerCase() === nf.toLowerCase())
+          );
+          
+          if (uniqueNewFirms.length > 0) {
             const combinedName = existingBuyer.pe_firm_name 
-              ? `${existingBuyer.pe_firm_name} / ${newPeFirm}`
-              : newPeFirm;
+              ? `${existingBuyer.pe_firm_name} / ${uniqueNewFirms.join(' / ')}`
+              : uniqueNewFirms.join(' / ');
             toMerge.push({ id: existingBuyer.id, newPeFirmName: combinedName });
           }
         } else {
-          // New buyer
-          toInsert.push(buyer as TablesInsert<'buyers'>);
+          // New buyer - add to insert list AND update lookup maps immediately
+          // This prevents sequential CSV rows for the same platform from being inserted as duplicates
+          const newBuyer = buyer as TablesInsert<'buyers'>;
+          toInsert.push(newBuyer);
+          
+          // Update lookup maps so subsequent buyers see this one
+          if (buyer.platform_website) {
+            const domain = normalizeDomain(buyer.platform_website as string);
+            if (domain) {
+              // Create a fake "existing" buyer to use for subsequent merges
+              const fakeBuyer = {
+                id: `pending-${toInsert.length}`,
+                platform_company_name: buyer.platform_company_name as string,
+                platform_website: buyer.platform_website as string,
+                pe_firm_name: buyer.pe_firm_name as string,
+              } as Tables<'buyers'>;
+              existingByDomain.set(domain, fakeBuyer);
+              if (buyer.platform_company_name) {
+                existingByPlatformName.set((buyer.platform_company_name as string).toLowerCase().trim(), fakeBuyer);
+              }
+            }
+          }
         }
       }
 
@@ -256,13 +367,22 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
           .eq("id", merge.id);
       }
 
-      let message = toMerge.length > 0 
-        ? `${toInsert.length} new buyers imported, ${toMerge.length} existing buyers updated with additional PE firms.`
-        : `${toInsert.length} buyers imported.`;
-      
-      if (skippedRows.length > 0) {
-        message += ` ${skippedRows.length} rows skipped (no website).`;
+      // Build result message
+      const parts: string[] = [];
+      if (toInsert.length > 0) {
+        parts.push(`${toInsert.length} new buyers imported`);
       }
+      if (toMerge.length > 0) {
+        parts.push(`${toMerge.length} existing buyers updated with additional PE firms`);
+      }
+      if (csvMergeCount > 0) {
+        parts.push(`${csvMergeCount} duplicate rows in CSV merged`);
+      }
+      if (skippedRows.length > 0) {
+        parts.push(`${skippedRows.length} rows skipped (missing website)`);
+      }
+      
+      const message = parts.join('. ') + '.';
       
       toast({ title: "Import successful", description: message });
       resetAndClose();
@@ -390,16 +510,21 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
               </div>
 
               {skippedRows.length > 0 ? (
-                <div className="flex items-center gap-2 p-3 bg-amber-500/10 rounded-lg border border-amber-500/30">
-                  <AlertTriangle className="w-4 h-4 text-amber-500" />
-                  <p className="text-sm">
-                    <span className="font-medium text-amber-500">{skippedRows.length} rows will be skipped</span>
-                    {' '}(no website). Only <span className="font-medium">{validRows.length}</span> rows will be imported.
-                  </p>
+                <div className="flex items-start gap-2 p-3 bg-amber-500/10 rounded-lg border border-amber-500/30">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-medium text-amber-500 mb-1">{skippedRows.length} rows will be skipped (require both websites)</p>
+                    <ul className="text-muted-foreground text-xs space-y-0.5">
+                      {missingBothCount > 0 && <li>• {missingBothCount} missing both websites</li>}
+                      {missingPlatformCount > 0 && <li>• {missingPlatformCount} missing platform website</li>}
+                      {missingPeFirmCount > 0 && <li>• {missingPeFirmCount} missing PE firm website</li>}
+                    </ul>
+                    <p className="mt-1">Only <span className="font-medium">{validRows.length}</span> rows will be imported.</p>
+                  </div>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  {validRows.length} rows will be imported
+                  {validRows.length} rows will be imported (all have both platform & PE firm websites)
                 </p>
               )}
             </div>
@@ -409,12 +534,12 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
           {step === 'preview' && (
             <div className="space-y-3">
               {skippedRows.length > 0 ? (
-                <div className="flex items-center gap-2 p-3 bg-amber-500/10 rounded-lg border border-amber-500/30">
-                  <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
-                  <p className="text-sm">
-                    <span className="font-medium">{validRows.length}</span> buyers will be imported. 
-                    <span className="text-amber-500 font-medium"> {skippedRows.length} skipped</span> (no website).
-                  </p>
+                <div className="flex items-start gap-2 p-3 bg-amber-500/10 rounded-lg border border-amber-500/30">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div className="text-sm">
+                    <p><span className="font-medium">{validRows.length}</span> buyers will be imported.</p>
+                    <p className="text-amber-500 font-medium">{skippedRows.length} skipped (missing website)</p>
+                  </div>
                 </div>
               ) : (
                 <p className="text-sm font-medium">{validRows.length} buyers ready to import</p>
