@@ -43,6 +43,15 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+// LocalStorage key for enrichment progress persistence
+const getEnrichmentStorageKey = (trackerId: string) => `enrichment_progress_${trackerId}`;
+
+interface EnrichmentProgress {
+  processedIds: string[];
+  startedAt: string;
+  lastUpdatedAt: string;
+}
+
 export default function TrackerDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -108,6 +117,54 @@ export default function TrackerDetail() {
     }>;
     stats: { groupsFound: number; totalDuplicates: number };
   } | null>(null);
+  
+  // Check for interrupted enrichment session
+  const [hasInterruptedSession, setHasInterruptedSession] = useState(false);
+  const [interruptedSessionInfo, setInterruptedSessionInfo] = useState<{ processed: number; remaining: number } | null>(null);
+
+  // Navigation warning when bulk enriching
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isBulkEnriching) {
+        e.preventDefault();
+        e.returnValue = 'Enrichment is in progress. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isBulkEnriching]);
+
+  // Check for interrupted enrichment session on load
+  useEffect(() => {
+    if (!id || buyers.length === 0) return;
+    
+    const storageKey = getEnrichmentStorageKey(id);
+    const savedProgress = localStorage.getItem(storageKey);
+    
+    if (savedProgress) {
+      try {
+        const progress: EnrichmentProgress = JSON.parse(savedProgress);
+        const buyersWithWebsites = buyers.filter((b) => b.platform_website || b.pe_firm_website);
+        const unenrichedBuyers = buyersWithWebsites.filter((b) => !isActuallyEnriched(b));
+        
+        // Only show resume if there are still unenriched buyers
+        if (unenrichedBuyers.length > 0 && progress.processedIds.length > 0) {
+          setHasInterruptedSession(true);
+          setInterruptedSessionInfo({
+            processed: progress.processedIds.length,
+            remaining: unenrichedBuyers.length
+          });
+        } else {
+          // Clear stale progress
+          localStorage.removeItem(storageKey);
+        }
+      } catch (e) {
+        localStorage.removeItem(storageKey);
+      }
+    }
+  }, [id, buyers]);
 
   useEffect(() => { loadData(); }, [id]);
   
@@ -357,6 +414,25 @@ export default function TrackerDetail() {
     }
   };
 
+  const saveEnrichmentProgress = (processedIds: string[]) => {
+    if (!id) return;
+    const storageKey = getEnrichmentStorageKey(id);
+    const progress: EnrichmentProgress = {
+      processedIds,
+      startedAt: new Date().toISOString(),
+      lastUpdatedAt: new Date().toISOString()
+    };
+    localStorage.setItem(storageKey, JSON.stringify(progress));
+  };
+
+  const clearEnrichmentProgress = () => {
+    if (!id) return;
+    const storageKey = getEnrichmentStorageKey(id);
+    localStorage.removeItem(storageKey);
+    setHasInterruptedSession(false);
+    setInterruptedSessionInfo(null);
+  };
+
   const enrichAllBuyers = async () => {
     // Filter to buyers with websites that are NOT already enriched
     const buyersWithWebsites = buyers.filter((b) => b.platform_website || b.pe_firm_website);
@@ -376,6 +452,7 @@ export default function TrackerDetail() {
         title: "All buyers already enriched",
         description: `${buyersWithWebsites.length} buyers with websites are already enriched`,
       });
+      clearEnrichmentProgress();
       return;
     }
 
@@ -397,6 +474,7 @@ export default function TrackerDetail() {
     const partialBuyerIds = new Set<string>();
     let failedBuyerIds = new Set<string>();
     const failureReasons = new Map<string, string>();
+    const processedIds: string[] = [];
 
     try {
       // Phase 1: Initial enrichment pass (only unenriched buyers)
@@ -414,6 +492,10 @@ export default function TrackerDetail() {
         setBuyerEnrichmentProgress({ current: i + 1, total: unenrichedBuyers.length });
 
         const result = await enrichSingleBuyerWithRetry(buyer, 1, MAX_ENRICHMENT_RETRIES);
+
+        // Track processed buyers for persistence
+        processedIds.push(buyer.id);
+        saveEnrichmentProgress(processedIds);
 
         if (!result.success) {
           failedBuyerIds.add(buyer.id);
@@ -539,6 +621,9 @@ export default function TrackerDetail() {
       }
 
       toast({ title: "Bulk enrichment complete", description });
+      
+      // Clear progress on successful completion
+      clearEnrichmentProgress();
     } finally {
       // Release wake lock
       if (wakeLock) {
@@ -554,6 +639,18 @@ export default function TrackerDetail() {
       setBuyerEnrichmentProgress({ current: 0, total: 0 });
     }
   };
+
+  // Retry only unenriched buyers (for interrupted sessions or quick retry)
+  const retryUnenrichedBuyers = async () => {
+    clearEnrichmentProgress();
+    await enrichAllBuyers();
+  };
+
+  // Get count of unenriched buyers for UI
+  const unenrichedBuyerCount = useMemo(() => {
+    const buyersWithWebsites = buyers.filter((b) => b.platform_website || b.pe_firm_website);
+    return buyersWithWebsites.filter((b) => !isActuallyEnriched(b)).length;
+  }, [buyers]);
 
   // Deduplicate buyers functions
   const checkForDuplicates = async () => {
@@ -2046,6 +2143,45 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
               </div>
             )}
             
+            {/* Interrupted enrichment session banner */}
+            {hasInterruptedSession && interruptedSessionInfo && !isBulkEnriching && (
+              <div className="flex items-center justify-between p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                <div className="flex items-center gap-2 text-sm">
+                  <Info className="w-4 h-4 text-amber-500" />
+                  <span className="text-amber-700 dark:text-amber-400">
+                    Previous enrichment was interrupted. {interruptedSessionInfo.remaining} buyers still need enrichment.
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={clearEnrichmentProgress}
+                  >
+                    Dismiss
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    onClick={retryUnenrichedBuyers}
+                    className="bg-amber-500 hover:bg-amber-600 text-white"
+                  >
+                    <Sparkles className="w-4 h-4 mr-1" />
+                    Resume Enrichment
+                  </Button>
+                </div>
+              </div>
+            )}
+            
+            {/* Enrichment in progress warning banner */}
+            {isBulkEnriching && (
+              <div className="flex items-center gap-3 p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                <span className="text-sm font-medium">
+                  Enriching {buyerEnrichmentProgress.current} of {buyerEnrichmentProgress.total} buyers — Keep this tab open
+                </span>
+              </div>
+            )}
+            
             <div className="flex gap-4 items-center">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -2072,6 +2208,26 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
+              
+              {/* Retry Unenriched button - only show when there are unenriched buyers */}
+              {unenrichedBuyerCount > 0 && !isBulkEnriching && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button 
+                        variant="secondary" 
+                        onClick={retryUnenrichedBuyers}
+                      >
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Retry {unenrichedBuyerCount} Unenriched
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Retry enrichment for buyers without extracted data</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
