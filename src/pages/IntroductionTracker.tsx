@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Mail, Linkedin, Building2, FileCheck, UserPlus, ExternalLink, AlertTriangle, Target, User, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Mail, Linkedin, Building2, FileCheck, FileX, UserPlus, ExternalLink, AlertTriangle, Target, User, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const employeeOptions = ["Unassigned", "John Smith", "Sarah Johnson", "Mike Williams", "Emily Davis", "Chris Brown"];
@@ -162,6 +162,7 @@ Best regards`);
                 <TableRow>
                   <TableHead className="w-[250px]">Buyer Name</TableHead>
                   <TableHead>PE Firm</TableHead>
+                  <TableHead>Contacts</TableHead>
                   <TableHead>Date Approved</TableHead>
                   <TableHead>Fit Score</TableHead>
                   <TableHead>Status</TableHead>
@@ -188,9 +189,13 @@ Best regards`);
                                   <ExternalLink className="w-3.5 h-3.5" />
                                 </a>
                               )}
-                              {hasFeeAgreement(buyer) && (
+                              {hasFeeAgreement(buyer) ? (
                                 <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/30">
-                                  <FileCheck className="w-3 h-3 mr-1" />Fee
+                                  <FileCheck className="w-3 h-3 mr-1" />Fee Signed
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-600 border-amber-500/30">
+                                  <FileX className="w-3 h-3 mr-1" />No Fee
                                 </Badge>
                               )}
                             </div>
@@ -205,6 +210,39 @@ Best regards`);
                                 </a>
                               )}
                             </div>
+                          </TableCell>
+                          <TableCell>
+                            {buyerContacts.length > 0 ? (
+                              <div className="flex items-center gap-2">
+                                <Badge variant="secondary" className="text-xs">
+                                  <User className="w-3 h-3 mr-1" />
+                                  {buyerContacts.length}
+                                </Badge>
+                                {/* Quick action icons for primary contact */}
+                                {buyerContacts[0]?.email && (
+                                  <a 
+                                    href={generateEmailDraft(buyer, buyerContacts[0])}
+                                    className="text-muted-foreground hover:text-primary"
+                                    title={`Email ${buyerContacts[0].name}`}
+                                  >
+                                    <Mail className="w-3.5 h-3.5" />
+                                  </a>
+                                )}
+                                {buyerContacts[0]?.linkedin_url && (
+                                  <a 
+                                    href={buyerContacts[0].linkedin_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-muted-foreground hover:text-[#0077b5]"
+                                    title={`LinkedIn: ${buyerContacts[0].name}`}
+                                  >
+                                    <Linkedin className="w-3.5 h-3.5" />
+                                  </a>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">No contacts</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             {formatDateApproved(buyer.score)}
@@ -236,6 +274,12 @@ Best regards`);
                                 Passed
                               </Badge>
                             )}
+                            {!status && (
+                              <Badge variant="outline" className="gap-1 text-muted-foreground">
+                                <Clock className="w-3 h-3" />
+                                Pending
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell>
                             <CollapsibleTrigger asChild>
@@ -247,7 +291,7 @@ Best regards`);
                         </TableRow>
                         <CollapsibleContent asChild>
                           <tr>
-                            <td colSpan={6} className="p-0">
+                            <td colSpan={7} className="p-0">
                               <div className="p-4 bg-muted/30 border-t space-y-4">
                                 {/* Quick Intel Section */}
                                 <div className="bg-background rounded-lg p-4 space-y-3">

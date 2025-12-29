@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { User, ChevronDown, ChevronRight, Mail, Linkedin, Phone, Loader2, UserSearch, Plus, Building2, ExternalLink } from "lucide-react";
 import { ContactQuickCard } from "@/components/ContactQuickCard";
 import { AddContactDialog } from "@/components/AddContactDialog";
@@ -160,24 +161,38 @@ export function ContactsSummarySection({
                     existingContactsCount={peFirmContacts.length}
                     peFirmName={peFirmName}
                     trigger={
-                      <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={(e) => e.stopPropagation()}>
-                        <Plus className="w-3 h-3" />
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={(e) => e.stopPropagation()}>
+                            <Plus className="w-3 h-3 mr-1" />
+                            <span className="hidden sm:inline">Add</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Add contact to {peFirmName}</TooltipContent>
+                      </Tooltip>
                     }
                   />
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-6 text-xs px-2"
-                    onClick={(e) => { e.stopPropagation(); onFindContacts("PE Firm"); }}
-                    disabled={isFinding && findingType === "PE Firm"}
-                  >
-                    {isFinding && findingType === "PE Firm" ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <UserSearch className="w-3 h-3" />
-                    )}
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-6 text-xs px-2"
+                        onClick={(e) => { e.stopPropagation(); onFindContacts("PE Firm"); }}
+                        disabled={isFinding && findingType === "PE Firm"}
+                      >
+                        {isFinding && findingType === "PE Firm" ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <>
+                            <UserSearch className="w-3 h-3 mr-1" />
+                            <span className="hidden sm:inline">Find</span>
+                          </>
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Search for contacts at {peFirmName}</TooltipContent>
+                  </Tooltip>
                 </div>
               </div>
               
@@ -221,24 +236,38 @@ export function ContactsSummarySection({
                       peFirmName={peFirmName}
                       platformCompanyName={platformCompanyName}
                       trigger={
-                        <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={(e) => e.stopPropagation()}>
-                          <Plus className="w-3 h-3" />
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={(e) => e.stopPropagation()}>
+                              <Plus className="w-3 h-3 mr-1" />
+                              <span className="hidden sm:inline">Add</span>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Add contact to {platformCompanyName}</TooltipContent>
+                        </Tooltip>
                       }
                     />
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="h-6 text-xs px-2"
-                      onClick={(e) => { e.stopPropagation(); onFindContacts("Platform"); }}
-                      disabled={isFinding && findingType === "Platform"}
-                    >
-                      {isFinding && findingType === "Platform" ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <UserSearch className="w-3 h-3" />
-                      )}
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 text-xs px-2"
+                          onClick={(e) => { e.stopPropagation(); onFindContacts("Platform"); }}
+                          disabled={isFinding && findingType === "Platform"}
+                        >
+                          {isFinding && findingType === "Platform" ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <>
+                              <UserSearch className="w-3 h-3 mr-1" />
+                              <span className="hidden sm:inline">Find</span>
+                            </>
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Search for contacts at {platformCompanyName}</TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
                 

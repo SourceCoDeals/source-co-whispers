@@ -9,9 +9,10 @@ import { Switch } from "@/components/ui/switch";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
 import { EngagementSignalsBadge } from "@/components/EngagementSignalsBadge";
-import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle, XCircle, ThumbsUp, ThumbsDown, Eye, Trash2, Plus } from "lucide-react";
+import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, FileX, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle, XCircle, ThumbsUp, ThumbsDown, Eye, Trash2, Plus, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PassReasonDialog } from "@/components/PassReasonDialog";
 import { BuyerQueryChat } from "@/components/BuyerQueryChat";
@@ -717,18 +718,27 @@ export default function DealMatching() {
                   />
                 </div>
               </div>
-              <div className="flex items-center gap-4 pl-5 text-xs text-muted-foreground">
+              {/* Clickable contact details */}
+              <div className="flex items-center gap-4 pl-5 text-xs">
                 {contact.email && (
-                  <span className="flex items-center gap-1">
+                  <a 
+                    href={`mailto:${contact.email}`}
+                    className="flex items-center gap-1 text-primary hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <Mail className="w-3 h-3" />
                     {contact.email}
-                  </span>
+                  </a>
                 )}
                 {contact.phone && (
-                  <span className="flex items-center gap-1">
+                  <a 
+                    href={`tel:${contact.phone}`}
+                    className="flex items-center gap-1 text-muted-foreground hover:text-primary hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <Phone className="w-3 h-3" />
                     {contact.phone}
-                  </span>
+                  </a>
                 )}
                 {contact.linkedin_url && (
                   <a 
@@ -736,40 +746,41 @@ export default function DealMatching() {
                     target="_blank" 
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    className="flex items-center gap-1 hover:text-primary"
+                    className="flex items-center gap-1 text-[#0077b5] hover:underline"
                   >
                     <Linkedin className="w-3 h-3" />
                     LinkedIn
                   </a>
                 )}
               </div>
+              {/* Action buttons with clear labels */}
               <div className="flex gap-2 pl-5">
                 {contact.email && (
                   <Button
                     size="sm"
                     variant="default"
-                    className="h-7 text-xs"
+                    className="h-8 text-xs"
                     onClick={(e) => {
                       e.stopPropagation();
                       window.location.href = generateEmailBody(buyer, contact.name);
                     }}
                   >
-                    <Send className="w-3 h-3 mr-1" />
-                    Send Email
+                    <Send className="w-3.5 h-3.5 mr-1.5" />
+                    Send Deal Intro
                   </Button>
                 )}
                 {contact.linkedin_url && (
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 text-xs"
+                    className="h-8 text-xs text-[#0077b5] border-[#0077b5]/30 hover:bg-[#0077b5]/10"
                     onClick={(e) => {
                       e.stopPropagation();
                       window.open(contact.linkedin_url, '_blank');
                     }}
                   >
-                    <Linkedin className="w-3 h-3 mr-1" />
-                    Message
+                    <Linkedin className="w-3.5 h-3.5 mr-1.5" />
+                    Open LinkedIn
                   </Button>
                 )}
               </div>
@@ -850,9 +861,13 @@ export default function DealMatching() {
                       <ThumbsDown className="w-3 h-3 mr-1" />Not Interested
                     </Badge>
                   )}
-                  {hasFeeAgreement(buyer) && (
+                  {hasFeeAgreement(buyer) ? (
                     <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/30">
-                      <FileCheck className="w-3 h-3 mr-1" />Fee Agreement
+                      <FileCheck className="w-3 h-3 mr-1" />Fee Signed
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-600 border-amber-500/30">
+                      <FileX className="w-3 h-3 mr-1" />No Fee
                     </Badge>
                   )}
                   {buyer.aiScore?.engagementSignals && (
