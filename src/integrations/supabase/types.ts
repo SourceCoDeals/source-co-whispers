@@ -659,6 +659,62 @@ export type Database = {
         }
         Relationships: []
       }
+      deal_scoring_adjustments: {
+        Row: {
+          approved_count: number | null
+          created_at: string | null
+          deal_id: string | null
+          geography_weight_mult: number | null
+          id: string
+          last_calculated_at: string | null
+          passed_geography: number | null
+          passed_services: number | null
+          passed_size: number | null
+          rejected_count: number | null
+          services_weight_mult: number | null
+          size_weight_mult: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          approved_count?: number | null
+          created_at?: string | null
+          deal_id?: string | null
+          geography_weight_mult?: number | null
+          id?: string
+          last_calculated_at?: string | null
+          passed_geography?: number | null
+          passed_services?: number | null
+          passed_size?: number | null
+          rejected_count?: number | null
+          services_weight_mult?: number | null
+          size_weight_mult?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          approved_count?: number | null
+          created_at?: string | null
+          deal_id?: string | null
+          geography_weight_mult?: number | null
+          id?: string
+          last_calculated_at?: string | null
+          passed_geography?: number | null
+          passed_services?: number | null
+          passed_size?: number | null
+          rejected_count?: number | null
+          services_weight_mult?: number | null
+          size_weight_mult?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_scoring_adjustments_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: true
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deal_transcripts: {
         Row: {
           call_date: string | null
