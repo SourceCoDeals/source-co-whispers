@@ -12,6 +12,8 @@ import { StructuredCriteriaPanel } from "@/components/StructuredCriteriaPanel";
 import { KPIConfigPanel } from "@/components/KPIConfigPanel";
 import { ScoringBehaviorPanel } from "@/components/ScoringBehaviorPanel";
 import { TrackerQueryChat } from "@/components/TrackerQueryChat";
+import { TrackerNotesSection } from "@/components/TrackerNotesSection";
+import { AIResearchSection } from "@/components/AIResearchSection";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload, TrendingUp, ArrowUp, ArrowDown, Filter, BookOpen, CheckSquare, Square, GitMerge } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -1275,6 +1277,101 @@ export default function TrackerDetail() {
     }
   };
 
+  // Handle criteria applied from TrackerNotesSection or AIResearchSection
+  const handleApplyCriteria = async (data: {
+    industryName?: string;
+    sizeCriteria: string;
+    serviceCriteria: string;
+    geographyCriteria: string;
+    buyerTypesCriteria: string;
+    primaryFocusServices?: string[];
+    excludedServices?: string[];
+  }) => {
+    // Merge with existing criteria if present
+    const newSizeCriteria = data.sizeCriteria || tracker?.fit_criteria_size || '';
+    const newServiceCriteria = data.serviceCriteria || tracker?.fit_criteria_service || '';
+    const newGeographyCriteria = data.geographyCriteria || tracker?.fit_criteria_geography || '';
+    const newBuyerTypesCriteria = data.buyerTypesCriteria || tracker?.fit_criteria_buyer_types || '';
+    
+    // Save the text criteria
+    const { error } = await supabase
+      .from("industry_trackers")
+      .update({ 
+        fit_criteria_size: newSizeCriteria,
+        fit_criteria_service: newServiceCriteria,
+        fit_criteria_geography: newGeographyCriteria,
+        fit_criteria_buyer_types: newBuyerTypesCriteria,
+        updated_at: new Date().toISOString() 
+      })
+      .eq("id", id);
+    
+    if (error) {
+      toast({ title: "Error", description: "Failed to save criteria", variant: "destructive" });
+      return;
+    }
+    
+    // Parse to structured JSONB
+    const criteriaText = `Size Criteria: ${newSizeCriteria}\n\nService/Product Criteria: ${newServiceCriteria}\n\nGeography Criteria: ${newGeographyCriteria}\n\nBuyer Types: ${newBuyerTypesCriteria}`;
+    
+    try {
+      const { data: parsedData, error: parseError } = await supabase.functions.invoke('parse-fit-criteria', {
+        body: { fit_criteria: criteriaText }
+      });
+
+      if (!parseError && parsedData?.success) {
+        // Merge primary_focus from applied data if provided
+        const existingPrimaryFocus = (tracker?.service_criteria as any)?.primary_focus || [];
+        const newPrimaryFocus = data.primaryFocusServices || [];
+        const mergedPrimaryFocus = [...new Set([...existingPrimaryFocus, ...newPrimaryFocus])];
+        
+        const mergedServiceCriteria = {
+          ...parsedData.service_criteria,
+          primary_focus: mergedPrimaryFocus.length > 0 ? mergedPrimaryFocus : parsedData.service_criteria?.primary_focus || [],
+        };
+        
+        await supabase
+          .from("industry_trackers")
+          .update({
+            size_criteria: parsedData.size_criteria,
+            service_criteria: mergedServiceCriteria,
+            geography_criteria: parsedData.geography_criteria,
+            buyer_types_criteria: parsedData.buyer_types_criteria,
+          })
+          .eq("id", id);
+        
+        setTracker({ 
+          ...tracker, 
+          fit_criteria_size: newSizeCriteria,
+          fit_criteria_service: newServiceCriteria,
+          fit_criteria_geography: newGeographyCriteria,
+          fit_criteria_buyer_types: newBuyerTypesCriteria,
+          size_criteria: parsedData.size_criteria,
+          service_criteria: mergedServiceCriteria,
+          geography_criteria: parsedData.geography_criteria,
+          buyer_types_criteria: parsedData.buyer_types_criteria
+        });
+      } else {
+        setTracker({ 
+          ...tracker, 
+          fit_criteria_size: newSizeCriteria,
+          fit_criteria_service: newServiceCriteria,
+          fit_criteria_geography: newGeographyCriteria,
+          fit_criteria_buyer_types: newBuyerTypesCriteria
+        });
+      }
+    } catch {
+      setTracker({ 
+        ...tracker, 
+        fit_criteria_size: newSizeCriteria,
+        fit_criteria_service: newServiceCriteria,
+        fit_criteria_geography: newGeographyCriteria,
+        fit_criteria_buyer_types: newBuyerTypesCriteria
+      });
+    }
+    
+    toast({ title: "Criteria applied", description: "Buyer fit criteria has been updated" });
+  };
+
   const hasExistingCriteria = () => {
     return tracker?.size_criteria || tracker?.service_criteria || 
            tracker?.geography_criteria || tracker?.buyer_types_criteria ||
@@ -1703,9 +1800,21 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                   )}
                 </>
               ) : (
-                <p className="mt-2 text-sm text-muted-foreground italic">
-                  No fit criteria defined. Click Edit to add criteria that will guide buyer matching.
-                </p>
+                <div className="mt-3 space-y-3">
+                  <p className="text-sm text-muted-foreground italic">
+                    No fit criteria defined. Use the tools below to generate criteria or click Edit to add manually.
+                  </p>
+                  
+                  {/* AI Criteria Generation Tools */}
+                  <div className="space-y-3">
+                    <TrackerNotesSection onApply={handleApplyCriteria} />
+                    <AIResearchSection 
+                      industryName={tracker.industry_name} 
+                      trackerId={id}
+                      onApply={handleApplyCriteria}
+                    />
+                  </div>
+                </div>
               )}
             </>
           )}

@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, Loader2, FileSpreadsheet, Sparkles, ArrowRight, ArrowLeft, AlertTriangle } from "lucide-react";
+import { Upload, Loader2, FileSpreadsheet, Sparkles, ArrowRight, ArrowLeft, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { TablesInsert, Tables } from "@/integrations/supabase/types";
 import { normalizeDomain } from "@/lib/normalizeDomain";
 
@@ -31,6 +32,7 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
   const [rows, setRows] = useState<string[][]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [availableFields, setAvailableFields] = useState<AvailableField[]>([]);
+  const [skippedRowsOpen, setSkippedRowsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -141,14 +143,35 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
   };
 
   // Compute valid/skipped rows based on website requirement (require BOTH websites)
-  const { validRows, skippedRows, missingPlatformCount, missingPeFirmCount, missingBothCount } = useMemo(() => {
+  const { validRows, skippedRows, skippedRowDetails, missingPlatformCount, missingPeFirmCount, missingBothCount } = useMemo(() => {
     const valid: string[][] = [];
     const skipped: string[][] = [];
+    const skippedDetails: { row: string[]; companyName: string; reason: string }[] = [];
     let missingPlatform = 0;
     let missingPeFirm = 0;
     let missingBoth = 0;
     
-    for (const row of rows) {
+    // Helper to get company name from a row
+    const getCompanyName = (row: string[]): string => {
+      // Try platform company name first
+      for (let i = 0; i < headers.length; i++) {
+        if (mapping[headers[i]] === 'platform_company_name') {
+          const val = row[i]?.trim();
+          if (val) return val;
+        }
+      }
+      // Fallback to PE firm name
+      for (let i = 0; i < headers.length; i++) {
+        if (mapping[headers[i]] === 'pe_firm_name') {
+          const val = row[i]?.trim();
+          if (val) return val;
+        }
+      }
+      return '';
+    };
+    
+    for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+      const row = rows[rowIdx];
       const { platform, peFirm } = getRowWebsites(row);
       const hasPlatform = !!platform;
       const hasPeFirm = !!peFirm;
@@ -157,19 +180,28 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
         valid.push(row);
       } else {
         skipped.push(row);
+        const companyName = getCompanyName(row) || `Row ${rowIdx + 2}`; // +2 for header + 1-based index
+        let reason: string;
+        
         if (!hasPlatform && !hasPeFirm) {
           missingBoth++;
+          reason = 'Missing both websites';
         } else if (!hasPlatform) {
           missingPlatform++;
+          reason = 'Missing platform website';
         } else {
           missingPeFirm++;
+          reason = 'Missing PE firm website';
         }
+        
+        skippedDetails.push({ row, companyName, reason });
       }
     }
     
     return { 
       validRows: valid, 
       skippedRows: skipped,
+      skippedRowDetails: skippedDetails,
       missingPlatformCount: missingPlatform,
       missingPeFirmCount: missingPeFirm,
       missingBothCount: missingBoth
@@ -510,17 +542,48 @@ export function CSVImport({ trackerId, onComplete }: CSVImportProps) {
               </div>
 
               {skippedRows.length > 0 ? (
-                <div className="flex items-start gap-2 p-3 bg-amber-500/10 rounded-lg border border-amber-500/30">
-                  <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                  <div className="text-sm">
-                    <p className="font-medium text-amber-500 mb-1">{skippedRows.length} rows will be skipped (require both websites)</p>
-                    <ul className="text-muted-foreground text-xs space-y-0.5">
-                      {missingBothCount > 0 && <li>• {missingBothCount} missing both websites</li>}
-                      {missingPlatformCount > 0 && <li>• {missingPlatformCount} missing platform website</li>}
-                      {missingPeFirmCount > 0 && <li>• {missingPeFirmCount} missing PE firm website</li>}
-                    </ul>
-                    <p className="mt-1">Only <span className="font-medium">{validRows.length}</span> rows will be imported.</p>
+                <div className="space-y-2">
+                  <div className="flex items-start gap-2 p-3 bg-amber-500/10 rounded-lg border border-amber-500/30">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <div className="text-sm flex-1">
+                      <p className="font-medium text-amber-500 mb-1">{skippedRows.length} rows will be skipped (require both websites)</p>
+                      <ul className="text-muted-foreground text-xs space-y-0.5">
+                        {missingBothCount > 0 && <li>• {missingBothCount} missing both websites</li>}
+                        {missingPlatformCount > 0 && <li>• {missingPlatformCount} missing platform website</li>}
+                        {missingPeFirmCount > 0 && <li>• {missingPeFirmCount} missing PE firm website</li>}
+                      </ul>
+                      <p className="mt-1">Only <span className="font-medium">{validRows.length}</span> rows will be imported.</p>
+                    </div>
                   </div>
+                  
+                  <Collapsible open={skippedRowsOpen} onOpenChange={setSkippedRowsOpen}>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground hover:text-foreground">
+                        {skippedRowsOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        Show skipped rows
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="border rounded-lg overflow-hidden mt-2 max-h-48 overflow-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/50 sticky top-0">
+                            <tr>
+                              <th className="text-left p-2 font-medium">Company</th>
+                              <th className="text-left p-2 font-medium">Issue</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {skippedRowDetails.map((item, idx) => (
+                              <tr key={idx} className="hover:bg-muted/30">
+                                <td className="p-2 truncate max-w-[200px]">{item.companyName}</td>
+                                <td className="p-2 text-amber-600 text-xs">{item.reason}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
