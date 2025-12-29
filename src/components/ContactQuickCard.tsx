@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Mail, Linkedin, Phone, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -47,24 +48,36 @@ export function ContactQuickCard({ contact, onEmailClick, compact = false }: Con
         {contact.title && <span className="text-muted-foreground truncate text-xs">• {contact.title}</span>}
         <div className="flex items-center gap-1 ml-auto shrink-0">
           {contact.email && (
-            <a 
-              href={`mailto:${contact.email}`} 
-              className="text-muted-foreground hover:text-primary p-0.5"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Mail className="w-3.5 h-3.5" />
-            </a>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <a 
+                  href={`mailto:${contact.email}`} 
+                  className="flex items-center gap-1 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded px-1.5 py-0.5"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline text-xs">Email</span>
+                </a>
+              </TooltipTrigger>
+              <TooltipContent>Send email to {contact.name}</TooltipContent>
+            </Tooltip>
           )}
           {contact.linkedin_url && (
-            <a 
-              href={contact.linkedin_url} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-muted-foreground hover:text-[#0077b5] p-0.5"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Linkedin className="w-3.5 h-3.5" />
-            </a>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <a 
+                  href={contact.linkedin_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-muted-foreground hover:text-[#0077b5] hover:bg-[#0077b5]/10 rounded px-1.5 py-0.5"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Linkedin className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline text-xs">LinkedIn</span>
+                </a>
+              </TooltipTrigger>
+              <TooltipContent>View {contact.name}'s LinkedIn</TooltipContent>
+            </Tooltip>
           )}
         </div>
       </div>
@@ -94,49 +107,101 @@ export function ContactQuickCard({ contact, onEmailClick, compact = false }: Con
             {contact.title && (
               <p className="text-sm text-muted-foreground">{contact.title}</p>
             )}
+            {/* Display email and LinkedIn as clickable text */}
+            <div className="flex flex-wrap items-center gap-3 mt-1">
+              {contact.email && (
+                <a 
+                  href={`mailto:${contact.email}`} 
+                  className="flex items-center gap-1 text-xs text-primary hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Mail className="w-3 h-3" />
+                  {contact.email}
+                </a>
+              )}
+              {contact.linkedin_url && (
+                <a 
+                  href={contact.linkedin_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs text-[#0077b5] hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Linkedin className="w-3 h-3" />
+                  LinkedIn
+                </a>
+              )}
+              {contact.phone && (
+                <a 
+                  href={`tel:${contact.phone}`} 
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Phone className="w-3 h-3" />
+                  {contact.phone}
+                </a>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {contact.email && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (onEmailClick) {
-                  onEmailClick(contact);
-                } else {
-                  window.location.href = `mailto:${contact.email}`;
-                }
-              }}
-            >
-              <Mail className="w-4 h-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2 gap-1"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onEmailClick) {
+                      onEmailClick(contact);
+                    } else {
+                      window.location.href = `mailto:${contact.email}`;
+                    }
+                  }}
+                >
+                  <Mail className="w-4 h-4" />
+                  <span className="hidden sm:inline text-xs">Email</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Send email to {contact.name}</TooltipContent>
+            </Tooltip>
           )}
           {contact.phone && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              asChild
-            >
-              <a href={`tel:${contact.phone}`}>
-                <Phone className="w-4 h-4" />
-              </a>
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2"
+                  asChild
+                >
+                  <a href={`tel:${contact.phone}`} onClick={(e) => e.stopPropagation()}>
+                    <Phone className="w-4 h-4" />
+                  </a>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Call {contact.name}</TooltipContent>
+            </Tooltip>
           )}
           {contact.linkedin_url && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              asChild
-            >
-              <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer">
-                <Linkedin className="w-4 h-4" />
-              </a>
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2 gap-1 text-[#0077b5] hover:text-[#0077b5] hover:bg-[#0077b5]/10"
+                  asChild
+                >
+                  <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+                    <Linkedin className="w-4 h-4" />
+                    <span className="hidden sm:inline text-xs">LinkedIn</span>
+                  </a>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>View {contact.name}'s LinkedIn profile</TooltipContent>
+            </Tooltip>
           )}
         </div>
       </div>
