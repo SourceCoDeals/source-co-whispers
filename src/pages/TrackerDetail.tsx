@@ -2047,13 +2047,15 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
               isVisible={isBulkEnriching}
             />
             
-            {/* Bulk action bar when buyers are highlighted or selected */}
+            {/* Bulk action bar when buyers are highlighted or selected - sticky so it's always visible */}
             {(highlightedBuyerIds.size > 0 || selectedBuyerIds.size > 0) && (
-              <div className="flex items-center gap-3 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+              <div className="sticky top-0 z-10 flex items-center gap-3 p-3 bg-primary/5 border border-primary/20 rounded-lg backdrop-blur-sm">
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200">
-                    {highlightedBuyerIds.size} highlighted by AI
-                  </Badge>
+                  {highlightedBuyerIds.size > 0 && (
+                    <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200">
+                      {highlightedBuyerIds.size} highlighted by AI
+                    </Badge>
+                  )}
                   {selectedBuyerIds.size > 0 && (
                     <Badge variant="default">
                       {selectedBuyerIds.size} selected
@@ -2140,6 +2142,68 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
                     Clear
                   </Button>
                 </div>
+              </div>
+            )}
+            
+            {/* Floating bulk delete button - always visible when items selected */}
+            {selectedBuyerIds.size > 0 && (
+              <div className="fixed bottom-6 right-6 z-50">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button 
+                      variant="destructive" 
+                      size="lg" 
+                      className="shadow-lg"
+                      disabled={isDeletingSelected}
+                    >
+                      {isDeletingSelected ? (
+                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-5 h-5 mr-2" />
+                      )}
+                      Delete {selectedBuyerIds.size} Selected
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete {selectedBuyerIds.size} Buyer{selectedBuyerIds.size === 1 ? '' : 's'}</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to delete {selectedBuyerIds.size} selected buyer{selectedBuyerIds.size === 1 ? '' : 's'}? This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction 
+                        onClick={async () => {
+                          setIsDeletingSelected(true);
+                          try {
+                            for (const buyerId of selectedBuyerIds) {
+                              await deleteBuyerWithRelated(buyerId);
+                            }
+                            toast({ 
+                              title: "Buyers deleted", 
+                              description: `${selectedBuyerIds.size} buyer${selectedBuyerIds.size === 1 ? '' : 's'} removed` 
+                            });
+                            setSelectedBuyerIds(new Set());
+                            setHighlightedBuyerIds(new Set());
+                            loadData();
+                          } catch (err) {
+                            toast({ 
+                              title: "Error", 
+                              description: err instanceof Error ? err.message : "Failed to delete buyers", 
+                              variant: "destructive" 
+                            });
+                          } finally {
+                            setIsDeletingSelected(false);
+                          }
+                        }}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        Delete
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             )}
             
