@@ -77,3 +77,6 @@ verify_jwt = true
 
 [functions.verify-platform-website]
 verify_jwt = true
+
+[functions.recalculate-deal-weights]
+verify_jwt = true

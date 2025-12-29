@@ -16,6 +16,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PassReasonDialog } from "@/components/PassReasonDialog";
 import { BuyerQueryChat } from "@/components/BuyerQueryChat";
+import { DealScoringInsights } from "@/components/DealScoringInsights";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { AddContactDialog } from "@/components/AddContactDialog";
 import { ContactsSummarySection } from "@/components/ContactsSummarySection";
@@ -234,6 +235,16 @@ export default function DealMatching() {
     setSelected(newSet);
   };
 
+  const triggerWeightRecalculation = async () => {
+    try {
+      await supabase.functions.invoke('recalculate-deal-weights', {
+        body: { dealId: id, action: 'decision' }
+      });
+    } catch (err) {
+      console.error("Failed to trigger weight recalculation:", err);
+    }
+  };
+
   const approveBuyers = async () => {
     if (selected.size === 0) return;
     const selectedArray = Array.from(selected);
@@ -270,6 +281,9 @@ export default function DealMatching() {
       }
     }
     setScores(newScores);
+    
+    // Trigger weight recalculation based on this decision
+    triggerWeightRecalculation();
     
     // Trigger contact discovery for each approved buyer
     toast({ title: `${selected.size} buyers approved. Finding contacts...` });
@@ -330,6 +344,10 @@ export default function DealMatching() {
     } else {
       setScores([...scores, passData]);
     }
+    
+    // Trigger weight recalculation based on this decision
+    triggerWeightRecalculation();
+    
     toast({ title: "Buyer marked as passed", description: `${buyerToPass.platform_company_name || buyerToPass.pe_firm_name} - ${reason}` });
   };
 
@@ -411,6 +429,9 @@ export default function DealMatching() {
     const newSelected = new Set(selected);
     newSelected.delete(buyerToRemove.id);
     setSelected(newSelected);
+
+    // Trigger weight recalculation based on this decision
+    triggerWeightRecalculation();
 
     toast({ 
       title: "Buyer removed from deal", 
@@ -1124,20 +1145,25 @@ export default function DealMatching() {
           </div>
         </div>
 
-        <div className="bg-accent/10 rounded-lg border border-accent/20 p-4 flex flex-wrap gap-4 md:gap-6 text-sm items-center">
-          <span>✅ {qualifiedBuyers.length} qualified buyers</span>
-          <span className="text-destructive">❌ {disqualifiedBuyers.length} disqualified (no nearby presence)</span>
-          <span>🎯 {qualifiedBuyers.filter(b => (b.score?.composite_score || 0) >= 70).length} strong matches (&gt;70%)</span>
-          <span>✓ {approvedBuyers.length} approved</span>
-          {passedBuyers.length > 0 && <span className="text-destructive">✗ {passedBuyers.length} passed</span>}
-          <label className="flex items-center gap-2 ml-auto cursor-pointer">
-            <Switch 
-              checked={hideDisqualified} 
-              onCheckedChange={setHideDisqualified}
-              className="data-[state=checked]:bg-primary"
-            />
-            <span className="text-xs text-muted-foreground">Hide disqualified</span>
-          </label>
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex-1 bg-accent/10 rounded-lg border border-accent/20 p-4 flex flex-wrap gap-4 md:gap-6 text-sm items-center">
+            <span>✅ {qualifiedBuyers.length} qualified buyers</span>
+            <span className="text-destructive">❌ {disqualifiedBuyers.length} disqualified (no nearby presence)</span>
+            <span>🎯 {qualifiedBuyers.filter(b => (b.score?.composite_score || 0) >= 70).length} strong matches (&gt;70%)</span>
+            <span>✓ {approvedBuyers.length} approved</span>
+            {passedBuyers.length > 0 && <span className="text-destructive">✗ {passedBuyers.length} passed</span>}
+            <label className="flex items-center gap-2 ml-auto cursor-pointer">
+              <Switch 
+                checked={hideDisqualified} 
+                onCheckedChange={setHideDisqualified}
+                className="data-[state=checked]:bg-primary"
+              />
+              <span className="text-xs text-muted-foreground">Hide disqualified</span>
+            </label>
+          </div>
+          
+          {/* Score Learning Insights */}
+          <DealScoringInsights dealId={id!} onRecalculate={loadData} />
         </div>
 
         <Tabs defaultValue="all" className="w-full">
