@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
 import { EngagementSignalsBadge } from "@/components/EngagementSignalsBadge";
-import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, FileX, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle, XCircle, ThumbsUp, ThumbsDown, Eye, Trash2, Plus, Clock } from "lucide-react";
+import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, FileX, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle, XCircle, ThumbsUp, ThumbsDown, Eye, Trash2, Plus, Clock, ArrowUp, ArrowDown, Trophy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -70,6 +70,8 @@ export default function DealMatching() {
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [buyerToRemove, setBuyerToRemove] = useState<any>(null);
   const [highlightedBuyers, setHighlightedBuyers] = useState<Set<string>>(new Set());
+  const [sortColumn, setSortColumn] = useState<'score' | 'geography' | 'score_geo'>('score');
+  const [sortDirection, setSortDirection] = useState<'desc' | 'asc'>('desc');
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -215,9 +217,30 @@ export default function DealMatching() {
       disqualificationReason: aiScore?.disqualificationReasons?.[0] ?? null,
     };
   }).sort((a, b) => {
+    // Disqualified always at bottom
     if (a.isDisqualified && !b.isDisqualified) return 1;
     if (!a.isDisqualified && b.isDisqualified) return -1;
-    return (b.score?.composite_score || 0) - (a.score?.composite_score || 0);
+    
+    const aComposite = a.score?.composite_score || 0;
+    const bComposite = b.score?.composite_score || 0;
+    const aGeo = a.score?.geography_score || 0;
+    const bGeo = b.score?.geography_score || 0;
+    
+    const direction = sortDirection === 'desc' ? 1 : -1;
+    
+    switch (sortColumn) {
+      case 'geography':
+        // Primary: geography, Secondary: composite
+        if (aGeo !== bGeo) return (bGeo - aGeo) * direction;
+        return (bComposite - aComposite) * direction;
+      case 'score_geo':
+        // Primary: composite, Secondary: geography  
+        if (aComposite !== bComposite) return (bComposite - aComposite) * direction;
+        return (bGeo - aGeo) * direction;
+      case 'score':
+      default:
+        return (bComposite - aComposite) * direction;
+    }
   });
   
   // Filter out hidden buyers from display
@@ -1172,7 +1195,44 @@ export default function DealMatching() {
             <TabsTrigger value="approved">Approved ({approvedBuyers.length})</TabsTrigger>
             <TabsTrigger value="passed">Passed ({passedBuyers.length})</TabsTrigger>
           </TabsList>
-          <TabsContent value="all" className="mt-4">
+          <TabsContent value="all" className="mt-4 space-y-3">
+            {/* Sort Controls */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Sort by:</span>
+              <div className="flex gap-1">
+                <Button 
+                  variant={sortColumn === 'score' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  onClick={() => setSortColumn('score')}
+                >
+                  <Trophy className="w-3.5 h-3.5 mr-1" />
+                  Score
+                </Button>
+                <Button 
+                  variant={sortColumn === 'geography' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  onClick={() => setSortColumn('geography')}
+                >
+                  <MapPin className="w-3.5 h-3.5 mr-1" />
+                  Geography
+                </Button>
+                <Button 
+                  variant={sortColumn === 'score_geo' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  onClick={() => setSortColumn('score_geo')}
+                >
+                  <Trophy className="w-3.5 h-3.5 mr-1" />
+                  Score + Geo
+                </Button>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setSortDirection(d => d === 'desc' ? 'asc' : 'desc')}
+              >
+                {sortDirection === 'desc' ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />}
+              </Button>
+            </div>
             <div className="bg-card rounded-lg border divide-y">
               {allBuyers.map((buyer) => renderBuyerRow(buyer, true, false, false))}
             </div>
