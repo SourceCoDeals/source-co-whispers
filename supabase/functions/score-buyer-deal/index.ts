@@ -68,7 +68,108 @@ const stateRegions: Record<string, string[]> = {
   MIDWEST: ["IL", "IN", "OH", "MI", "WI", "MN", "IA", "MO", "KS", "NE", "SD", "ND"],
   PACIFIC: ["CA", "OR", "WA", "AK", "HI"],
   MOUNTAIN: ["MT", "ID", "WY", "CO", "UT", "NV"],
+  PACIFIC_NORTHWEST: ["WA", "OR", "ID"],
+  TEXAS: ["TX"],
+  FLORIDA: ["FL"],
+  CALIFORNIA: ["CA"],
 };
+
+// Map regional keywords in thesis text to region names and states
+const thesisRegionPatterns: Array<{ pattern: RegExp; region: string; states: string[] }> = [
+  { pattern: /pacific\s+northwest/i, region: 'PACIFIC_NORTHWEST', states: ['WA', 'OR', 'ID'] },
+  { pattern: /pnw/i, region: 'PACIFIC_NORTHWEST', states: ['WA', 'OR', 'ID'] },
+  { pattern: /southeast\b/i, region: 'SOUTHEAST', states: ['FL', 'GA', 'AL', 'SC', 'NC', 'TN', 'MS', 'LA', 'AR', 'KY', 'VA', 'WV'] },
+  { pattern: /northeast\b/i, region: 'NORTHEAST', states: ['NY', 'NJ', 'PA', 'CT', 'MA', 'RI', 'VT', 'NH', 'ME', 'MD', 'DE'] },
+  { pattern: /midwest\b/i, region: 'MIDWEST', states: ['IL', 'IN', 'OH', 'MI', 'WI', 'MN', 'IA', 'MO', 'KS', 'NE', 'SD', 'ND'] },
+  { pattern: /southwest\b/i, region: 'SOUTHWEST', states: ['AZ', 'NM', 'TX', 'OK', 'CO', 'NV', 'UT'] },
+  { pattern: /mountain\s+west/i, region: 'MOUNTAIN', states: ['MT', 'ID', 'WY', 'CO', 'UT', 'NV'] },
+  { pattern: /\btexas\b/i, region: 'TEXAS', states: ['TX'] },
+  { pattern: /\bflorida\b/i, region: 'FLORIDA', states: ['FL'] },
+  { pattern: /\bcalifornia\b/i, region: 'CALIFORNIA', states: ['CA'] },
+  { pattern: /sun\s*belt/i, region: 'SUNBELT', states: ['FL', 'GA', 'TX', 'AZ', 'NV', 'CA'] },
+  { pattern: /rust\s*belt/i, region: 'RUSTBELT', states: ['PA', 'OH', 'MI', 'IN', 'IL', 'WI'] },
+  { pattern: /new\s+england/i, region: 'NEW_ENGLAND', states: ['MA', 'CT', 'RI', 'VT', 'NH', 'ME'] },
+  { pattern: /mid[- ]?atlantic/i, region: 'MID_ATLANTIC', states: ['NY', 'NJ', 'PA', 'MD', 'DE', 'VA'] },
+  { pattern: /great\s+lakes/i, region: 'GREAT_LAKES', states: ['MI', 'WI', 'MN', 'IL', 'IN', 'OH'] },
+];
+
+// Phrases that indicate HARD geographic constraints (buyer won't consider deals outside)
+const hardConstraintPhrases = [
+  'focused on', 'only in', 'exclusively', 'limited to', 'regional platform',
+  'building in', 'consolidating in', 'based in', 'targeting'
+];
+
+// Phrases that indicate SOFT constraints (preference but flexible)
+const softConstraintPhrases = [
+  'primarily', 'mainly', 'prefer', 'preference for', 'looking at', 'interested in'
+];
+
+// Extract explicit geographic focus from buyer's thesis
+function extractThesisGeographicConstraints(thesis: string | null, keyQuotes: string[] | null): {
+  hasExplicitRegionalFocus: boolean;
+  focusedRegions: string[];
+  focusedStates: string[];
+  constraintStrength: 'hard' | 'soft' | 'none';
+  evidence: string | null;
+} {
+  const result = {
+    hasExplicitRegionalFocus: false,
+    focusedRegions: [] as string[],
+    focusedStates: [] as string[],
+    constraintStrength: 'none' as 'hard' | 'soft' | 'none',
+    evidence: null as string | null,
+  };
+
+  if (!thesis && (!keyQuotes || keyQuotes.length === 0)) return result;
+
+  const allText = `${thesis || ''} ${(keyQuotes || []).join(' ')}`;
+  const lower = allText.toLowerCase();
+
+  // Check for regional patterns
+  for (const { pattern, region, states } of thesisRegionPatterns) {
+    if (pattern.test(allText)) {
+      result.hasExplicitRegionalFocus = true;
+      if (!result.focusedRegions.includes(region)) {
+        result.focusedRegions.push(region);
+      }
+      for (const state of states) {
+        if (!result.focusedStates.includes(state)) {
+          result.focusedStates.push(state);
+        }
+      }
+      // Capture evidence
+      const match = allText.match(pattern);
+      if (match) {
+        result.evidence = match[0];
+      }
+    }
+  }
+
+  // Also extract explicit state mentions from thesis
+  for (const [stateName, abbrev] of Object.entries(stateNameToAbbrev)) {
+    if (lower.includes(stateName) && !result.focusedStates.includes(abbrev)) {
+      result.focusedStates.push(abbrev);
+      result.hasExplicitRegionalFocus = true;
+    }
+  }
+
+  // Determine constraint strength
+  if (result.hasExplicitRegionalFocus) {
+    const hasHardConstraint = hardConstraintPhrases.some(phrase => lower.includes(phrase));
+    const hasSoftConstraint = softConstraintPhrases.some(phrase => lower.includes(phrase));
+
+    if (hasHardConstraint) {
+      result.constraintStrength = 'hard';
+    } else if (hasSoftConstraint) {
+      result.constraintStrength = 'soft';
+    } else {
+      // Default to hard if they explicitly mention a region by name (e.g., "Pacific Northwest platform")
+      result.constraintStrength = 'hard';
+    }
+  }
+
+  return result;
+}
 
 // Get region for a state
 function getStateRegion(state: string): string | null {
@@ -828,6 +929,41 @@ function scoreGeographyCategory(
   }
   
   const dealLocations = deal.location_count || 1;
+
+  // ============ THESIS GEOGRAPHIC CONSTRAINT CHECK ============
+  // If buyer's thesis explicitly states a regional focus (e.g., "Pacific Northwest"),
+  // and the deal is outside that region, DISQUALIFY the buyer
+  const thesisGeo = extractThesisGeographicConstraints(buyer.thesis_summary, buyer.key_quotes);
+  
+  if (thesisGeo.hasExplicitRegionalFocus && thesisGeo.constraintStrength === 'hard') {
+    // Check if deal is within the thesis-stated geography
+    const dealMatchesThesisRegion = dealStates.some(ds => thesisGeo.focusedStates.includes(ds));
+    
+    if (!dealMatchesThesisRegion && dealStates.length > 0) {
+      const regionNames = thesisGeo.focusedRegions.join(', ') || thesisGeo.focusedStates.join(', ');
+      console.log(`[Geography] Thesis disqualification: Buyer "${buyer.pe_firm_name}" thesis focuses on ${regionNames}, deal in ${dealStates.join(', ')}`);
+      
+      return {
+        score: 0,
+        reasoning: `Thesis explicitly focuses on ${regionNames}. Deal in ${dealStates.join(', ')} is outside stated geographic focus.`,
+        isDisqualified: true,
+        disqualificationReason: `Buyer thesis states "${thesisGeo.evidence || regionNames}" focus - deal location (${dealStates.join(', ')}) is excluded`,
+        confidence: 'high'
+      };
+    }
+  } else if (thesisGeo.hasExplicitRegionalFocus && thesisGeo.constraintStrength === 'soft') {
+    // Soft constraint - heavy penalty but not disqualification
+    const dealMatchesThesisRegion = dealStates.some(ds => thesisGeo.focusedStates.includes(ds));
+    
+    if (!dealMatchesThesisRegion && dealStates.length > 0) {
+      const regionNames = thesisGeo.focusedRegions.join(', ') || thesisGeo.focusedStates.join(', ');
+      console.log(`[Geography] Thesis soft penalty: Buyer "${buyer.pe_firm_name}" thesis prefers ${regionNames}, deal in ${dealStates.join(', ')}`);
+      
+      // Continue with normal scoring but cap the maximum score
+      // We'll apply this penalty at the end of geography scoring
+    }
+  }
+  // ============ END THESIS CHECK ============
   
   // Collect buyer geographic data with DIFFERENT WEIGHTS for each field:
   // - target_geographies: Full weight (1.0) - where they WANT to acquire
@@ -1589,7 +1725,30 @@ function scoreOwnerGoalsCategory(deal: Deal, buyer: Buyer): CategoryScore {
 }
 
 // Calculate thesis bonus based on intel quality
-function calculateThesisBonus(buyer: Buyer): number {
+// NOW: Also checks for thesis-deal geography conflicts and awards 0 bonus if thesis conflicts
+function calculateThesisBonus(buyer: Buyer, deal: Deal): number {
+  // First check if thesis has a geographic focus that conflicts with the deal
+  const thesisGeo = extractThesisGeographicConstraints(buyer.thesis_summary, buyer.key_quotes);
+  
+  if (thesisGeo.hasExplicitRegionalFocus) {
+    const dealStates = extractStatesFromGeography(deal.geography);
+    if (deal.headquarters) {
+      const hqStates = extractStatesFromText(deal.headquarters);
+      hqStates.forEach(s => { if (!dealStates.includes(s)) dealStates.push(s); });
+    }
+    
+    // Check if deal is within thesis geography
+    const dealMatchesThesis = dealStates.some(ds => thesisGeo.focusedStates.includes(ds));
+    
+    if (!dealMatchesThesis && dealStates.length > 0) {
+      // Thesis explicitly focuses on a region that doesn't include the deal location
+      // Award NO bonus for having a thesis that conflicts with the deal
+      console.log(`[ThesisBonus] No bonus: thesis focuses on ${thesisGeo.focusedRegions.join(', ')}, deal in ${dealStates.join(', ')}`);
+      return 0;
+    }
+  }
+  
+  // Normal thesis bonus calculation
   let bonus = 0;
   
   if (buyer.thesis_summary && buyer.thesis_summary.length > 50) bonus += 10;
@@ -1778,7 +1937,7 @@ serve(async (req) => {
       const servicesScore = await getAIServiceFitScore(deal as Deal, buyer as Buyer, tracker);
       
       const ownerGoalsScore = scoreOwnerGoalsCategory(deal as Deal, buyer as Buyer);
-      const thesisBonus = calculateThesisBonus(buyer as Buyer);
+      const thesisBonus = calculateThesisBonus(buyer as Buyer, deal as Deal);
       
       // NEW: Calculate KPI bonus from tracker configuration
       const kpiResult = calculateKPIBonus(deal, tracker);
