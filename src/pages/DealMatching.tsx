@@ -1291,6 +1291,22 @@ export default function DealMatching() {
           dealId={id!} 
           dealName={deal.deal_name}
           onHighlightBuyers={handleHighlightBuyers}
+          onBuyerClick={(buyerName) => {
+            // Find buyer by name and expand their card
+            const buyer = buyers.find(b => 
+              (b.platform_company_name || b.pe_firm_name)?.toLowerCase() === buyerName.toLowerCase()
+            );
+            if (buyer) {
+              setExpanded(prev => new Set([...prev, buyer.id]));
+              // Scroll to the buyer card
+              setTimeout(() => {
+                document.getElementById(`buyer-${buyer.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }, 100);
+            }
+          }}
+          approvedCount={approvedBuyers.length}
+          passedCount={passedBuyers.length}
+          pendingCount={allBuyers.filter(b => !b.score?.selected_for_outreach && !b.score?.passed_on_deal).length}
         />
       )}
     </AppLayout>

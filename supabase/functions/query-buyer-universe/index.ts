@@ -178,26 +178,80 @@ serve(async (req) => {
       throw new Error(`Failed to fetch buyers: ${buyersError.message}`);
     }
 
+    const buyerIds = (buyers || []).map((b: any) => b.id);
+
+    // NEW: Fetch buyer_deal_scores for this deal
+    const { data: buyerScores } = await supabase
+      .from("buyer_deal_scores")
+      .select("*")
+      .eq("deal_id", dealId);
+
+    // NEW: Fetch deal_scoring_adjustments (learned weights)
+    const { data: scoringAdjustments } = await supabase
+      .from("deal_scoring_adjustments")
+      .select("*")
+      .eq("deal_id", dealId)
+      .single();
+
+    // NEW: Fetch buyer_contacts for all buyers
+    const { data: buyerContacts } = buyerIds.length > 0
+      ? await supabase
+          .from("buyer_contacts")
+          .select("*")
+          .in("buyer_id", buyerIds)
+      : { data: [] };
+
+    // NEW: Fetch buyer_transcripts for all buyers
+    const { data: buyerTranscripts } = buyerIds.length > 0
+      ? await supabase
+          .from("buyer_transcripts")
+          .select("*")
+          .in("buyer_id", buyerIds)
+      : { data: [] };
+
     // Get proximity states for geographic queries
     const dealStates = deal.geography || [];
     const dealRegion = dealStates.length > 0 ? getRegionForState(dealStates[0]) : null;
     const nearbyStates = getStatesWithinProximity(dealStates, 2); // ~250 miles = ~2 state hops
     const adjacentStates = getStatesWithinProximity(dealStates, 1);
 
-    // Build context about buyers
+    // Create a map of scores by buyer_id for quick lookup
+    const scoresByBuyerId = new Map((buyerScores || []).map((s: any) => [s.buyer_id, s]));
+    const contactsByBuyerId = new Map<string, any[]>();
+    (buyerContacts || []).forEach((c: any) => {
+      if (!contactsByBuyerId.has(c.buyer_id)) contactsByBuyerId.set(c.buyer_id, []);
+      contactsByBuyerId.get(c.buyer_id)!.push(c);
+    });
+    const transcriptsByBuyerId = new Map<string, any[]>();
+    (buyerTranscripts || []).forEach((t: any) => {
+      if (!transcriptsByBuyerId.has(t.buyer_id)) transcriptsByBuyerId.set(t.buyer_id, []);
+      transcriptsByBuyerId.get(t.buyer_id)!.push(t);
+    });
+
+    // Build context about buyers with scores
     const buyerSummaries = (buyers || []).map((b: any) => {
       const footprint = b.geographic_footprint || [];
       const hasNearbyPresence = footprint.some((s: string) => nearbyStates.has(s));
       const hasAdjacentPresence = footprint.some((s: string) => adjacentStates.has(s));
       const inDealState = footprint.some((s: string) => dealStates.includes(s));
       
+      const score = scoresByBuyerId.get(b.id);
+      const contacts = contactsByBuyerId.get(b.id) || [];
+      const transcripts = transcriptsByBuyerId.get(b.id) || [];
+      
+      // Determine action status
+      let actionStatus = "PENDING";
+      if (score?.selected_for_outreach && !score?.passed_on_deal) actionStatus = "APPROVED";
+      else if (score?.passed_on_deal) actionStatus = "PASSED";
+      else if (score?.hidden_from_deal) actionStatus = "REMOVED";
+      
       return {
-        id: b.id, // Include ID for highlighting
+        id: b.id,
         name: b.platform_company_name || b.pe_firm_name,
         peFirm: b.pe_firm_name,
         hq: b.hq_city && b.hq_state ? `${b.hq_city}, ${b.hq_state}` : (b.hq_state || "Unknown"),
         geographicFootprint: footprint,
-        otherOfficeLocations: b.other_office_locations || [], // Full addresses for city-level queries
+        otherOfficeLocations: b.other_office_locations || [],
         serviceRegions: b.service_regions || [],
         minRevenue: b.min_revenue,
         maxRevenue: b.max_revenue,
@@ -212,10 +266,55 @@ serve(async (req) => {
         hasNearbyPresence,
         hasAdjacentPresence,
         inDealState,
+        // NEW: Scores
+        scores: score ? {
+          composite: score.composite_score,
+          geography: score.geography_score,
+          acquisition: score.acquisition_score,
+          service: score.service_score,
+          portfolio: score.portfolio_score,
+          thesisBonus: score.thesis_bonus,
+        } : null,
+        // NEW: Action status
+        actionStatus,
+        passReason: score?.pass_reason || null,
+        passCategory: score?.pass_category || null,
+        // NEW: Key contacts (summarized)
+        contacts: contacts.slice(0, 3).map((c: any) => ({
+          name: c.name,
+          title: c.title,
+          email: c.email,
+        })),
+        // NEW: Has call notes
+        hasCallNotes: transcripts.length > 0,
+        recentCallDate: transcripts.length > 0 
+          ? transcripts.sort((a: any, b: any) => new Date(b.call_date || b.created_at).getTime() - new Date(a.call_date || a.created_at).getTime())[0]?.call_date 
+          : null,
       };
     });
 
-    const systemPrompt = `You are an expert M&A analyst helping evaluate potential buyers for an acquisition target. You have access to detailed data about both the deal and all buyers in the universe.
+    // Build learned preferences context
+    const learnedPreferencesContext = scoringAdjustments ? `
+## Learned Preferences (from ${scoringAdjustments.approved_count || 0} approvals and ${scoringAdjustments.rejected_count || 0} rejections)
+Based on your past decisions, the system has learned these importance weights:
+- Geography importance: ${((scoringAdjustments.geography_weight_mult || 1) * 100).toFixed(0)}% (${scoringAdjustments.passed_geography || 0} passed for geography reasons)
+- Size importance: ${((scoringAdjustments.size_weight_mult || 1) * 100).toFixed(0)}% (${scoringAdjustments.passed_size || 0} passed for size reasons)
+- Services importance: ${((scoringAdjustments.services_weight_mult || 1) * 100).toFixed(0)}% (${scoringAdjustments.passed_services || 0} passed for service reasons)
+` : '';
+
+    // Industry KPIs context
+    const industryKpisContext = deal.industry_kpis ? `
+## Industry-Specific KPIs
+${JSON.stringify(deal.industry_kpis, null, 2)}
+` : '';
+
+    // Action status summary
+    const approvedCount = buyerSummaries.filter(b => b.actionStatus === "APPROVED").length;
+    const passedCount = buyerSummaries.filter(b => b.actionStatus === "PASSED").length;
+    const removedCount = buyerSummaries.filter(b => b.actionStatus === "REMOVED").length;
+    const pendingCount = buyerSummaries.filter(b => b.actionStatus === "PENDING").length;
+
+    const systemPrompt = `You are an expert M&A analyst helping evaluate potential buyers for an acquisition target. You have access to detailed data about the deal, all buyers, their scores, contacts, and action history.
 
 DEAL CONTEXT:
 - Company: ${deal.deal_name}
@@ -227,28 +326,51 @@ DEAL CONTEXT:
 - Industry: ${deal.industry_type || "Unknown"}
 - Services: ${deal.service_mix || "Unknown"}
 - Business Model: ${deal.business_model || "Unknown"}
+${industryKpisContext}
 
 GEOGRAPHIC CONTEXT:
 - Deal is in: ${dealStates.join(", ") || "Unknown states"}
 - Region: ${dealRegion || "Unknown"}
 - Adjacent states (within ~100 miles): ${Array.from(adjacentStates).join(", ")}
 - Nearby states (within ~250 miles): ${Array.from(nearbyStates).join(", ")}
+${learnedPreferencesContext}
 
-BUYER UNIVERSE (${buyerSummaries.length} buyers):
+## Buyer Action Status Summary
+- APPROVED: ${approvedCount} buyers (already selected for outreach)
+- PASSED: ${passedCount} buyers (rejected with reasons)
+- REMOVED: ${removedCount} buyers (hidden from deal)
+- PENDING: ${pendingCount} buyers (no action yet - prioritize these for recommendations)
+
+## Score Interpretation
+Each buyer has been scored on:
+- **Composite Score** (0-100): Overall fit combining all factors
+- **Geography Score** (0-100): Location proximity and market overlap
+- **Acquisition/Size Score** (0-100): Revenue/EBITDA alignment
+- **Service Score** (0-100): Service offering overlap
+- **Portfolio Score** (0-100): Owner goals alignment
+- **Thesis Bonus** (0-25): Extra points for strong thesis match
+
+## BUYER UNIVERSE (${buyerSummaries.length} buyers):
 ${JSON.stringify(buyerSummaries, null, 2)}
 
 When answering questions:
 1. Be specific - name actual buyers that match the criteria
-2. Explain WHY each buyer matches (cite their location, acquisition history, etc.)
-3. For geographic questions, use the pre-computed proximity flags (hasNearbyPresence, inDealState, etc.)
-4. For "within X miles" queries, interpret this as adjacent states (~100mi) or nearby states (~250mi)
-5. If no buyers match, say so clearly
-6. Keep responses concise but informative
-7. Format lists clearly with bullet points
-8. IMPORTANT: When mentioning specific buyers in your answer, include a hidden marker at the END of your response listing their IDs:
-   <!-- BUYER_HIGHLIGHT: ["buyer-uuid-1", "buyer-uuid-2"] -->
-   Use the exact "id" field from the buyer data. This allows the UI to highlight those buyers in the list.
-9. For CITY-SPECIFIC queries (like "buyers in Orlando" or "operations in Tampa"), search the otherOfficeLocations array for addresses containing that city name, as well as the hq field. The otherOfficeLocations field contains full street addresses with city/state info.`;
+2. Explain WHY each buyer matches (cite their scores, location, acquisition history, etc.)
+3. For score-based questions, reference the actual composite and category scores
+4. **IMPORTANT**: When recommending buyers, prioritize PENDING ones unless specifically asked about approved/passed buyers
+5. Always mention if a buyer has already been APPROVED, PASSED, or REMOVED
+6. For passed buyers, mention why they were passed (passReason/passCategory)
+7. For geographic questions, use the pre-computed proximity flags (hasNearbyPresence, inDealState, etc.)
+8. For "within X miles" queries, interpret this as adjacent states (~100mi) or nearby states (~250mi)
+9. When asked about contacts, list the available contacts with their titles
+10. If no buyers match, say so clearly
+11. Keep responses concise but informative
+12. Format lists clearly with bullet points
+13. **Use buyer names in bold** when mentioning them (e.g., **Acme Corp**)
+14. IMPORTANT: At the END of your response, include a hidden marker listing buyer IDs mentioned:
+    <!-- BUYER_HIGHLIGHT: ["buyer-uuid-1", "buyer-uuid-2"] -->
+    Use the exact "id" field from the buyer data. This allows the UI to highlight those buyers in the list.
+15. For CITY-SPECIFIC queries, search the otherOfficeLocations array and hq field for addresses containing that city name.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

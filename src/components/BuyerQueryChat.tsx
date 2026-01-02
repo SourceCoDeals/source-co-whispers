@@ -1,10 +1,12 @@
-import { useState, useRef, useEffect } from "react";
-import { MessageSquare, Send, X, Sparkles, ChevronDown, Loader2 } from "lucide-react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { MessageSquare, Send, X, Sparkles, Loader2, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+
 interface Message {
   role: "user" | "assistant";
   content: string;
@@ -14,6 +16,10 @@ interface BuyerQueryChatProps {
   dealId: string;
   dealName: string;
   onHighlightBuyers?: (buyerIds: string[]) => void;
+  onBuyerClick?: (buyerName: string) => void;
+  approvedCount?: number;
+  passedCount?: number;
+  pendingCount?: number;
 }
 
 // Extract buyer IDs from the hidden marker in AI response
@@ -33,20 +39,78 @@ function cleanContent(content: string): string {
   return content.replace(/<!-- BUYER_HIGHLIGHT: \[.*?\] -->/g, '').trim();
 }
 
-const EXAMPLE_QUERIES = [
-  "Which buyers have locations within 250 miles?",
-  "List buyers focused on the Southeast region",
-  "Buyers with EBITDA requirements above $3M",
-  "Which buyers have acquired similar companies?",
-];
+// Generate context-aware example queries
+function generateExampleQueries(dealName: string, counts: { approved: number; passed: number; pending: number }): string[] {
+  const queries = [
+    "Who are the top 5 highest scoring buyers?",
+    `Which buyers have the best geography fit for ${dealName}?`,
+  ];
+  
+  if (counts.approved > 0) {
+    queries.push("Show me already approved buyers and why they were selected");
+  }
+  
+  if (counts.pending > 5) {
+    queries.push("Which pending buyers should I prioritize next?");
+  }
+  
+  queries.push("Compare the top 3 buyers by all scoring categories");
+  queries.push("Who are the decision makers at the highest-scoring buyers?");
+  
+  return queries.slice(0, 5);
+}
 
-export function BuyerQueryChat({ dealId, dealName, onHighlightBuyers }: BuyerQueryChatProps) {
+// Parse and render message content with clickable buyer names
+function renderMessageContent(
+  content: string, 
+  onBuyerClick?: (name: string) => void
+): React.ReactNode {
+  const cleanedContent = cleanContent(content);
+  
+  // Split by bold markers **name** and make them clickable
+  const parts = cleanedContent.split(/(\*\*[^*]+\*\*)/g);
+  
+  return parts.map((part, i) => {
+    const boldMatch = part.match(/^\*\*([^*]+)\*\*$/);
+    if (boldMatch && onBuyerClick) {
+      const name = boldMatch[1];
+      return (
+        <button
+          key={i}
+          className="font-semibold text-primary hover:underline cursor-pointer"
+          onClick={() => onBuyerClick(name)}
+        >
+          {name}
+        </button>
+      );
+    }
+    // Handle regular text - preserve whitespace and newlines
+    return <span key={i}>{part}</span>;
+  });
+}
+
+export function BuyerQueryChat({ 
+  dealId, 
+  dealName, 
+  onHighlightBuyers,
+  onBuyerClick,
+  approvedCount = 0,
+  passedCount = 0,
+  pendingCount = 0,
+}: BuyerQueryChatProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [accumulateHighlights, setAccumulateHighlights] = useState(false);
+  const [currentHighlights, setCurrentHighlights] = useState<string[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const exampleQueries = useMemo(() => 
+    generateExampleQueries(dealName, { approved: approvedCount, passed: passedCount, pending: pendingCount }),
+    [dealName, approvedCount, passedCount, pendingCount]
+  );
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -161,11 +225,19 @@ export function BuyerQueryChat({ dealId, dealName, onHighlightBuyers }: BuyerQue
           }
         }
       }
+      
       // Extract and highlight buyer IDs after streaming completes
       if (onHighlightBuyers && assistantContent) {
-        const buyerIds = extractBuyerIds(assistantContent);
-        if (buyerIds.length > 0) {
-          onHighlightBuyers(buyerIds);
+        const newBuyerIds = extractBuyerIds(assistantContent);
+        if (newBuyerIds.length > 0) {
+          if (accumulateHighlights) {
+            const combined = [...new Set([...currentHighlights, ...newBuyerIds])];
+            setCurrentHighlights(combined);
+            onHighlightBuyers(combined);
+          } else {
+            setCurrentHighlights(newBuyerIds);
+            onHighlightBuyers(newBuyerIds);
+          }
         }
       }
     } catch (err) {
@@ -189,6 +261,11 @@ export function BuyerQueryChat({ dealId, dealName, onHighlightBuyers }: BuyerQue
 
   const handleExampleClick = (query: string) => {
     sendMessage(query);
+  };
+
+  const clearHighlights = () => {
+    setCurrentHighlights([]);
+    onHighlightBuyers?.([]);
   };
 
   if (!isOpen) {
@@ -219,19 +296,39 @@ export function BuyerQueryChat({ dealId, dealName, onHighlightBuyers }: BuyerQue
         </Button>
       </div>
 
+      {/* Highlight Controls */}
+      <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/10">
+        <div className="flex items-center gap-2">
+          <Switch 
+            id="accumulate"
+            checked={accumulateHighlights} 
+            onCheckedChange={setAccumulateHighlights}
+          />
+          <label htmlFor="accumulate" className="text-xs text-muted-foreground flex items-center gap-1 cursor-pointer">
+            <Layers className="h-3 w-3" />
+            Stack highlights
+          </label>
+        </div>
+        {currentHighlights.length > 0 && (
+          <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={clearHighlights}>
+            Clear ({currentHighlights.length})
+          </Button>
+        )}
+      </div>
+
       {/* Messages */}
       <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
         {messages.length === 0 ? (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground text-center py-4">
               Ask questions about your buyer universe. I can help you find buyers
-              by geography, acquisition criteria, and more.
+              by geography, scores, acquisition criteria, and more.
             </p>
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground">
                 Try asking:
               </p>
-              {EXAMPLE_QUERIES.map((query, i) => (
+              {exampleQueries.map((query, i) => (
                 <button
                   key={i}
                   onClick={() => handleExampleClick(query)}
@@ -260,7 +357,12 @@ export function BuyerQueryChat({ dealId, dealName, onHighlightBuyers }: BuyerQue
                       : "bg-muted"
                   )}
                 >
-                  <div className="whitespace-pre-wrap">{cleanContent(msg.content)}</div>
+                  <div className="whitespace-pre-wrap">
+                    {msg.role === "assistant" 
+                      ? renderMessageContent(msg.content, onBuyerClick)
+                      : msg.content
+                    }
+                  </div>
                 </div>
               </div>
             ))}
