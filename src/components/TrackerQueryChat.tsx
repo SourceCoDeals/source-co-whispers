@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from "react";
-import { MessageSquare, Send, X, Sparkles, Loader2 } from "lucide-react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { MessageSquare, Send, X, Sparkles, Loader2, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -15,6 +16,7 @@ interface TrackerQueryChatProps {
   trackerId: string;
   trackerName: string;
   onHighlightBuyers?: (buyerIds: string[]) => void;
+  onBuyerClick?: (buyerName: string) => void;
   selectedBuyerIds?: string[];
   totalBuyerCount?: number;
 }
@@ -39,19 +41,66 @@ function cleanContent(content: string): string {
     .trim();
 }
 
-const EXAMPLE_QUERIES = [
-  "Which buyers are focused on the Southeast?",
-  "Show me buyers with EBITDA targets under $3M",
-  "Which buyers have acquired companies recently?",
-  "Find buyers matching our service criteria",
-  "Compare our top 3 most active buyers",
-];
+// Generate context-aware example queries
+function generateExampleQueries(trackerName: string, buyerCount: number): string[] {
+  const queries = [
+    "Which buyers are most active in acquisitions?",
+    `Show me buyers focused on the Southeast region`,
+    "Find buyers with EBITDA targets under $3M",
+  ];
+  
+  if (buyerCount > 10) {
+    queries.push("Compare our top 5 most active buyers");
+  }
+  
+  queries.push("Which buyers have fee agreements?");
+  queries.push("Who are the key contacts at our largest buyers?");
+  
+  return queries.slice(0, 5);
+}
 
-export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers, selectedBuyerIds, totalBuyerCount }: TrackerQueryChatProps) {
+// Parse and render message content with clickable buyer names
+function renderMessageContent(
+  content: string, 
+  onBuyerClick?: (name: string) => void
+): React.ReactNode {
+  const cleanedContent = cleanContent(content);
+  
+  // Split by bold markers **name** and make them clickable
+  const parts = cleanedContent.split(/(\*\*[^*]+\*\*)/g);
+  
+  return parts.map((part, i) => {
+    const boldMatch = part.match(/^\*\*([^*]+)\*\*$/);
+    if (boldMatch && onBuyerClick) {
+      const name = boldMatch[1];
+      return (
+        <button
+          key={i}
+          className="font-semibold text-primary hover:underline cursor-pointer"
+          onClick={() => onBuyerClick(name)}
+        >
+          {name}
+        </button>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
+export function TrackerQueryChat({ 
+  trackerId, 
+  trackerName, 
+  onHighlightBuyers, 
+  onBuyerClick,
+  selectedBuyerIds, 
+  totalBuyerCount 
+}: TrackerQueryChatProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [accumulateHighlights, setAccumulateHighlights] = useState(false);
+  const [currentHighlights, setCurrentHighlights] = useState<string[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -59,6 +108,11 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers, se
   const filterLabel = isFiltering 
     ? `Querying ${selectedBuyerIds.length} of ${totalBuyerCount || '?'} buyers`
     : totalBuyerCount ? `Querying all ${totalBuyerCount} buyers` : undefined;
+
+  const exampleQueries = useMemo(() => 
+    generateExampleQueries(trackerName, totalBuyerCount || 0),
+    [trackerName, totalBuyerCount]
+  );
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -175,9 +229,16 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers, se
       }
       
       // Extract buyer IDs from the complete response and trigger highlighting
-      const buyerIds = extractBuyerIds(assistantContent);
-      if (buyerIds.length > 0 && onHighlightBuyers) {
-        onHighlightBuyers(buyerIds);
+      const newBuyerIds = extractBuyerIds(assistantContent);
+      if (newBuyerIds.length > 0 && onHighlightBuyers) {
+        if (accumulateHighlights) {
+          const combined = [...new Set([...currentHighlights, ...newBuyerIds])];
+          setCurrentHighlights(combined);
+          onHighlightBuyers(combined);
+        } else {
+          setCurrentHighlights(newBuyerIds);
+          onHighlightBuyers(newBuyerIds);
+        }
       }
     } catch (err) {
       console.error("Chat error:", err);
@@ -202,6 +263,10 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers, se
     sendMessage(query);
   };
 
+  const clearHighlights = () => {
+    setCurrentHighlights([]);
+    onHighlightBuyers?.([]);
+  };
 
   if (!isOpen) {
     return (
@@ -241,6 +306,26 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers, se
         </Button>
       </div>
 
+      {/* Highlight Controls */}
+      <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/10">
+        <div className="flex items-center gap-2">
+          <Switch 
+            id="accumulate-tracker"
+            checked={accumulateHighlights} 
+            onCheckedChange={setAccumulateHighlights}
+          />
+          <label htmlFor="accumulate-tracker" className="text-xs text-muted-foreground flex items-center gap-1 cursor-pointer">
+            <Layers className="h-3 w-3" />
+            Stack highlights
+          </label>
+        </div>
+        {currentHighlights.length > 0 && (
+          <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={clearHighlights}>
+            Clear ({currentHighlights.length})
+          </Button>
+        )}
+      </div>
+
       {/* Messages */}
       <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
         {messages.length === 0 ? (
@@ -253,7 +338,7 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers, se
               <p className="text-xs font-medium text-muted-foreground">
                 Try asking:
               </p>
-              {EXAMPLE_QUERIES.map((query, i) => (
+              {exampleQueries.map((query, i) => (
                 <button
                   key={i}
                   onClick={() => handleExampleClick(query)}
@@ -282,7 +367,12 @@ export function TrackerQueryChat({ trackerId, trackerName, onHighlightBuyers, se
                       : "bg-muted"
                   )}
                 >
-                  <div className="whitespace-pre-wrap">{cleanContent(msg.content)}</div>
+                  <div className="whitespace-pre-wrap">
+                    {msg.role === "assistant" 
+                      ? renderMessageContent(msg.content, onBuyerClick)
+                      : msg.content
+                    }
+                  </div>
                 </div>
               </div>
             ))}
