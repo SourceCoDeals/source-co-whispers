@@ -657,19 +657,40 @@ function analyzeEngagementSignals(callIntelligence: any[] | null): EngagementSig
   return signals;
 }
 
+// Buyer type constraints extracted from tracker's buyer_types_criteria
+interface BuyerTypeConstraints {
+  minLocations: number | null;
+  maxLocations: number | null;
+  minRevenue: number | null;
+  minEbitda: number | null;
+  maxEbitda: number | null;
+  geographicScope: string | null;
+}
+
 // Assign best-fit buyer type based on tracker's buyer_types_criteria
-// Returns the most suitable buyer type with match details
+// Returns the most suitable buyer type with match details AND the type's constraints
 function assignBuyerType(buyer: Buyer, tracker: Tracker): { 
   buyerType: string | null; 
   isNational: boolean; 
   matchScore: number;
   matchDetails: string;
+  constraints: BuyerTypeConstraints;
 } {
   const buyerTypes = tracker.buyer_types_criteria?.buyer_types || [];
   
+  const emptyConstraints: BuyerTypeConstraints = {
+    minLocations: null,
+    maxLocations: null,
+    minRevenue: null,
+    minEbitda: null,
+    maxEbitda: null,
+    geographicScope: null
+  };
+  
   if (buyerTypes.length === 0) {
     // Fallback to heuristic-based detection when no buyer types defined
-    return determineBuyerScaleHeuristic(buyer);
+    const heuristic = determineBuyerScaleHeuristic(buyer);
+    return { ...heuristic, constraints: emptyConstraints };
   }
   
   let bestMatch: { type: any; score: number; details: string } | null = null;
@@ -746,16 +767,31 @@ function assignBuyerType(buyer: Buyer, tracker: Tracker): {
   
   if (bestMatch && bestMatch.score >= 30) {
     const isNational = bestMatch.type.geographic_scope?.toLowerCase().includes('national') || false;
+    
+    // Extract constraints from the matched buyer type
+    const constraints: BuyerTypeConstraints = {
+      minLocations: bestMatch.type.min_locations ? parseInt(bestMatch.type.min_locations) : null,
+      maxLocations: bestMatch.type.max_locations ? parseInt(bestMatch.type.max_locations) : null,
+      minRevenue: bestMatch.type.min_revenue_per_location ? parseFloat(bestMatch.type.min_revenue_per_location) : null,
+      minEbitda: bestMatch.type.min_ebitda ? parseFloat(bestMatch.type.min_ebitda) : null,
+      maxEbitda: bestMatch.type.max_ebitda ? parseFloat(bestMatch.type.max_ebitda) : null,
+      geographicScope: bestMatch.type.geographic_scope || null
+    };
+    
+    console.log(`[BuyerType] Matched "${buyer.pe_firm_name}" to type "${bestMatch.type.type_name}" (score: ${bestMatch.score}). Constraints: minLocs=${constraints.minLocations}, minEbitda=${constraints.minEbitda}`);
+    
     return {
       buyerType: bestMatch.type.type_name,
       isNational,
       matchScore: bestMatch.score,
-      matchDetails: bestMatch.details
+      matchDetails: bestMatch.details,
+      constraints
     };
   }
   
   // Fallback if no good match
-  return determineBuyerScaleHeuristic(buyer);
+  const heuristic = determineBuyerScaleHeuristic(buyer);
+  return { ...heuristic, constraints: emptyConstraints };
 }
 
 // Fallback heuristic-based buyer type detection
@@ -787,10 +823,14 @@ function determineBuyerScaleHeuristic(buyer: Buyer): {
   };
 }
 
-// Legacy wrapper for backward compatibility
-function determineBuyerScale(buyer: Buyer, tracker: Tracker): { isNational: boolean; buyerType: string | null } {
+// Legacy wrapper for backward compatibility - now also returns constraints
+function determineBuyerScale(buyer: Buyer, tracker: Tracker): { 
+  isNational: boolean; 
+  buyerType: string | null;
+  constraints: BuyerTypeConstraints;
+} {
   const result = assignBuyerType(buyer, tracker);
-  return { isNational: result.isNational, buyerType: result.buyerType };
+  return { isNational: result.isNational, buyerType: result.buyerType, constraints: result.constraints };
 }
 
 // Get scoring behavior from tracker or use defaults
@@ -808,6 +848,7 @@ function getScoringBehavior(tracker: Tracker): ScoringBehavior {
 // When deal is too small for buyer, it should significantly limit the overall score
 // Even if geography and services are perfect, a too-small deal is rarely a fit
 // Now uses tracker's scoring_behavior for industry-specific rules
+// NEW: Also enforces buyer_types_criteria constraints (minLocations, minEbitda, etc.)
 function scoreSizeCategory(deal: Deal, buyer: Buyer, tracker: Tracker): CategoryScore & { sizeMultiplier: number } {
   const dealRevenue = deal.revenue || 0;
   const dealLocations = deal.location_count || 1;
@@ -823,6 +864,46 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer, tracker: Tracker): Category
     behavior.size.strictness === 'moderate' ? 0.7 :
     0.4; // relaxed
   
+  // ========== NEW: GET BUYER TYPE CONSTRAINTS ==========
+  // Get the matched buyer type AND its constraints from the tracker's buyer_types_criteria
+  const { isNational: buyerIsNationalPlatform, buyerType, constraints } = determineBuyerScale(buyer, tracker);
+  
+  // Log what we found for debugging
+  console.log(`[SizeScore] Buyer "${buyer.pe_firm_name}" matched to type "${buyerType || 'unknown'}". Constraints: minLocs=${constraints.minLocations}, minEbitda=${constraints.minEbitda}`);
+  
+  // ========== BUYER TYPE LOCATION CONSTRAINT - HARD DISQUALIFICATION ==========
+  // If the matched buyer type requires a minimum number of locations and the deal doesn't meet it, DISQUALIFY
+  if (constraints.minLocations && constraints.minLocations > 1 && dealLocations < constraints.minLocations) {
+    console.log(`[SizeScore] DISQUALIFYING: ${buyerType} requires ${constraints.minLocations}+ locations, deal has ${dealLocations}`);
+    return {
+      score: 0,
+      reasoning: `${buyerType || 'Buyer type'} requires ${constraints.minLocations}+ locations. Deal has only ${dealLocations} location(s).`,
+      isDisqualified: true,
+      disqualificationReason: `${buyerType || 'Buyer type'} requires ${constraints.minLocations}+ locations, deal has ${dealLocations}`,
+      confidence: 'high',
+      sizeMultiplier: 0
+    };
+  }
+  
+  // ========== BUYER TYPE EBITDA CONSTRAINT - HARD DISQUALIFICATION ==========
+  // If the matched buyer type requires minimum EBITDA and deal doesn't meet it
+  const dealEbitda = deal.ebitda_amount || (deal.revenue && deal.ebitda_percentage 
+    ? (deal.revenue * deal.ebitda_percentage / 100) 
+    : null);
+  
+  if (constraints.minEbitda && dealEbitda !== null && dealEbitda < constraints.minEbitda * 0.5) {
+    console.log(`[SizeScore] DISQUALIFYING: ${buyerType} requires $${constraints.minEbitda}M+ EBITDA, deal has $${dealEbitda}M`);
+    return {
+      score: 0,
+      reasoning: `${buyerType || 'Buyer type'} requires $${constraints.minEbitda}M+ EBITDA. Deal has only $${dealEbitda?.toFixed(1)}M EBITDA.`,
+      isDisqualified: true,
+      disqualificationReason: `${buyerType || 'Buyer type'} requires $${constraints.minEbitda}M+ EBITDA, deal has $${dealEbitda?.toFixed(1)}M`,
+      confidence: 'high',
+      sizeMultiplier: 0
+    };
+  }
+  
+  // ========== EXISTING LOGIC: BUYER'S INDIVIDUAL CRITERIA ==========
   // STRICT: Hard disqualify if deal revenue is significantly below buyer's minimum (more than 30% below)
   if (buyer.min_revenue && dealRevenue < buyer.min_revenue * 0.7) {
     const percentBelow = ((buyer.min_revenue - dealRevenue) / buyer.min_revenue * 100).toFixed(0);
@@ -881,9 +962,20 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer, tracker: Tracker): Category
     };
   }
   
-  // Check if this is a single-location deal against a buyer that needs larger scale
-  // Use tracker's buyer_types_criteria if available to determine what "national platform" means
-  const { isNational: buyerIsNationalPlatform, buyerType } = determineBuyerScale(buyer, tracker);
+  // ========== BUYER TYPE CONSTRAINT PENALTIES (NOT DISQUALIFICATION) ==========
+  // If deal is below buyer type's EBITDA minimum but not by much, apply penalty
+  if (constraints.minEbitda && dealEbitda !== null && dealEbitda < constraints.minEbitda) {
+    const percentBelow = ((constraints.minEbitda - dealEbitda) / constraints.minEbitda * 100);
+    sizeMultiplier = Math.min(sizeMultiplier, 0.5);
+    return {
+      score: 25,
+      reasoning: `Deal EBITDA ($${dealEbitda?.toFixed(1)}M) is ${percentBelow.toFixed(0)}% below ${buyerType || 'buyer type'} minimum ($${constraints.minEbitda}M)`,
+      isDisqualified: false,
+      disqualificationReason: null,
+      confidence: 'high',
+      sizeMultiplier
+    };
+  }
     
   // Single-location deals are penalized for national platforms (if penalty enabled)
   if (dealLocations === 1 && buyerIsNationalPlatform && behavior.size.single_location_penalty) {
@@ -943,21 +1035,21 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer, tracker: Tracker): Category
   // EBITDA scoring
   if (buyer.min_ebitda || buyer.max_ebitda || buyer.ebitda_sweet_spot) {
     hasData = true;
-    const dealEbitda = deal.ebitda_amount || (deal.revenue && deal.ebitda_percentage 
+    const currentDealEbitda = deal.ebitda_amount || (deal.revenue && deal.ebitda_percentage 
       ? (deal.revenue * deal.ebitda_percentage / 100) 
       : null);
     
-    if (dealEbitda) {
+    if (currentDealEbitda) {
       const min = buyer.min_ebitda || 0;
       const max = buyer.max_ebitda || 100;
       
-      if (dealEbitda >= min && dealEbitda <= max) {
+      if (currentDealEbitda >= min && currentDealEbitda <= max) {
         score = Math.min(100, score + 10);
-        reasons.push(`EBITDA ($${dealEbitda.toFixed(1)}M) within range`);
-      } else if (dealEbitda < min) {
+        reasons.push(`EBITDA ($${currentDealEbitda.toFixed(1)}M) within range`);
+      } else if (currentDealEbitda < min) {
         score = Math.max(score - 15, 10);
         sizeMultiplier = Math.min(sizeMultiplier, 0.75);
-        reasons.push(`EBITDA ($${dealEbitda.toFixed(1)}M) below minimum ($${min}M)`);
+        reasons.push(`EBITDA ($${currentDealEbitda.toFixed(1)}M) below minimum ($${min}M)`);
       }
     }
   }
@@ -972,6 +1064,14 @@ function scoreSizeCategory(deal: Deal, buyer: Buyer, tracker: Tracker): Category
   } else if (dealLocations >= 3) {
     score = Math.min(100, score + 5);
     reasons.push(`Multi-location (${dealLocations} locations) provides infrastructure`);
+  }
+  
+  // Add buyer type context to reasoning if we have constraints
+  if (buyerType && (constraints.minLocations || constraints.minEbitda)) {
+    hasData = true;
+    if (constraints.minLocations && dealLocations >= constraints.minLocations) {
+      reasons.push(`Meets ${buyerType} location requirement (${dealLocations}/${constraints.minLocations}+)`);
+    }
   }
   
   return {
