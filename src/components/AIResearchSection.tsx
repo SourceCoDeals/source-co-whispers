@@ -12,6 +12,10 @@ import { saveAs } from "file-saver";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
+import { validateBeforeSave, detectPlaceholders } from "@/lib/criteriaValidation";
+import { parseCriteria, TrackerCriteria } from "@/lib/criteriaSchema";
+import { CriteriaValidationAlert } from "@/components/CriteriaValidationAlert";
+import { validateCriteriaComprehensive, ComprehensiveValidationResult } from "@/lib/criteriaValidation";
 
 interface ExtractedCriteria {
   sizeCriteria?: string;
@@ -38,6 +42,11 @@ interface QualityResult {
   hasCriteria?: boolean;
   hasBuyerTypes?: boolean;
   hasPrimaryFocus?: boolean;
+}
+
+interface CriteriaValidationState {
+  validation: ComprehensiveValidationResult | null;
+  preSaveResult: { canSave: boolean; blockers: string[]; warnings: string[]; suggestions: string[] } | null;
 }
 
 export interface UploadedGuideDoc {
@@ -78,8 +87,46 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
   const [fixingIssue, setFixingIssue] = useState<string>("");
   const [fixProgress, setFixProgress] = useState({ current: 0, total: 0 });
   const [acceptedAnyway, setAcceptedAnyway] = useState(false);
+  const [criteriaValidation, setCriteriaValidation] = useState<CriteriaValidationState>({ validation: null, preSaveResult: null });
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  
+  // Validate extracted criteria whenever it changes
+  useEffect(() => {
+    if (extractedCriteria) {
+      // Build TrackerCriteria from extracted data for validation
+      const trackerCriteria: TrackerCriteria = parseCriteria({
+        size_criteria: extractedCriteria.sizeCriteria ? { raw_text: extractedCriteria.sizeCriteria } : null,
+        service_criteria: {
+          primary_focus: extractedCriteria.primaryFocusServices || [],
+          excluded_services: extractedCriteria.excludedServices || [],
+          raw_text: extractedCriteria.serviceCriteria
+        },
+        geography_criteria: extractedCriteria.geographyCriteria ? { raw_text: extractedCriteria.geographyCriteria } : null,
+        buyer_types_criteria: extractedCriteria.buyerTypesCriteria ? { raw_text: extractedCriteria.buyerTypesCriteria } : null
+      });
+      
+      const validation = validateCriteriaComprehensive(trackerCriteria);
+      const preSaveResult = validateBeforeSave(trackerCriteria);
+      
+      setCriteriaValidation({ validation, preSaveResult });
+      
+      // Check for placeholders in raw text
+      const allText = [
+        extractedCriteria.sizeCriteria,
+        extractedCriteria.serviceCriteria,
+        extractedCriteria.geographyCriteria,
+        extractedCriteria.buyerTypesCriteria
+      ].filter(Boolean).join(' ');
+      
+      const placeholders = detectPlaceholders(allText);
+      if (placeholders.length > 0) {
+        console.warn('[AIResearchSection] Placeholders detected in criteria:', placeholders);
+      }
+    } else {
+      setCriteriaValidation({ validation: null, preSaveResult: null });
+    }
+  }, [extractedCriteria]);
 
   useEffect(() => {
     if (scrollRef.current && state === "generating") {
@@ -295,6 +342,16 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
       return;
     }
     
+    // Check validation blockers
+    if (criteriaValidation.preSaveResult && !criteriaValidation.preSaveResult.canSave) {
+      toast({ 
+        title: "Cannot Apply Criteria", 
+        description: criteriaValidation.preSaveResult.blockers[0] || "Validation failed",
+        variant: "destructive" 
+      });
+      return;
+    }
+    
     // Log what we're applying
     console.log('[AIResearchSection] Applying extracted criteria:', {
       sizeCriteria: extractedCriteria.sizeCriteria?.length || 0,
@@ -302,7 +359,8 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
       geographyCriteria: extractedCriteria.geographyCriteria?.length || 0,
       buyerTypesCriteria: extractedCriteria.buyerTypesCriteria?.length || 0,
       primaryFocusServices: extractedCriteria.primaryFocusServices,
-      excludedServices: extractedCriteria.excludedServices
+      excludedServices: extractedCriteria.excludedServices,
+      validationScore: criteriaValidation.validation?.overallScore
     });
     
     // Pass ALL extracted data including primaryFocusServices
@@ -323,11 +381,21 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
     ].filter(c => c && c.length > 50).length;
     
     const primaryCount = extractedCriteria.primaryFocusServices?.length || 0;
+    const validationStatus = criteriaValidation.validation?.status || 'unknown';
     
-    toast({ 
-      title: "Criteria Applied!", 
-      description: `${foundCount}/4 sections extracted. ${primaryCount} primary focus service${primaryCount !== 1 ? 's' : ''}.` 
-    });
+    // Show warning if partial
+    if (validationStatus === 'partial') {
+      toast({ 
+        title: "Criteria Applied (Partial)", 
+        description: `${foundCount}/4 sections extracted. ${primaryCount} primary focus. Some fields may need review.`,
+        variant: "default"
+      });
+    } else {
+      toast({ 
+        title: "Criteria Applied!", 
+        description: `${foundCount}/4 sections extracted. ${primaryCount} primary focus service${primaryCount !== 1 ? 's' : ''}.` 
+      });
+    }
   };
 
   const reset = () => {
@@ -940,6 +1008,19 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
                         </Badge>
                       )}
                     </div>
+                    
+                    {/* Validation Alert */}
+                    {criteriaValidation.validation && (
+                      <CriteriaValidationAlert 
+                        validation={criteriaValidation.validation} 
+                        onFixRequest={(field) => {
+                          toast({
+                            title: `Missing: ${field.replace(/_/g, ' ')}`,
+                            description: "Try regenerating or manually adding this field in Tracker settings.",
+                          });
+                        }}
+                      />
+                    )}
                     
                     {/* Primary Focus Services - Critical for Scoring */}
                     {extractedCriteria.primaryFocusServices && extractedCriteria.primaryFocusServices.length > 0 && (
