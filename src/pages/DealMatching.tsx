@@ -9,6 +9,8 @@ import { Switch } from "@/components/ui/switch";
 import { ScoreBadge } from "@/components/ScoreBadge";
 import { IntelligenceBadge } from "@/components/IntelligenceBadge";
 import { EngagementSignalsBadge } from "@/components/EngagementSignalsBadge";
+import { DataCompletenessBadge } from "@/components/DataCompletenessBadge";
+import { ScoreTierBadge } from "@/components/ScoreTierBadge";
 import { Loader2, ArrowLeft, ChevronDown, ChevronRight, Building2, Globe, DollarSign, ExternalLink, FileCheck, FileX, CheckCircle2, Mail, Linkedin, UserSearch, User, MapPin, Users, Phone, Send, AlertTriangle, XCircle, ThumbsUp, ThumbsDown, Eye, Trash2, Plus, Clock, ArrowUp, ArrowDown, Trophy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -43,7 +45,12 @@ interface BuyerScore {
   overallReasoning: string;
   isDisqualified: boolean;
   disqualificationReasons: string[];
-  dataCompleteness: 'high' | 'medium' | 'low';
+  dataCompleteness: 'High' | 'Medium' | 'Low';
+  dataCompletenessPercent?: number;
+  missingFields?: string[];
+  criticalMissing?: string[];
+  needsReview?: boolean;
+  reviewReason?: string | null;
   dealAttractiveness: number;
 }
 
@@ -1021,9 +1028,19 @@ export default function DealMatching() {
                 </div>
               </div>
               <div className="flex flex-col items-end gap-1.5 shrink-0">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  {buyer.aiScore?.dataCompleteness && (
+                    <DataCompletenessBadge 
+                      completeness={buyer.aiScore.dataCompleteness}
+                      missingFields={buyer.aiScore.missingFields}
+                    />
+                  )}
                   <IntelligenceBadge buyer={buyer} size="sm" />
-                  <ScoreBadge score={score?.composite_score || 0} showLabel />
+                  <ScoreTierBadge 
+                    score={score?.composite_score || 0} 
+                    isDisqualified={buyer.isDisqualified}
+                    size="sm"
+                  />
                   <CollapsibleTrigger asChild><Button variant="ghost" size="sm">{isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</Button></CollapsibleTrigger>
                 </div>
                 
@@ -1064,38 +1081,73 @@ export default function DealMatching() {
             </div>
             
             {/* Detailed Fit Explanation - Always visible */}
-            <div className={`mt-3 p-3 rounded-lg text-sm ${buyer.isDisqualified ? 'bg-destructive/10 border border-destructive/20' : score?.composite_score >= 70 ? 'bg-green-500/10 border border-green-500/20' : 'bg-muted/50'}`}>
+            <div className={`mt-3 p-3 rounded-lg text-sm ${buyer.isDisqualified ? 'bg-destructive/10 border border-destructive/20' : score?.composite_score >= 70 ? 'bg-green-500/10 border border-green-500/20' : buyer.aiScore?.needsReview ? 'bg-amber-500/10 border border-amber-500/20' : 'bg-muted/50'}`}>
               <div className="flex items-start gap-2">
                 <div className="flex-1">
-                  <p className={`font-medium ${buyer.isDisqualified ? 'text-destructive' : score?.composite_score >= 70 ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
-                    {score?.fit_reasoning || "Evaluating fit..."}
-                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className={`font-medium ${buyer.isDisqualified ? 'text-destructive' : score?.composite_score >= 70 ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                      {score?.fit_reasoning || "Evaluating fit..."}
+                    </p>
+                    {buyer.aiScore?.needsReview && !buyer.isDisqualified && (
+                      <Badge variant="outline" className="text-[10px] h-5 bg-amber-500/10 text-amber-600 border-amber-500/30">
+                        <AlertTriangle className="w-2.5 h-2.5 mr-0.5" />
+                        Needs Review
+                      </Badge>
+                    )}
+                  </div>
                   
-                  {/* Detailed breakdown - 4 AI-scored categories */}
+                  {/* Review reason if applicable */}
+                  {buyer.aiScore?.needsReview && buyer.aiScore?.reviewReason && (
+                    <p className="mt-1 text-xs text-amber-600 dark:text-amber-500">
+                      ⚠️ {buyer.aiScore.reviewReason}
+                    </p>
+                  )}
+                  
+                  {/* Detailed breakdown - 4 AI-scored categories with confidence indicators */}
                   <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                     <div className="flex items-center justify-between bg-background/50 rounded px-2 py-1">
                       <span className="text-muted-foreground">Size</span>
-                      <span className={`font-semibold ${(score?.acquisition_score || 0) >= 70 ? 'text-green-600' : (score?.acquisition_score || 0) >= 40 ? 'text-amber-600' : 'text-destructive'}`}>
-                        {score?.acquisition_score || 0}%
-                      </span>
+                      <div className="flex items-center gap-1">
+                        {buyer.aiScore?.sizeScore?.confidence === 'low' && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Low confidence" />
+                        )}
+                        <span className={`font-semibold ${(score?.acquisition_score || 0) >= 70 ? 'text-green-600' : (score?.acquisition_score || 0) >= 40 ? 'text-amber-600' : 'text-destructive'}`}>
+                          {score?.acquisition_score || 0}%
+                        </span>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between bg-background/50 rounded px-2 py-1">
                       <span className="text-muted-foreground">Geography</span>
-                      <span className={`font-semibold ${(score?.geography_score || 0) >= 70 ? 'text-green-600' : (score?.geography_score || 0) >= 40 ? 'text-amber-600' : 'text-destructive'}`}>
-                        {score?.geography_score || 0}%
-                      </span>
+                      <div className="flex items-center gap-1">
+                        {buyer.aiScore?.geographyScore?.confidence === 'low' && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Low confidence" />
+                        )}
+                        <span className={`font-semibold ${(score?.geography_score || 0) >= 70 ? 'text-green-600' : (score?.geography_score || 0) >= 40 ? 'text-amber-600' : 'text-destructive'}`}>
+                          {score?.geography_score || 0}%
+                        </span>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between bg-background/50 rounded px-2 py-1">
                       <span className="text-muted-foreground">Services</span>
-                      <span className={`font-semibold ${(score?.service_score || 0) >= 70 ? 'text-green-600' : (score?.service_score || 0) >= 40 ? 'text-amber-600' : 'text-destructive'}`}>
-                        {score?.service_score || 0}%
-                      </span>
+                      <div className="flex items-center gap-1">
+                        {buyer.aiScore?.servicesScore?.confidence === 'low' && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Low confidence" />
+                        )}
+                        <span className={`font-semibold ${(score?.service_score || 0) >= 70 ? 'text-green-600' : (score?.service_score || 0) >= 40 ? 'text-amber-600' : 'text-destructive'}`}>
+                          {score?.service_score || 0}%
+                        </span>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between bg-background/50 rounded px-2 py-1">
                       <span className="text-muted-foreground">Owner Goals</span>
-                      <span className={`font-semibold ${(score?.portfolio_score || 0) >= 70 ? 'text-green-600' : (score?.portfolio_score || 0) >= 40 ? 'text-amber-600' : 'text-destructive'}`}>
-                        {score?.portfolio_score || 0}%
-                      </span>
+                      <div className="flex items-center gap-1">
+                        {buyer.aiScore?.ownerGoalsScore?.confidence === 'low' && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Low confidence" />
+                        )}
+                        <span className={`font-semibold ${(score?.portfolio_score || 0) >= 70 ? 'text-green-600' : (score?.portfolio_score || 0) >= 40 ? 'text-amber-600' : 'text-destructive'}`}>
+                          {score?.portfolio_score || 0}%
+                        </span>
+                      </div>
                     </div>
                   </div>
                   
