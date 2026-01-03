@@ -20,6 +20,8 @@ import {
 import { getIntelligenceCoverage } from "@/lib/types";
 import { seedSampleData } from "@/lib/seedData";
 import { useToast } from "@/hooks/use-toast";
+import { TimeframeFilter, TimeframeOption, getDateRange } from "@/components/TimeframeFilter";
+import { RecentActivityFeed } from "@/components/RecentActivityFeed";
 
 interface TrackerWithStats {
   id: string;
@@ -31,7 +33,8 @@ interface TrackerWithStats {
 
 export default function Dashboard() {
   const [trackers, setTrackers] = useState<TrackerWithStats[]>([]);
-  const [recentActivity, setRecentActivity] = useState<string[]>([]);
+  const [timeframe, setTimeframe] = useState<TimeframeOption>('week');
+  const [filteredStats, setFilteredStats] = useState({ buyers: 0, deals: 0, scores: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [isSeeding, setIsSeeding] = useState(false);
   const navigate = useNavigate();
@@ -39,11 +42,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [timeframe]);
 
   const loadDashboardData = async () => {
     setIsLoading(true);
     try {
+      const { start } = getDateRange(timeframe);
+      const startDate = start?.toISOString();
+
       const { data: trackersData, error: trackersError } = await supabase
         .from("industry_trackers")
         .select("*")
@@ -75,20 +81,28 @@ export default function Dashboard() {
 
       setTrackers(trackersWithStats);
 
-      const activities: string[] = [];
-      trackersWithStats.forEach((t) => {
-        if (t.intelligent_buyer_count > 0) {
-          activities.push(
-            `${t.industry_name}: ${t.intelligent_buyer_count} of ${t.buyer_count} buyers have intelligence`
-          );
-        }
-        if (t.deal_count > 0) {
-          activities.push(
-            `${t.industry_name}: ${t.deal_count} deals processed`
-          );
-        }
+      // Load filtered stats for timeframe
+      const filteredQueries = [];
+      
+      let buyersQuery = supabase.from("buyers").select("id", { count: "exact", head: true });
+      if (startDate) buyersQuery = buyersQuery.gte("created_at", startDate);
+      filteredQueries.push(buyersQuery);
+
+      let dealsQuery = supabase.from("deals").select("id", { count: "exact", head: true });
+      if (startDate) dealsQuery = dealsQuery.gte("created_at", startDate);
+      filteredQueries.push(dealsQuery);
+
+      let scoresQuery = supabase.from("buyer_deal_scores").select("id", { count: "exact", head: true });
+      if (startDate) scoresQuery = scoresQuery.gte("scored_at", startDate);
+      filteredQueries.push(scoresQuery);
+
+      const [buyersCount, dealsCount, scoresCount] = await Promise.all(filteredQueries);
+
+      setFilteredStats({
+        buyers: buyersCount.count || 0,
+        deals: dealsCount.count || 0,
+        scores: scoresCount.count || 0,
       });
-      setRecentActivity(activities.slice(0, 5));
     } catch (error) {
       console.error("Error loading dashboard:", error);
     } finally {
@@ -135,7 +149,8 @@ export default function Dashboard() {
               Building institutional memory for M&A. Every deal makes the next one better.
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3">
+            <TimeframeFilter value={timeframe} onChange={setTimeframe} />
             {trackers.length === 0 && (
               <Button variant="outline" onClick={handleSeedData} disabled={isSeeding}>
                 {isSeeding ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
@@ -158,21 +173,21 @@ export default function Dashboard() {
             icon={Building2}
           />
           <StatCard
-            title="Total Buyers"
-            value={totalBuyers}
-            subtitle={`${totalIntelligent} with intelligence`}
+            title="New Buyers"
+            value={filteredStats.buyers}
+            subtitle={`${totalBuyers} total`}
             icon={Users}
           />
           <StatCard
             title="Deals Processed"
-            value={totalDeals}
-            subtitle="Across all universes"
+            value={filteredStats.deals}
+            subtitle={`${totalDeals} total`}
             icon={FileText}
           />
           <StatCard
             title="Intelligence Coverage"
             value={`${avgCoverage}%`}
-            subtitle="Buyers with captured data"
+            subtitle={`${totalIntelligent} buyers with data`}
             icon={Brain}
             variant={avgCoverage >= 70 ? "success" : avgCoverage >= 40 ? "warning" : "default"}
           />
@@ -252,22 +267,9 @@ export default function Dashboard() {
 
           {/* Activity Feed */}
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold">Intelligence Impact</h2>
-            <div className="bg-card rounded-lg border p-5 space-y-4">
-              {recentActivity.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Activity will appear here as you build buyer universes and capture intelligence.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {recentActivity.map((activity, i) => (
-                    <div key={i} className="flex items-start gap-3 text-sm">
-                      <div className="w-2 h-2 rounded-full bg-accent mt-1.5 flex-shrink-0" />
-                      <span className="text-muted-foreground">{activity}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <h2 className="text-lg font-semibold">Recent Activity</h2>
+            <div className="bg-card rounded-lg border p-5">
+              <RecentActivityFeed timeframe={timeframe} />
             </div>
 
             {/* Quick Tips */}
