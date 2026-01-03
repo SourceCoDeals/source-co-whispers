@@ -109,6 +109,10 @@ export type Database = {
           passed_at: string | null
           passed_on_deal: boolean | null
           portfolio_score: number | null
+          rejected_at: string | null
+          rejection_category: string | null
+          rejection_notes: string | null
+          rejection_reason: string | null
           scored_at: string
           selected_for_outreach: boolean | null
           service_score: number | null
@@ -134,6 +138,10 @@ export type Database = {
           passed_at?: string | null
           passed_on_deal?: boolean | null
           portfolio_score?: number | null
+          rejected_at?: string | null
+          rejection_category?: string | null
+          rejection_notes?: string | null
+          rejection_reason?: string | null
           scored_at?: string
           selected_for_outreach?: boolean | null
           service_score?: number | null
@@ -159,6 +167,10 @@ export type Database = {
           passed_at?: string | null
           passed_on_deal?: boolean | null
           portfolio_score?: number | null
+          rejected_at?: string | null
+          rejection_category?: string | null
+          rejection_notes?: string | null
+          rejection_reason?: string | null
           scored_at?: string
           selected_for_outreach?: boolean | null
           service_score?: number | null
@@ -174,6 +186,60 @@ export type Database = {
           },
           {
             foreignKeyName: "buyer_deal_scores_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      buyer_learning_history: {
+        Row: {
+          action_type: string
+          buyer_id: string
+          created_at: string | null
+          created_by: string | null
+          deal_context: Json | null
+          deal_id: string
+          id: string
+          rejection_categories: string[] | null
+          rejection_notes: string | null
+          rejection_reason: string | null
+        }
+        Insert: {
+          action_type?: string
+          buyer_id: string
+          created_at?: string | null
+          created_by?: string | null
+          deal_context?: Json | null
+          deal_id: string
+          id?: string
+          rejection_categories?: string[] | null
+          rejection_notes?: string | null
+          rejection_reason?: string | null
+        }
+        Update: {
+          action_type?: string
+          buyer_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          deal_context?: Json | null
+          deal_id?: string
+          id?: string
+          rejection_categories?: string[] | null
+          rejection_notes?: string | null
+          rejection_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "buyer_learning_history_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "buyers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "buyer_learning_history_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
             referencedRelation: "deals"

@@ -1966,6 +1966,89 @@ function calculateDataCompleteness(buyer: Buyer, deal: Deal): 'High' | 'Medium' 
   return 'Low';
 }
 
+// Calculate learning penalty based on buyer's rejection history
+// Analyzes patterns of past rejections to penalize similar mismatches
+function calculateLearningPenalty(
+  buyerHistory: any[], 
+  deal: Deal
+): { penalty: number; reasoning: string[]; patterns: string[] } {
+  if (!buyerHistory || buyerHistory.length === 0) {
+    return { penalty: 0, reasoning: [], patterns: [] };
+  }
+
+  let penalty = 0;
+  const reasoning: string[] = [];
+  const patterns: string[] = [];
+
+  // Count rejection categories across all history
+  const categoryCounts: Record<string, number> = {};
+  buyerHistory.forEach(record => {
+    (record.rejection_categories || []).forEach((cat: string) => {
+      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+    });
+  });
+
+  // Check for size-related patterns
+  const sizeRejections = (categoryCounts['size_too_small'] || 0) + (categoryCounts['size_too_large'] || 0);
+  if (sizeRejections >= 2) {
+    // Check if current deal has similar size characteristics
+    const smallRejections = categoryCounts['size_too_small'] || 0;
+    const largeRejections = categoryCounts['size_too_large'] || 0;
+    
+    if (smallRejections >= 2) {
+      patterns.push(`rejected_for_size_small_${smallRejections}x`);
+      // If buyer has rejected small deals before and this is also small
+      if (deal.revenue && deal.revenue < 5) { // Example threshold
+        penalty += 10;
+        reasoning.push(`Previously rejected ${smallRejections} smaller deals`);
+      }
+    }
+    if (largeRejections >= 2) {
+      patterns.push(`rejected_for_size_large_${largeRejections}x`);
+    }
+  }
+
+  // Check for geography-related patterns
+  const geoRejections = categoryCounts['geography'] || 0;
+  if (geoRejections >= 2) {
+    patterns.push(`rejected_for_geography_${geoRejections}x`);
+    // Apply penalty - the deal's geography might be a consistent issue for this buyer
+    penalty += 8;
+    reasoning.push(`Geography mismatch in ${geoRejections} previous deals`);
+  }
+
+  // Check for service-related patterns
+  const serviceRejections = categoryCounts['services'] || 0;
+  if (serviceRejections >= 2) {
+    patterns.push(`rejected_for_services_${serviceRejections}x`);
+    penalty += 8;
+    reasoning.push(`Service mismatch in ${serviceRejections} previous deals`);
+  }
+
+  // Check for timing patterns
+  const timingRejections = categoryCounts['timing'] || 0;
+  if (timingRejections >= 3) {
+    patterns.push(`rejected_for_timing_${timingRejections}x`);
+    penalty += 5;
+    reasoning.push(`Buyer frequently not active (${timingRejections}x)`);
+  }
+
+  // Portfolio conflict pattern
+  const portfolioRejections = categoryCounts['portfolio_conflict'] || 0;
+  if (portfolioRejections >= 1) {
+    patterns.push(`has_portfolio_conflicts`);
+    // Minor penalty as this is deal-specific
+    penalty += 3;
+    reasoning.push(`Has portfolio conflicts in similar deals`);
+  }
+
+  return { 
+    penalty: Math.min(penalty, 25), // Cap at 25 points
+    reasoning, 
+    patterns 
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -2072,6 +2155,27 @@ serve(async (req) => {
       console.error("Call intelligence fetch error:", callError);
     }
 
+    // Fetch learning history for all buyers to apply learned penalties
+    const { data: learningHistory, error: learningError } = await supabase
+      .from("buyer_learning_history")
+      .select("*")
+      .in("buyer_id", buyerIdList);
+    
+    if (learningError) {
+      console.error("Learning history fetch error:", learningError);
+    }
+
+    // Group learning history by buyer for penalty calculation
+    const learningByBuyer: Record<string, any[]> = {};
+    (learningHistory || []).forEach(record => {
+      if (record.buyer_id) {
+        if (!learningByBuyer[record.buyer_id]) {
+          learningByBuyer[record.buyer_id] = [];
+        }
+        learningByBuyer[record.buyer_id].push(record);
+      }
+    });
+
     // Group call intelligence by buyer
     const callsByBuyer: Record<string, any[]> = {};
     (callIntelligence || []).forEach(call => {
@@ -2131,6 +2235,10 @@ serve(async (req) => {
       // NEW: Apply custom scoring instructions
       const customResult = applyCustomInstructions(buyer as Buyer, deal as Deal, parsedInstructions);
       
+      // NEW: Calculate learning penalty from buyer's rejection history
+      const buyerHistory = learningByBuyer[buyer.id] || [];
+      const learningResult = calculateLearningPenalty(buyerHistory, deal as Deal);
+      
       // Check for any disqualifications
       const disqualificationReasons: string[] = [];
       if (sizeScore.isDisqualified && sizeScore.disqualificationReason) {
@@ -2159,7 +2267,8 @@ serve(async (req) => {
         (thesisBonus * 0.3) + // Thesis bonus adds up to 9 points
         engagementBonus + // Engagement bonus adds up to 15 points
         kpiResult.bonus + // KPI bonus from industry-specific data
-        customResult.bonus // Custom scoring rules bonus/penalty
+        customResult.bonus - // Custom scoring rules bonus/penalty
+        learningResult.penalty // Learning penalty from rejection history (up to -25)
       );
       
       // Apply size multiplier - this is the key mechanism for making size a gating factor
@@ -2192,6 +2301,11 @@ serve(async (req) => {
         }
       } else {
         overallReasoning = `⚠️ Long shot: ${sizeScore.reasoning}. ${geographyScore.reasoning.split('.')[0]}.`;
+      }
+      
+      // Add learning penalty context if significant
+      if (learningResult.penalty >= 10 && learningResult.reasoning.length > 0) {
+        overallReasoning += ` 📉 Learning: ${learningResult.reasoning[0]}.`;
       }
       
       return {
