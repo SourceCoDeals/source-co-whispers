@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { LucideIcon } from "lucide-react";
+import { Sparkline } from "@/components/dashboard/Sparkline";
 
 interface StatCardProps {
   title: string;
@@ -10,8 +11,10 @@ interface StatCardProps {
     value: number;
     label: string;
   };
+  sparklineData?: number[];
   variant?: "default" | "success" | "warning" | "accent";
   className?: string;
+  onClick?: () => void;
 }
 
 export function StatCard({ 
@@ -20,8 +23,10 @@ export function StatCard({
   subtitle, 
   icon: Icon, 
   trend,
+  sparklineData,
   variant = "default",
-  className 
+  className,
+  onClick
 }: StatCardProps) {
   const iconColors = {
     default: "text-muted-foreground",
@@ -37,30 +42,52 @@ export function StatCard({
     accent: "bg-accent/5 border-accent/20",
   };
 
+  const sparklineColors = {
+    default: "hsl(var(--muted-foreground))",
+    success: "hsl(142, 76%, 36%)",
+    warning: "hsl(47, 92%, 55%)",
+    accent: "hsl(var(--accent))",
+  };
+
   return (
-    <div className={cn(
-      "rounded-lg border p-5 shadow-sm",
-      bgColors[variant],
-      className
-    )}>
+    <div 
+      className={cn(
+        "rounded-lg border p-5 shadow-sm transition-all",
+        bgColors[variant],
+        onClick && "cursor-pointer hover:shadow-md hover:border-accent/50",
+        className
+      )}
+      onClick={onClick}
+    >
       <div className="flex items-start justify-between">
-        <div className="space-y-1">
+        <div className="space-y-1 flex-1">
           <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="text-2xl font-bold font-display">{value}</p>
-          {subtitle && (
-            <p className="text-sm text-muted-foreground">{subtitle}</p>
-          )}
-          {trend && (
-            <p className={cn(
-              "text-xs font-medium",
-              trend.value >= 0 ? "text-emerald-600" : "text-red-600"
-            )}>
-              {trend.value >= 0 ? "↑" : "↓"} {Math.abs(trend.value)}% {trend.label}
-            </p>
-          )}
+          <div className="flex items-end justify-between">
+            <div>
+              <p className="text-2xl font-bold font-display">{value}</p>
+              {subtitle && (
+                <p className="text-sm text-muted-foreground">{subtitle}</p>
+              )}
+              {trend && (
+                <p className={cn(
+                  "text-xs font-medium",
+                  trend.value >= 0 ? "text-emerald-600" : "text-red-600"
+                )}>
+                  {trend.value >= 0 ? "↑" : "↓"} {Math.abs(trend.value)}% {trend.label}
+                </p>
+              )}
+            </div>
+            {sparklineData && sparklineData.length > 0 && (
+              <Sparkline 
+                data={sparklineData} 
+                color={sparklineColors[variant]}
+                height={24}
+              />
+            )}
+          </div>
         </div>
         {Icon && (
-          <div className={cn("p-2 rounded-lg bg-muted/50", iconColors[variant])}>
+          <div className={cn("p-2 rounded-lg bg-muted/50 ml-3", iconColors[variant])}>
             <Icon className="w-5 h-5" />
           </div>
         )}
