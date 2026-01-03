@@ -17,7 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PassReasonDialog } from "@/components/PassReasonDialog";
 import { BuyerQueryChat } from "@/components/BuyerQueryChat";
 import { DealScoringInsights } from "@/components/DealScoringInsights";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { RemoveReasonDialog } from "@/components/RemoveReasonDialog";
 import { AddContactDialog } from "@/components/AddContactDialog";
 import { ContactsSummarySection } from "@/components/ContactsSummarySection";
 import { cn } from "@/lib/utils";
@@ -419,15 +419,20 @@ export default function DealMatching() {
     setRemoveDialogOpen(true);
   };
 
-  const confirmRemoveFromDeal = async () => {
+  const confirmRemoveFromDeal = async (categories: string[], reason: string, notes: string) => {
     if (!buyerToRemove) return;
     
+    // Update buyer_deal_scores with rejection info
     const { error } = await supabase
       .from("buyer_deal_scores")
       .upsert({
         buyer_id: buyerToRemove.id,
         deal_id: id,
         hidden_from_deal: true,
+        rejection_category: categories.join(","),
+        rejection_reason: reason,
+        rejection_notes: notes,
+        rejected_at: new Date().toISOString(),
         scored_at: new Date().toISOString()
       }, { onConflict: 'buyer_id,deal_id' });
 
@@ -436,6 +441,32 @@ export default function DealMatching() {
       setBuyerToRemove(null);
       setRemoveDialogOpen(false);
       return;
+    }
+
+    // Insert into learning history for future scoring improvements
+    const { error: learningError } = await supabase
+      .from("buyer_learning_history")
+      .insert({
+        buyer_id: buyerToRemove.id,
+        deal_id: id,
+        action_type: 'not_a_fit',
+        rejection_categories: categories,
+        rejection_reason: reason,
+        rejection_notes: notes,
+        deal_context: deal ? {
+          deal_name: deal.deal_name,
+          revenue: deal.revenue,
+          ebitda_amount: deal.ebitda_amount,
+          location_count: deal.location_count,
+          geography: deal.geography,
+          headquarters: deal.headquarters,
+          service_mix: deal.service_mix
+        } : null
+      });
+
+    if (learningError) {
+      console.error("Failed to save learning history:", learningError);
+      // Don't block the removal, just log the error
     }
 
     // Update local state
@@ -458,7 +489,7 @@ export default function DealMatching() {
 
     toast({ 
       title: "Buyer removed from deal", 
-      description: `${buyerToRemove.platform_company_name || buyerToRemove.pe_firm_name} has been removed from this deal's match list` 
+      description: `${buyerToRemove.platform_company_name || buyerToRemove.pe_firm_name} has been removed. Reason: ${categories.join(", ")}` 
     });
 
     setBuyerToRemove(null);
@@ -1267,22 +1298,13 @@ export default function DealMatching() {
         />
 
         {/* Remove Confirmation Dialog */}
-        <AlertDialog open={removeDialogOpen} onOpenChange={setRemoveDialogOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Remove Buyer from Deal?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to mark <strong>{buyerToRemove?.platform_company_name || buyerToRemove?.pe_firm_name}</strong> as not a fit for this deal? They will be hidden from this deal's match list.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmRemoveFromDeal}>
-                Confirm
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <RemoveReasonDialog
+          open={removeDialogOpen}
+          onOpenChange={setRemoveDialogOpen}
+          buyerName={buyerToRemove?.platform_company_name || buyerToRemove?.pe_firm_name || ""}
+          dealName={deal?.deal_name || ""}
+          onConfirm={confirmRemoveFromDeal}
+        />
       </div>
       
       {/* AI Query Chat */}
