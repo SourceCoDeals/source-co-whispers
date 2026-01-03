@@ -15,7 +15,7 @@ import { TrackerQueryChat } from "@/components/TrackerQueryChat";
 import { TrackerNotesSection } from "@/components/TrackerNotesSection";
 import { AIResearchSection } from "@/components/AIResearchSection";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload, TrendingUp, ArrowUp, ArrowDown, Filter, BookOpen, CheckSquare, Square, GitMerge } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload, TrendingUp, ArrowUp, ArrowDown, Filter, BookOpen, CheckSquare, Square, GitMerge, Send, MessageSquare } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -77,6 +77,9 @@ export default function TrackerDetail() {
   const [editedBuyerTypesCriteria, setEditedBuyerTypesCriteria] = useState("");
   const [isSavingFitCriteria, setIsSavingFitCriteria] = useState(false);
   const [isParsingCriteria, setIsParsingCriteria] = useState(false);
+  const [criteriaEditInstruction, setCriteriaEditInstruction] = useState("");
+  const [isApplyingCriteriaEdit, setIsApplyingCriteriaEdit] = useState(false);
+  const [lastCriteriaChangesSummary, setLastCriteriaChangesSummary] = useState("");
   const [isAnalyzingDocuments, setIsAnalyzingDocuments] = useState(false);
   const [showAnalysisConfirmDialog, setShowAnalysisConfirmDialog] = useState(false);
   const [isCriteriaCollapsed, setIsCriteriaCollapsed] = useState(true);
@@ -1155,6 +1158,56 @@ export default function TrackerDetail() {
     setEditedServiceCriteria("");
     setEditedGeographyCriteria("");
     setEditedBuyerTypesCriteria("");
+    setCriteriaEditInstruction("");
+    setLastCriteriaChangesSummary("");
+  };
+
+  const applyCriteriaEditWithAI = async () => {
+    if (!criteriaEditInstruction.trim()) {
+      toast({ title: "Enter an instruction", description: "Type what you'd like to change", variant: "destructive" });
+      return;
+    }
+
+    setIsApplyingCriteriaEdit(true);
+    setLastCriteriaChangesSummary("");
+
+    try {
+      const { data, error } = await supabase.functions.invoke('update-fit-criteria-chat', {
+        body: {
+          instruction: criteriaEditInstruction,
+          currentCriteria: {
+            size: editedSizeCriteria,
+            service: editedServiceCriteria,
+            geography: editedGeographyCriteria,
+            buyerTypes: editedBuyerTypesCriteria
+          }
+        }
+      });
+
+      if (error) {
+        toast({ title: "AI update failed", description: error.message, variant: "destructive" });
+        return;
+      }
+
+      if (!data?.success) {
+        toast({ title: "AI update failed", description: data?.error || "Unknown error", variant: "destructive" });
+        return;
+      }
+
+      // Update the text fields with AI response
+      setEditedSizeCriteria(data.updatedCriteria.size);
+      setEditedServiceCriteria(data.updatedCriteria.service);
+      setEditedGeographyCriteria(data.updatedCriteria.geography);
+      setEditedBuyerTypesCriteria(data.updatedCriteria.buyerTypes);
+      setLastCriteriaChangesSummary(data.changesSummary);
+      setCriteriaEditInstruction("");
+
+      toast({ title: "Criteria updated", description: data.changesSummary });
+    } catch (err) {
+      toast({ title: "AI update failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setIsApplyingCriteriaEdit(false);
+    }
   };
 
   const saveFitCriteria = async () => {
@@ -1714,6 +1767,61 @@ export default function TrackerDetail() {
                   Define the criteria that will guide buyer matching for this tracker.
                 </DialogDescription>
               </DialogHeader>
+              
+              {/* AI Quick Edit Section */}
+              <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                  <MessageSquare className="w-4 h-4" />
+                  Quick Edit with AI
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    value={criteriaEditInstruction}
+                    onChange={(e) => setCriteriaEditInstruction(e.target.value)}
+                    placeholder="e.g., Large MSOs should accept 3 locations minimum instead of 10"
+                    className="flex-1"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey && !isApplyingCriteriaEdit) {
+                        e.preventDefault();
+                        applyCriteriaEditWithAI();
+                      }
+                    }}
+                    disabled={isApplyingCriteriaEdit}
+                  />
+                  <Button 
+                    onClick={applyCriteriaEditWithAI} 
+                    disabled={isApplyingCriteriaEdit || !criteriaEditInstruction.trim()}
+                    size="sm"
+                  >
+                    {isApplyingCriteriaEdit ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    "Lower Large MSO location minimum to 3",
+                    "Remove towing exclusion",
+                    "Add ADAS calibration as required"
+                  ].map((example) => (
+                    <button
+                      key={example}
+                      onClick={() => setCriteriaEditInstruction(example)}
+                      className="text-xs px-2 py-1 bg-muted/50 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
+                {lastCriteriaChangesSummary && (
+                  <div className="text-xs text-green-600 flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    {lastCriteriaChangesSummary}
+                  </div>
+                )}
+              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
                 {/* Size Criteria */}
