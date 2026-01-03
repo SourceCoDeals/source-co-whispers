@@ -215,13 +215,18 @@ export function DealScoringInsights({ dealId, industryType, onRecalculate }: Dea
   if (!hasAdjustments && !isOpen) {
     return (
       <div className="flex items-center gap-3">
-        <Badge variant="outline" className="text-sm gap-1.5 cursor-pointer hover:bg-muted/50 h-8 px-3" onClick={() => setIsOpen(true)}>
+        <Button 
+          variant="outline" 
+          size="default"
+          className="h-9 text-sm gap-2"
+          onClick={() => setIsOpen(true)}
+        >
           <Brain className="w-4 h-4" />
-          Score Learning
+          Optimize Scoring
           {totalDecisions > 0 && (
-            <span className="text-muted-foreground ml-1">({totalDecisions} decisions)</span>
+            <span className="text-muted-foreground">({totalDecisions} decisions)</span>
           )}
-        </Badge>
+        </Button>
         {totalDecisions >= 2 && !hasAdjustments && (
           <Button 
             variant="ghost" 
