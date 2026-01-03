@@ -368,6 +368,11 @@ interface Tracker {
     min_ebitda?: number;
     max_ebitda?: number;
   } | null;
+  geography_criteria: {
+    required_regions?: string[];
+    preferred_regions?: string[];
+    excluded_regions?: string[];
+  } | null;
   kpi_scoring_config: {
     kpis?: Array<{
       field_name: string;
@@ -438,9 +443,12 @@ interface BuyerScore {
   thesisBonus: number;
   engagementBonus: number;
   customBonus: number;
+  learningPenalty: number;
   overallReasoning: string;
   isDisqualified: boolean;
   disqualificationReasons: string[];
+  needsReview: boolean;
+  reviewReason: string | null;
   dataCompleteness: 'High' | 'Medium' | 'Low';
   dealAttractiveness: number;
   engagementSignals: EngagementSignals;
@@ -2103,10 +2111,10 @@ serve(async (req) => {
 
     console.log(`Scoring deal ${dealId}...`);
 
-    // Fetch deal with tracker (including service_criteria, kpi_scoring_config, buyer_types_criteria, and scoring_behavior)
+    // Fetch deal with tracker (including service_criteria, kpi_scoring_config, buyer_types_criteria, geography_criteria, and scoring_behavior)
     const { data: deal, error: dealError } = await supabase
       .from("deals")
-      .select("*, industry_trackers!inner(id, industry_name, fit_criteria, geography_weight, service_mix_weight, size_weight, owner_goals_weight, service_criteria, size_criteria, kpi_scoring_config, buyer_types_criteria, scoring_behavior)")
+      .select("*, industry_trackers!inner(id, industry_name, fit_criteria, geography_weight, service_mix_weight, size_weight, owner_goals_weight, service_criteria, size_criteria, geography_criteria, kpi_scoring_config, buyer_types_criteria, scoring_behavior)")
       .eq("id", dealId)
       .single();
 
@@ -2308,6 +2316,26 @@ serve(async (req) => {
         overallReasoning += ` 📉 Learning: ${learningResult.reasoning[0]}.`;
       }
       
+      // Determine if this score needs human review
+      const dataCompleteness = calculateDataCompleteness(buyer as Buyer, deal as Deal);
+      const lowConfidenceCategories = [
+        sizeScore.confidence === 'low',
+        geographyScore.confidence === 'low',
+        servicesScore.confidence === 'low',
+        ownerGoalsScore.confidence === 'low'
+      ].filter(Boolean).length;
+      
+      const needsReview = 
+        dataCompleteness === 'Low' || 
+        lowConfidenceCategories >= 2 ||
+        (compositeScore >= 40 && compositeScore < 60 && !isDisqualified);
+      
+      const reviewReason = needsReview ? (
+        dataCompleteness === 'Low' ? 'Insufficient data for confident scoring' :
+        lowConfidenceCategories >= 2 ? 'Multiple scoring categories have low confidence' :
+        'Score in uncertain range (40-60) - manual review recommended'
+      ) : null;
+      
       return {
         buyerId: buyer.id,
         buyerName: buyer.platform_company_name || buyer.pe_firm_name,
@@ -2319,10 +2347,13 @@ serve(async (req) => {
         thesisBonus,
         engagementBonus: Math.round(engagementBonus),
         customBonus: customResult.bonus,
+        learningPenalty: learningResult.penalty,
         overallReasoning,
         isDisqualified,
         disqualificationReasons,
-        dataCompleteness: calculateDataCompleteness(buyer as Buyer, deal as Deal),
+        needsReview,
+        reviewReason,
+        dataCompleteness,
         dealAttractiveness,
         engagementSignals,
       };
@@ -2372,7 +2403,15 @@ serve(async (req) => {
         moderateFit: scores.filter(s => s.compositeScore >= 50 && s.compositeScore < 75).length,
         longShot: scores.filter(s => s.compositeScore > 0 && s.compositeScore < 50).length,
         disqualified: scores.filter(s => s.isDisqualified).length,
+        needsReview: scores.filter(s => s.needsReview).length,
         withEngagement: scores.filter(s => s.engagementSignals.hasCalls).length,
+        lowDataCompleteness: scores.filter(s => s.dataCompleteness === 'Low').length,
+      },
+      trackerCriteriaStatus: {
+        hasPrimaryFocus: !!(tracker.service_criteria?.primary_focus?.length),
+        hasSizeCriteria: !!(tracker.size_criteria?.min_revenue || tracker.size_criteria?.min_ebitda),
+        hasBuyerTypes: !!(tracker.buyer_types_criteria?.buyer_types?.length),
+        hasGeography: !!(tracker.geography_criteria?.required_regions?.length),
       }
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
