@@ -440,13 +440,78 @@ export function DealScoringInsights({ dealId, industryType, onRecalculate }: Dea
                 </div>
               </>
             ) : (
-              <div className="pt-3 text-sm text-muted-foreground">
-                <p>No weight adjustments yet. Approve or pass on buyers to help the system learn what matters for this deal.</p>
+              <div className="pt-3 space-y-3">
+                <p className="text-sm text-muted-foreground">No weight adjustments yet. Approve or pass on buyers to help the system learn what matters for this deal.</p>
+                
+                {/* Customize Scoring Toggle - also show when no adjustments */}
+                {!showCustomize && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs w-full"
+                    onClick={() => setShowCustomize(true)}
+                  >
+                    <Settings2 className="w-3 h-3 mr-1" />
+                    Customize Scoring
+                  </Button>
+                )}
+
+                {/* Customize Scoring Section */}
+                {showCustomize && (
+                  <div className="space-y-2 border rounded-md p-2 bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium flex items-center gap-1">
+                        <Settings2 className="w-3 h-3" />
+                        Custom Scoring Instructions
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 w-5 p-0"
+                        onClick={() => setShowCustomize(false)}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                    <Textarea
+                      placeholder="e.g., No DRP relationships - prioritize buyers comfortable with non-DRP shops"
+                      value={customInstructions}
+                      onChange={(e) => setCustomInstructions(e.target.value)}
+                      className="text-xs min-h-[60px]"
+                    />
+                    <div className="flex flex-wrap gap-1">
+                      {suggestions.map((suggestion, idx) => (
+                        <Badge
+                          key={idx}
+                          variant="outline"
+                          className="text-[10px] cursor-pointer hover:bg-muted/50"
+                          onClick={() => setCustomInstructions(suggestion)}
+                        >
+                          {suggestion.length > 40 ? suggestion.slice(0, 40) + '...' : suggestion}
+                        </Badge>
+                      ))}
+                    </div>
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs w-full"
+                      onClick={handleParseInstructions}
+                      disabled={isParsing || !customInstructions.trim()}
+                    >
+                      {isParsing ? (
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-3 h-3 mr-1" />
+                      )}
+                      Apply & Re-score
+                    </Button>
+                  </div>
+                )}
+
                 {totalDecisions >= 2 && (
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    className="mt-2 h-7 text-xs"
+                    className="h-7 text-xs"
                     onClick={handleRecalculate}
                     disabled={isRecalculating}
                   >
