@@ -4,10 +4,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader2, FileText, ChevronRight, MoreHorizontal, Archive, Trash2, Building2, Globe, ArrowUp, ArrowDown, Sparkles, Users, ThumbsUp, ThumbsDown, UserCheck } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Loader2, FileText, MoreHorizontal, Archive, Trash2, ArrowUp, ArrowDown, Sparkles, ThumbsUp, ThumbsDown, UserCheck, ArrowUpDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { normalizeDomain } from "@/lib/normalizeDomain";
 import { deleteDealWithRelated } from "@/lib/cascadeDelete";
@@ -15,7 +16,7 @@ import { DealScoreBadge } from "@/components/DealScoreBadge";
 import { DealFiltersBar } from "@/components/DealFiltersBar";
 import { TimeframeOption, getDateRange } from "@/components/TimeframeFilter";
 
-type SortOption = "date" | "score";
+type SortColumn = "deal_name" | "tracker" | "geography" | "revenue" | "ebitda" | "score" | "date";
 type SortDirection = "asc" | "desc";
 
 interface BuyerCounts {
@@ -24,25 +25,14 @@ interface BuyerCounts {
   passed: number;
 }
 
-interface CompanyGroup {
-  companyId: string | null;
-  companyName: string;
-  domain: string | null;
-  deals: any[];
-  revenue: number | null;
-  geography: string[] | null;
-}
-
 export default function AllDeals() {
   const [deals, setDeals] = useState<any[]>([]);
   const [trackers, setTrackers] = useState<Record<string, any>>({});
   const [buyerCounts, setBuyerCounts] = useState<Record<string, BuyerCounts>>({});
   const [isLoading, setIsLoading] = useState(true);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [companyToDelete, setCompanyToDelete] = useState<CompanyGroup | null>(null);
   const [dealDeleteDialogOpen, setDealDeleteDialogOpen] = useState(false);
   const [dealToDelete, setDealToDelete] = useState<{ id: string; name: string } | null>(null);
-  const [sortBy, setSortBy] = useState<SortOption>("score");
+  const [sortColumn, setSortColumn] = useState<SortColumn>("score");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   
   // Filter states
@@ -121,57 +111,6 @@ export default function AllDeals() {
     setDealToDelete(null);
   };
 
-  const archiveCompany = async (group: CompanyGroup) => {
-    const dealIds = group.deals.map(d => d.id);
-    const { error } = await supabase.from("deals").update({ status: "Archived" }).in("id", dealIds);
-    
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-      return;
-    }
-    
-    toast({ 
-      title: "Company archived", 
-      description: `${group.companyName} has been archived from ${group.deals.length} universe${group.deals.length > 1 ? 's' : ''}` 
-    });
-    loadDeals();
-  };
-
-  const confirmDeleteCompany = (group: CompanyGroup) => {
-    setCompanyToDelete(group);
-    setDeleteDialogOpen(true);
-  };
-
-  const deleteCompany = async () => {
-    if (!companyToDelete) return;
-    
-    let hasError = false;
-    
-    for (const deal of companyToDelete.deals) {
-      const { error } = await deleteDealWithRelated(deal.id);
-      if (error) {
-        hasError = true;
-        toast({ title: "Error", description: error.message, variant: "destructive" });
-        break;
-      }
-    }
-    
-    if (!hasError) {
-      if (companyToDelete.companyId) {
-        await supabase.from("companies").delete().eq("id", companyToDelete.companyId);
-      }
-      
-      toast({ 
-        title: "Company deleted", 
-        description: `${companyToDelete.companyName} has been permanently deleted` 
-      });
-      loadDeals();
-    }
-    
-    setDeleteDialogOpen(false);
-    setCompanyToDelete(null);
-  };
-
   // Filter deals based on all criteria
   const filteredDeals = useMemo(() => {
     const { start } = getDateRange(timeframe);
@@ -211,47 +150,77 @@ export default function AllDeals() {
     });
   }, [deals, searchQuery, selectedTracker, scoreRange, statusFilter, timeframe]);
 
-  // Group filtered deals by company
-  const companyGroups = useMemo((): CompanyGroup[] => {
-    const groups: Record<string, CompanyGroup> = {};
-    
-    filteredDeals.forEach((deal) => {
-      const groupKey = deal.company_id || normalizeDomain(deal.company_website) || `deal-${deal.id}`;
+  // Sort filtered deals
+  const sortedDeals = useMemo(() => {
+    return [...filteredDeals].sort((a, b) => {
+      let aVal: any, bVal: any;
       
-      if (!groups[groupKey]) {
-        groups[groupKey] = {
-          companyId: deal.company_id,
-          companyName: deal.deal_name,
-          domain: normalizeDomain(deal.company_website),
-          deals: [],
-          revenue: deal.revenue,
-          geography: deal.geography,
-        };
+      switch (sortColumn) {
+        case "deal_name":
+          aVal = a.deal_name?.toLowerCase() || "";
+          bVal = b.deal_name?.toLowerCase() || "";
+          break;
+        case "tracker":
+          aVal = trackers[a.tracker_id]?.industry_name?.toLowerCase() || "";
+          bVal = trackers[b.tracker_id]?.industry_name?.toLowerCase() || "";
+          break;
+        case "geography":
+          aVal = a.geography?.[0]?.toLowerCase() || "";
+          bVal = b.geography?.[0]?.toLowerCase() || "";
+          break;
+        case "revenue":
+          aVal = a.revenue ?? -1;
+          bVal = b.revenue ?? -1;
+          break;
+        case "ebitda":
+          aVal = a.ebitda_amount ?? -1;
+          bVal = b.ebitda_amount ?? -1;
+          break;
+        case "score":
+          aVal = a.deal_score ?? -1;
+          bVal = b.deal_score ?? -1;
+          break;
+        case "date":
+          aVal = new Date(a.created_at).getTime();
+          bVal = new Date(b.created_at).getTime();
+          break;
+        default:
+          return 0;
       }
-      groups[groupKey].deals.push(deal);
-    });
-
-    return Object.values(groups).sort((a, b) => {
-      if (sortBy === "score") {
-        const aMaxScore = Math.max(...a.deals.map(d => d.deal_score ?? -1));
-        const bMaxScore = Math.max(...b.deals.map(d => d.deal_score ?? -1));
-        return sortDirection === "desc" ? bMaxScore - aMaxScore : aMaxScore - bMaxScore;
-      } else {
-        const aLatest = Math.max(...a.deals.map(d => new Date(d.created_at).getTime()));
-        const bLatest = Math.max(...b.deals.map(d => new Date(d.created_at).getTime()));
-        return sortDirection === "desc" ? bLatest - aLatest : aLatest - bLatest;
+      
+      if (typeof aVal === "string") {
+        const comparison = aVal.localeCompare(bVal);
+        return sortDirection === "asc" ? comparison : -comparison;
       }
+      
+      return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
     });
-  }, [filteredDeals, sortBy, sortDirection]);
+  }, [filteredDeals, sortColumn, sortDirection, trackers]);
 
-  const toggleSort = (option: SortOption) => {
-    if (sortBy === option) {
+  const toggleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
       setSortDirection(prev => prev === "desc" ? "asc" : "desc");
     } else {
-      setSortBy(option);
+      setSortColumn(column);
       setSortDirection("desc");
     }
   };
+
+  const SortableHeader = ({ column, children, className = "" }: { column: SortColumn; children: React.ReactNode; className?: string }) => (
+    <TableHead className={className}>
+      <button
+        onClick={() => toggleSort(column)}
+        className="flex items-center gap-1 hover:text-foreground transition-colors"
+      >
+        {children}
+        {sortColumn === column ? (
+          sortDirection === "desc" ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />
+        ) : (
+          <ArrowUpDown className="w-3 h-3 opacity-30" />
+        )}
+      </button>
+    </TableHead>
+  );
 
   const hasActiveFilters = searchQuery !== "" || selectedTracker !== "all" || scoreRange !== "all" || statusFilter !== "all" || timeframe !== "all";
 
@@ -265,12 +234,16 @@ export default function AllDeals() {
 
   const trackerList = Object.values(trackers).map((t) => ({ id: t.id, industry_name: t.industry_name }));
 
+  const formatCurrency = (value: number | null) => {
+    if (value === null || value === undefined) return "—";
+    return `$${value.toFixed(1)}M`;
+  };
+
   if (isLoading) {
     return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
   }
 
-  const uniqueCompanies = companyGroups.length;
-  const totalTrackers = new Set(filteredDeals.map(d => d.tracker_id)).size;
+  const uniqueTrackers = new Set(filteredDeals.map(d => d.tracker_id)).size;
 
   return (
     <AppLayout>
@@ -280,36 +253,9 @@ export default function AllDeals() {
             <div>
               <h1 className="text-2xl font-display font-bold">All Deals</h1>
               <p className="text-muted-foreground">
-                {uniqueCompanies} {uniqueCompanies === 1 ? 'company' : 'companies'} across {totalTrackers} buyer universe{totalTrackers !== 1 ? 's' : ''}
+                {filteredDeals.length} {filteredDeals.length === 1 ? 'deal' : 'deals'} across {uniqueTrackers} buyer universe{uniqueTrackers !== 1 ? 's' : ''}
                 {hasActiveFilters && <span className="text-primary"> (filtered)</span>}
               </p>
-            </div>
-            
-            {/* Sort Controls */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Sort by:</span>
-              <Button
-                variant={sortBy === "score" ? "default" : "outline"}
-                size="sm"
-                onClick={() => toggleSort("score")}
-                className="gap-1"
-              >
-                Score
-                {sortBy === "score" && (
-                  sortDirection === "desc" ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />
-                )}
-              </Button>
-              <Button
-                variant={sortBy === "date" ? "default" : "outline"}
-                size="sm"
-                onClick={() => toggleSort("date")}
-                className="gap-1"
-              >
-                Date
-                {sortBy === "date" && (
-                  sortDirection === "desc" ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />
-                )}
-              </Button>
             </div>
           </div>
 
@@ -346,199 +292,161 @@ export default function AllDeals() {
               )}
             </div>
           ) : (
-            <div className="space-y-4">
-              {companyGroups.map((group) => {
-                const isMultiTracker = group.deals.length > 1;
-                const bestScore = Math.max(...group.deals.map(d => d.deal_score ?? -1));
-                
-                return (
-                  <div key={group.companyId || group.domain || group.deals[0].id} className="bg-card rounded-lg border overflow-hidden">
-                    {/* Company Header */}
-                    <div className="p-4 bg-muted/30 border-b">
-                      <div className="flex items-center gap-3">
-                        <Building2 className="w-5 h-5 text-muted-foreground" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h2 className="font-semibold truncate">{group.companyName}</h2>
-                            {isMultiTracker && (
-                              <Badge variant="secondary" className="text-xs">
-                                {group.deals.length} universes
-                              </Badge>
+            <div className="bg-card rounded-lg border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <SortableHeader column="deal_name">Deal Name</SortableHeader>
+                    <SortableHeader column="tracker">Buyer Universe</SortableHeader>
+                    <SortableHeader column="geography">Geography</SortableHeader>
+                    <SortableHeader column="revenue" className="text-right">Revenue</SortableHeader>
+                    <SortableHeader column="ebitda" className="text-right">EBITDA</SortableHeader>
+                    <SortableHeader column="score" className="text-right">Score</SortableHeader>
+                    <TableHead className="text-center">Engagement</TableHead>
+                    <SortableHeader column="date">Added</SortableHeader>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedDeals.map((deal) => {
+                    const tracker = trackers[deal.tracker_id];
+                    const counts = buyerCounts[deal.id] || { approved: 0, interested: 0, passed: 0 };
+                    const isEnriched = !!deal.last_enriched_at;
+                    
+                    return (
+                      <TableRow key={deal.id} className="group">
+                        {/* Deal Name */}
+                        <TableCell className="font-medium">
+                          <Link to={`/deals/${deal.id}`} className="hover:text-primary transition-colors flex items-center gap-2">
+                            {deal.deal_name}
+                            {isEnriched && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                                </TooltipTrigger>
+                                <TooltipContent>Enriched on {new Date(deal.last_enriched_at).toLocaleDateString()}</TooltipContent>
+                              </Tooltip>
                             )}
-                            {isMultiTracker && bestScore >= 0 && (
-                              <DealScoreBadge score={bestScore} size="sm" showLabel />
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                            {group.domain && (
-                              <span className="flex items-center gap-1">
-                                <Globe className="w-3 h-3" />
-                                {group.domain}
-                              </span>
-                            )}
-                            {group.revenue && <span>${group.revenue}M</span>}
-                            {group.geography?.length > 0 && <span>{group.geography.join(", ")}</span>}
-                          </div>
-                        </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="shrink-0">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => archiveCompany(group)}>
-                              <Archive className="w-4 h-4 mr-2" />
-                              Archive from all universes
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => confirmDeleteCompany(group)} className="text-destructive">
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete permanently
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-
-                    {/* Deals in this company */}
-                    {/* Column Headers */}
-                    <div className="grid grid-cols-[120px_1fr_140px_auto] items-center gap-4 px-4 py-2 border-b bg-muted/20 text-xs text-muted-foreground font-medium">
-                      <span>Listed</span>
-                      <span>Buyer Universe</span>
-                      <span>Engagement</span>
-                      <span className="text-right">Score / Status</span>
-                    </div>
-
-                    <div className="divide-y">
-                      {group.deals.map((deal) => {
-                        const tracker = trackers[deal.tracker_id];
-                        const counts = buyerCounts[deal.id] || { approved: 0, interested: 0, passed: 0 };
-                        const isEnriched = !!deal.last_enriched_at;
+                          </Link>
+                          {deal.company_website && (
+                            <span className="text-xs text-muted-foreground">{normalizeDomain(deal.company_website)}</span>
+                          )}
+                        </TableCell>
                         
-                        return (
-                          <div key={deal.id} className="grid grid-cols-[120px_1fr_140px_auto] items-center gap-4 p-4 hover:bg-muted/50 transition-colors group">
-                            {/* Column 1: Deal Info - Date & Badges */}
-                            <Link to={`/deals/${deal.id}`} className="flex items-center gap-2 min-w-0">
-                              <span className="text-sm text-muted-foreground">
-                                {new Date(deal.created_at).toLocaleDateString()}
-                              </span>
-                              {isEnriched && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Badge variant="secondary" className="text-xs gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20 shrink-0">
-                                      <Sparkles className="w-3 h-3" />
-                                      Enriched
-                                    </Badge>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    Enriched on {new Date(deal.last_enriched_at).toLocaleDateString()}
-                                  </TooltipContent>
-                                </Tooltip>
-                              )}
-                              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                            </Link>
+                        {/* Buyer Universe */}
+                        <TableCell>
+                          <Link 
+                            to={`/trackers/${deal.tracker_id}`} 
+                            className="text-sm text-primary hover:underline"
+                          >
+                            {tracker?.industry_name || "Unknown"}
+                          </Link>
+                        </TableCell>
+                        
+                        {/* Geography */}
+                        <TableCell className="text-muted-foreground">
+                          {deal.geography?.length > 0 ? (
+                            <span className="text-sm">{deal.geography.slice(0, 2).join(", ")}{deal.geography.length > 2 && ` +${deal.geography.length - 2}`}</span>
+                          ) : "—"}
+                        </TableCell>
+                        
+                        {/* Revenue */}
+                        <TableCell className="text-right tabular-nums">
+                          {formatCurrency(deal.revenue)}
+                        </TableCell>
+                        
+                        {/* EBITDA */}
+                        <TableCell className="text-right tabular-nums">
+                          {deal.ebitda_amount ? formatCurrency(deal.ebitda_amount) : deal.ebitda_percentage ? `${deal.ebitda_percentage}%` : "—"}
+                        </TableCell>
+                        
+                        {/* Score */}
+                        <TableCell className="text-right">
+                          <DealScoreBadge score={deal.deal_score} size="sm" />
+                        </TableCell>
+                        
+                        {/* Engagement */}
+                        <TableCell>
+                          <div className="flex items-center justify-center gap-3">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="flex items-center gap-1 text-sm">
+                                  <UserCheck className="w-3.5 h-3.5 text-emerald-500" />
+                                  <span className={counts.approved > 0 ? "text-emerald-600 font-medium" : "text-muted-foreground"}>
+                                    {counts.approved}
+                                  </span>
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>Approved for outreach</TooltipContent>
+                            </Tooltip>
                             
-                            {/* Column 2: Buyer Universe */}
-                            <Link 
-                              to={`/trackers/${deal.tracker_id}`} 
-                              className="flex items-center gap-2 px-2 py-1 rounded-md bg-primary/5 hover:bg-primary/10 transition-colors"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Users className="w-4 h-4 text-primary shrink-0" />
-                              <span className="text-sm font-medium text-primary truncate">
-                                {tracker?.industry_name || "Unknown"}
-                              </span>
-                            </Link>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="flex items-center gap-1 text-sm">
+                                  <ThumbsUp className="w-3.5 h-3.5 text-blue-500" />
+                                  <span className={counts.interested > 0 ? "text-blue-600 font-medium" : "text-muted-foreground"}>
+                                    {counts.interested}
+                                  </span>
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>Buyers interested</TooltipContent>
+                            </Tooltip>
                             
-                            {/* Column 3: Buyer Engagement Counts */}
-                            <div className="flex items-center gap-3">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-1 text-sm">
-                                    <UserCheck className="w-3.5 h-3.5 text-emerald-500" />
-                                    <span className={counts.approved > 0 ? "text-emerald-600 font-medium" : "text-muted-foreground"}>
-                                      {counts.approved}
-                                    </span>
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>Approved for outreach</TooltipContent>
-                              </Tooltip>
-                              
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-1 text-sm">
-                                    <ThumbsUp className="w-3.5 h-3.5 text-blue-500" />
-                                    <span className={counts.interested > 0 ? "text-blue-600 font-medium" : "text-muted-foreground"}>
-                                      {counts.interested}
-                                    </span>
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>Buyers interested</TooltipContent>
-                              </Tooltip>
-                              
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-1 text-sm">
-                                    <ThumbsDown className="w-3.5 h-3.5 text-rose-400" />
-                                    <span className={counts.passed > 0 ? "text-rose-500" : "text-muted-foreground"}>
-                                      {counts.passed}
-                                    </span>
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>Buyers passed</TooltipContent>
-                              </Tooltip>
-                            </div>
-
-                            {/* Column 4: Score, Status, Actions */}
-                            <div className="flex items-center justify-end gap-3">
-                              <DealScoreBadge score={deal.deal_score} size="sm" />
-                              <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <MoreHorizontal className="w-4 h-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={(e) => archiveDeal(e, deal.id, deal.deal_name)}>
-                                    <Archive className="w-4 h-4 mr-2" />
-                                    Archive
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={(e) => confirmDeleteDeal(e, deal.id, deal.deal_name)} className="text-destructive">
-                                    <Trash2 className="w-4 h-4 mr-2" />
-                                    Delete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="flex items-center gap-1 text-sm">
+                                  <ThumbsDown className="w-3.5 h-3.5 text-rose-400" />
+                                  <span className={counts.passed > 0 ? "text-rose-500" : "text-muted-foreground"}>
+                                    {counts.passed}
+                                  </span>
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>Buyers passed</TooltipContent>
+                            </Tooltip>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
+                        </TableCell>
+                        
+                        {/* Date Added */}
+                        <TableCell className="text-muted-foreground text-sm">
+                          {new Date(deal.created_at).toLocaleDateString()}
+                        </TableCell>
+                        
+                        {/* Status */}
+                        <TableCell>
+                          <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>
+                            {deal.status}
+                          </Badge>
+                        </TableCell>
+                        
+                        {/* Actions */}
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8">
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={(e) => archiveDeal(e, deal.id, deal.deal_name)}>
+                                <Archive className="w-4 h-4 mr-2" />
+                                Archive
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={(e) => confirmDeleteDeal(e, deal.id, deal.deal_name)} className="text-destructive">
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           )}
         </div>
-
-        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete {companyToDelete?.companyName}?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will permanently delete this company and remove it from {companyToDelete?.deals.length} buyer universe{companyToDelete?.deals.length !== 1 ? 's' : ''}. This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={deleteCompany} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Delete permanently
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
 
         <AlertDialog open={dealDeleteDialogOpen} onOpenChange={setDealDeleteDialogOpen}>
           <AlertDialogContent>
