@@ -663,10 +663,12 @@ export type Database = {
         Row: {
           approved_count: number | null
           created_at: string | null
+          custom_instructions: string | null
           deal_id: string | null
           geography_weight_mult: number | null
           id: string
           last_calculated_at: string | null
+          parsed_instructions: Json | null
           passed_geography: number | null
           passed_services: number | null
           passed_size: number | null
@@ -678,10 +680,12 @@ export type Database = {
         Insert: {
           approved_count?: number | null
           created_at?: string | null
+          custom_instructions?: string | null
           deal_id?: string | null
           geography_weight_mult?: number | null
           id?: string
           last_calculated_at?: string | null
+          parsed_instructions?: Json | null
           passed_geography?: number | null
           passed_services?: number | null
           passed_size?: number | null
@@ -693,10 +697,12 @@ export type Database = {
         Update: {
           approved_count?: number | null
           created_at?: string | null
+          custom_instructions?: string | null
           deal_id?: string | null
           geography_weight_mult?: number | null
           id?: string
           last_calculated_at?: string | null
+          parsed_instructions?: Json | null
           passed_geography?: number | null
           passed_services?: number | null
           passed_size?: number | null

@@ -80,3 +80,6 @@ verify_jwt = true
 
 [functions.recalculate-deal-weights]
 verify_jwt = true
+
+[functions.parse-scoring-instructions]
+verify_jwt = true

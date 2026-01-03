@@ -437,12 +437,83 @@ interface BuyerScore {
   ownerGoalsScore: CategoryScore;
   thesisBonus: number;
   engagementBonus: number;
+  customBonus: number;
   overallReasoning: string;
   isDisqualified: boolean;
   disqualificationReasons: string[];
   dataCompleteness: 'High' | 'Medium' | 'Low';
   dealAttractiveness: number;
   engagementSignals: EngagementSignals;
+}
+
+interface ParsedRule {
+  type: 'service_adjustment' | 'geography_adjustment' | 'size_adjustment' | 'owner_goals_adjustment' | 'disqualify' | 'bonus';
+  condition: string;
+  target: string;
+  action: 'bonus' | 'penalty' | 'disqualify';
+  points: number;
+  reasoning: string;
+}
+
+interface ParsedInstructions {
+  rules: ParsedRule[];
+  summary: string;
+  keywords: string[];
+}
+
+// Apply custom scoring instructions from user
+function applyCustomInstructions(
+  buyer: Buyer, 
+  deal: Deal, 
+  parsedInstructions: ParsedInstructions | null
+): { bonus: number; reasoning: string[]; disqualify: boolean; disqualifyReason: string | null } {
+  const result = { bonus: 0, reasoning: [] as string[], disqualify: false, disqualifyReason: null as string | null };
+  
+  if (!parsedInstructions?.rules || parsedInstructions.rules.length === 0) {
+    return result;
+  }
+
+  const buyerText = `${buyer.thesis_summary || ''} ${buyer.services_offered || ''} ${buyer.service_mix_prefs || ''} ${(buyer.target_services || []).join(' ')} ${(buyer.key_quotes || []).join(' ')}`.toLowerCase();
+  
+  for (const rule of parsedInstructions.rules) {
+    const target = rule.target.toLowerCase();
+    const keywords = parsedInstructions.keywords || [];
+    
+    // Check if buyer matches the rule condition
+    let matches = false;
+    
+    // Simple keyword matching for now
+    if (rule.condition.includes('buyer_comfortable_without') || rule.condition.includes('buyer_lacks_preference')) {
+      // Buyer is comfortable WITHOUT the target (e.g., DRP)
+      // Check if buyer doesn't strongly prefer the target
+      const mentionsTarget = buyerText.includes(target) || keywords.some(k => buyerText.includes(k.toLowerCase()));
+      const requiresTarget = buyerText.includes(`require ${target}`) || 
+                             buyerText.includes(`requires ${target}`) || 
+                             buyerText.includes(`${target} required`) ||
+                             buyerText.includes(`only ${target}`);
+      matches = !requiresTarget;
+    } else if (rule.condition.includes('buyer_prefers') || rule.condition.includes('buyer_requires')) {
+      // Buyer prefers/requires the target
+      matches = buyerText.includes(target) || keywords.some(k => buyerText.includes(k.toLowerCase()));
+    } else if (rule.condition.includes('buyer_has')) {
+      matches = buyerText.includes(target);
+    } else {
+      // Generic keyword match
+      matches = keywords.some(k => buyerText.includes(k.toLowerCase())) || buyerText.includes(target);
+    }
+    
+    if (matches) {
+      if (rule.action === 'disqualify') {
+        result.disqualify = true;
+        result.disqualifyReason = rule.reasoning;
+      } else {
+        result.bonus += rule.points;
+        result.reasoning.push(rule.reasoning);
+      }
+    }
+  }
+  
+  return result;
 }
 
 // Calculate deal attractiveness score (0-100) based on revenue, locations, margins
@@ -1916,6 +1987,18 @@ serve(async (req) => {
     const dealAttractiveness = calculateDealAttractiveness(deal as Deal);
     console.log(`Deal attractiveness score: ${dealAttractiveness}`);
 
+    // Fetch custom scoring instructions for this deal
+    const { data: scoringAdjustments } = await supabase
+      .from("deal_scoring_adjustments")
+      .select("parsed_instructions")
+      .eq("deal_id", dealId)
+      .maybeSingle();
+    
+    const parsedInstructions = scoringAdjustments?.parsed_instructions as ParsedInstructions | null;
+    if (parsedInstructions?.rules?.length) {
+      console.log(`Applying ${parsedInstructions.rules.length} custom scoring rules`);
+    }
+
     // Get weights from tracker (default to equal weights)
     const weights = {
       size: (tracker.size_weight || 25) / 100,
@@ -1945,6 +2028,9 @@ serve(async (req) => {
       // NEW: Calculate engagement bonus (up to 15 points)
       const engagementBonus = Math.min(15, engagementSignals.engagementScore * 0.15);
       
+      // NEW: Apply custom scoring instructions
+      const customResult = applyCustomInstructions(buyer as Buyer, deal as Deal, parsedInstructions);
+      
       // Check for any disqualifications
       const disqualificationReasons: string[] = [];
       if (sizeScore.isDisqualified && sizeScore.disqualificationReason) {
@@ -1955,6 +2041,9 @@ serve(async (req) => {
       }
       if (servicesScore.isDisqualified && servicesScore.disqualificationReason) {
         disqualificationReasons.push(servicesScore.disqualificationReason);
+      }
+      if (customResult.disqualify && customResult.disqualifyReason) {
+        disqualificationReasons.push(customResult.disqualifyReason);
       }
       
       const isDisqualified = disqualificationReasons.length > 0;
@@ -1969,12 +2058,13 @@ serve(async (req) => {
         (ownerGoalsScore.score * weights.ownerGoals) +
         (thesisBonus * 0.3) + // Thesis bonus adds up to 9 points
         engagementBonus + // Engagement bonus adds up to 15 points
-        kpiResult.bonus // KPI bonus from industry-specific data
+        kpiResult.bonus + // KPI bonus from industry-specific data
+        customResult.bonus // Custom scoring rules bonus/penalty
       );
       
       // Apply size multiplier - this is the key mechanism for making size a gating factor
       // When size is below minimums, sizeMultiplier < 1.0 caps the maximum achievable score
-      const compositeScore = baseComposite * sizeScore.sizeMultiplier;
+      const compositeScore = Math.max(0, baseComposite * sizeScore.sizeMultiplier);
       
       // Generate overall reasoning with size context
       let overallReasoning = "";
@@ -1985,7 +2075,9 @@ serve(async (req) => {
         overallReasoning = `⚠️ Size challenge: ${sizeScore.reasoning}. Even with ${geographyScore.reasoning.split('.')[0].toLowerCase()}, size limits fit.`;
       } else if (compositeScore >= 75) {
         overallReasoning = `✅ Strong fit: ${geographyScore.reasoning.split('.')[0]}. ${servicesScore.reasoning.split('.')[0]}.`;
-        if (engagementSignals.signals.length > 0) {
+        if (customResult.reasoning.length > 0) {
+          overallReasoning += ` ✨ ${customResult.reasoning[0]}.`;
+        } else if (engagementSignals.signals.length > 0) {
           overallReasoning += ` 🎯 ${engagementSignals.signals[0]}.`;
         }
       } else if (compositeScore >= 50) {
@@ -1993,7 +2085,9 @@ serve(async (req) => {
         if (sizeScore.sizeMultiplier < 0.9) {
           overallReasoning += ` Size may be a limiting factor.`;
         }
-        if (engagementSignals.signals.length > 0) {
+        if (customResult.reasoning.length > 0) {
+          overallReasoning += ` ✨ ${customResult.reasoning[0]}.`;
+        } else if (engagementSignals.signals.length > 0) {
           overallReasoning += ` 🎯 ${engagementSignals.signals[0]}.`;
         }
       } else {
@@ -2010,6 +2104,7 @@ serve(async (req) => {
         ownerGoalsScore,
         thesisBonus,
         engagementBonus: Math.round(engagementBonus),
+        customBonus: customResult.bonus,
         overallReasoning,
         isDisqualified,
         disqualificationReasons,

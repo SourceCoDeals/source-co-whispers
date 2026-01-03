@@ -1186,7 +1186,7 @@ export default function DealMatching() {
           </div>
           
           {/* Score Learning Insights */}
-          <DealScoringInsights dealId={id!} onRecalculate={loadData} />
+          <DealScoringInsights dealId={id!} industryType={deal?.industry_type} onRecalculate={loadData} />
         </div>
 
         <Tabs defaultValue="all" className="w-full">
