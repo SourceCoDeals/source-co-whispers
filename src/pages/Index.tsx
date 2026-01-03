@@ -22,6 +22,11 @@ import { seedSampleData } from "@/lib/seedData";
 import { useToast } from "@/hooks/use-toast";
 import { TimeframeFilter, TimeframeOption, getDateRange } from "@/components/TimeframeFilter";
 import { RecentActivityFeed } from "@/components/RecentActivityFeed";
+import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
+import { PipelineFunnel } from "@/components/dashboard/PipelineFunnel";
+import { DealActivityChart } from "@/components/dashboard/DealActivityChart";
+import { ConversionMetrics } from "@/components/dashboard/ConversionMetrics";
+import { ScoreDistribution } from "@/components/dashboard/ScoreDistribution";
 
 interface TrackerWithStats {
   id: string;
@@ -39,6 +44,9 @@ export default function Dashboard() {
   const [isSeeding, setIsSeeding] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  
+  // Use the new metrics hook
+  const metrics = useDashboardMetrics(timeframe);
 
   useEffect(() => {
     loadDashboardData();
@@ -140,7 +148,7 @@ export default function Dashboard() {
 
   return (
     <AppLayout>
-      <div className="space-y-8 animate-fade-in">
+      <div className="space-y-6 animate-fade-in">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -164,7 +172,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Stats Grid */}
+        {/* Stats Grid with Sparklines */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             title="Buyer Universes"
@@ -177,12 +185,14 @@ export default function Dashboard() {
             value={filteredStats.buyers}
             subtitle={`${totalBuyers} total`}
             icon={Users}
+            sparklineData={metrics.sparklines.buyers}
           />
           <StatCard
             title="Deals Processed"
             value={filteredStats.deals}
             subtitle={`${totalDeals} total`}
             icon={FileText}
+            sparklineData={metrics.sparklines.deals}
           />
           <StatCard
             title="Intelligence Coverage"
@@ -191,6 +201,18 @@ export default function Dashboard() {
             icon={Brain}
             variant={avgCoverage >= 70 ? "success" : avgCoverage >= 40 ? "warning" : "default"}
           />
+        </div>
+
+        {/* Pipeline Funnel */}
+        <PipelineFunnel stages={metrics.pipeline} />
+
+        {/* Conversion Metrics */}
+        <ConversionMetrics conversions={metrics.conversions} />
+
+        {/* Charts Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <DealActivityChart data={metrics.timeSeries} className="lg:col-span-2" />
+          <ScoreDistribution data={metrics.scoreDistribution} />
         </div>
 
         {/* Main Content Grid */}
