@@ -214,9 +214,9 @@ export function DealScoringInsights({ dealId, industryType, onRecalculate }: Dea
   // Compact badge when no adjustments or closed
   if (!hasAdjustments && !isOpen) {
     return (
-      <div className="flex items-center gap-2">
-        <Badge variant="outline" className="text-xs gap-1 cursor-pointer hover:bg-muted/50" onClick={() => setIsOpen(true)}>
-          <Brain className="w-3 h-3" />
+      <div className="flex items-center gap-3">
+        <Badge variant="outline" className="text-sm gap-1.5 cursor-pointer hover:bg-muted/50 h-8 px-3" onClick={() => setIsOpen(true)}>
+          <Brain className="w-4 h-4" />
           Score Learning
           {totalDecisions > 0 && (
             <span className="text-muted-foreground ml-1">({totalDecisions} decisions)</span>
@@ -226,14 +226,14 @@ export function DealScoringInsights({ dealId, industryType, onRecalculate }: Dea
           <Button 
             variant="ghost" 
             size="sm" 
-            className="h-6 text-xs"
+            className="h-8 text-sm"
             onClick={handleRecalculate}
             disabled={isRecalculating}
           >
             {isRecalculating ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <RefreshCw className="w-3 h-3" />
+              <RefreshCw className="w-4 h-4" />
             )}
           </Button>
         )}
@@ -245,33 +245,33 @@ export function DealScoringInsights({ dealId, industryType, onRecalculate }: Dea
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <div className="border rounded-lg bg-card/50">
         <CollapsibleTrigger asChild>
-          <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/30 transition-colors">
-            <div className="flex items-center gap-2">
-              <Brain className="w-4 h-4 text-primary" />
-              <span className="text-sm font-medium">Scoring Insights</span>
+          <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/30 transition-colors">
+            <div className="flex items-center gap-3">
+              <Brain className="w-5 h-5 text-primary" />
+              <span className="text-base font-medium">Scoring Insights</span>
               {hasAdjustments && (
-                <Badge variant="secondary" className="text-[10px] h-5">
+                <Badge variant="secondary" className="text-xs h-6">
                   Weights Adjusted
                 </Badge>
               )}
               {totalDecisions > 0 && (
-                <span className="text-xs text-muted-foreground">
+                <span className="text-sm text-muted-foreground">
                   Based on {totalDecisions} decision{totalDecisions !== 1 ? 's' : ''}
                 </span>
               )}
             </div>
             <div className="flex items-center gap-2">
-              {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              {isOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
             </div>
           </div>
         </CollapsibleTrigger>
         
         <CollapsibleContent>
-          <div className="px-3 pb-3 space-y-3 border-t">
+          <div className="px-4 pb-4 space-y-4 border-t">
             {adjustments ? (
               <>
                 {/* Weight adjustments */}
-                <div className="pt-3 space-y-2">
+                <div className="pt-4 space-y-3">
                   <WeightRow 
                     label="Geography" 
                     multiplier={adjustments.geography_weight_mult} 
@@ -290,18 +290,18 @@ export function DealScoringInsights({ dealId, industryType, onRecalculate }: Dea
                 </div>
 
                 {/* Stats summary */}
-                <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t">
-                  <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-green-500" />
+                <div className="flex items-center gap-5 text-sm text-muted-foreground pt-3 border-t">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
                     {adjustments.approved_count} approved
                   </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
                     {adjustments.passed_geography + adjustments.passed_size + adjustments.passed_services} passed
                   </span>
                   {adjustments.rejected_count > 0 && (
-                    <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-destructive" />
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-destructive" />
                       {adjustments.rejected_count} removed
                     </span>
                   )}
@@ -309,30 +309,30 @@ export function DealScoringInsights({ dealId, industryType, onRecalculate }: Dea
 
                 {/* Custom Scoring Rules Display */}
                 {hasCustomRules && (
-                  <div className="pt-2 border-t space-y-2">
+                  <div className="pt-3 border-t space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-primary" />
+                      <span className="text-sm font-medium flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-primary" />
                         Custom Rules
                       </span>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-5 w-5 p-0"
+                        className="h-7 w-7 p-0"
                         onClick={handleClearInstructions}
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-4 h-4" />
                       </Button>
                     </div>
-                    <p className="text-xs text-muted-foreground italic">
+                    <p className="text-sm text-muted-foreground italic">
                       "{adjustments.parsed_instructions?.summary}"
                     </p>
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-2">
                       {adjustments.parsed_instructions?.rules.map((rule, idx) => (
                         <Badge 
                           key={idx} 
                           variant={rule.action === 'bonus' ? 'default' : 'destructive'}
-                          className="text-[10px] h-5"
+                          className="text-xs h-6"
                         >
                           {rule.action === 'bonus' ? '+' : ''}{rule.points} {rule.target}
                         </Badge>
@@ -343,14 +343,14 @@ export function DealScoringInsights({ dealId, industryType, onRecalculate }: Dea
 
                 {/* Customize Scoring Toggle */}
                 {!showCustomize && (
-                  <div className="pt-2 border-t">
+                  <div className="pt-3 border-t">
                     <Button
                       variant="outline"
-                      size="sm"
-                      className="h-7 text-xs w-full"
+                      size="default"
+                      className="h-10 text-sm w-full"
                       onClick={() => setShowCustomize(true)}
                     >
-                      <Settings2 className="w-3 h-3 mr-1" />
+                      <Settings2 className="w-4 h-4 mr-2" />
                       Customize Scoring
                     </Button>
                   </div>
@@ -358,49 +358,49 @@ export function DealScoringInsights({ dealId, industryType, onRecalculate }: Dea
 
                 {/* Customize Scoring Section */}
                 {showCustomize && (
-                  <div className="pt-2 border-t space-y-2">
+                  <div className="pt-3 border-t space-y-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium flex items-center gap-1">
-                        <Settings2 className="w-3 h-3" />
+                      <span className="text-sm font-medium flex items-center gap-2">
+                        <Settings2 className="w-4 h-4" />
                         Custom Scoring Instructions
                       </span>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-5 w-5 p-0"
+                        className="h-7 w-7 p-0"
                         onClick={() => setShowCustomize(false)}
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-4 h-4" />
                       </Button>
                     </div>
                     <Textarea
                       placeholder="e.g., No DRP relationships - prioritize buyers comfortable with non-DRP shops"
                       value={customInstructions}
                       onChange={(e) => setCustomInstructions(e.target.value)}
-                      className="text-xs min-h-[60px]"
+                      className="text-sm min-h-[100px]"
                     />
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-2">
                       {suggestions.map((suggestion, idx) => (
                         <Badge
                           key={idx}
                           variant="outline"
-                          className="text-[10px] cursor-pointer hover:bg-muted/50"
+                          className="text-xs cursor-pointer hover:bg-muted/50 py-1.5 px-2.5"
                           onClick={() => setCustomInstructions(suggestion)}
                         >
-                          {suggestion.length > 40 ? suggestion.slice(0, 40) + '...' : suggestion}
+                          {suggestion.length > 60 ? suggestion.slice(0, 60) + '...' : suggestion}
                         </Badge>
                       ))}
                     </div>
                     <Button
-                      size="sm"
-                      className="h-7 text-xs w-full"
+                      size="default"
+                      className="h-10 text-sm w-full"
                       onClick={handleParseInstructions}
                       disabled={isParsing || !customInstructions.trim()}
                     >
                       {isParsing ? (
-                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       ) : (
-                        <Sparkles className="w-3 h-3 mr-1" />
+                        <Sparkles className="w-4 h-4 mr-2" />
                       )}
                       Apply & Re-score
                     </Button>
@@ -408,99 +408,99 @@ export function DealScoringInsights({ dealId, industryType, onRecalculate }: Dea
                 )}
 
                 {/* Actions */}
-                <div className="flex items-center gap-2 pt-2 border-t">
+                <div className="flex items-center gap-3 pt-3 border-t">
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    className="h-7 text-xs"
+                    className="h-9 text-sm"
                     onClick={handleRecalculate}
                     disabled={isRecalculating}
                   >
                     {isRecalculating ? (
-                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     ) : (
-                      <RefreshCw className="w-3 h-3 mr-1" />
+                      <RefreshCw className="w-4 h-4 mr-2" />
                     )}
                     Recalculate
                   </Button>
                   <Button 
                     variant="ghost" 
                     size="sm" 
-                    className="h-7 text-xs text-muted-foreground"
+                    className="h-9 text-sm text-muted-foreground"
                     onClick={handleReset}
                     disabled={isResetting}
                   >
                     {isResetting ? (
-                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     ) : (
-                      <RotateCcw className="w-3 h-3 mr-1" />
+                      <RotateCcw className="w-4 h-4 mr-2" />
                     )}
                     Reset
                   </Button>
                 </div>
               </>
             ) : (
-              <div className="pt-3 space-y-3">
+              <div className="pt-4 space-y-4">
                 <p className="text-sm text-muted-foreground">No weight adjustments yet. Approve or pass on buyers to help the system learn what matters for this deal.</p>
                 
                 {/* Customize Scoring Toggle - also show when no adjustments */}
                 {!showCustomize && (
                   <Button
                     variant="outline"
-                    size="sm"
-                    className="h-7 text-xs w-full"
+                    size="default"
+                    className="h-10 text-sm w-full"
                     onClick={() => setShowCustomize(true)}
                   >
-                    <Settings2 className="w-3 h-3 mr-1" />
+                    <Settings2 className="w-4 h-4 mr-2" />
                     Customize Scoring
                   </Button>
                 )}
 
                 {/* Customize Scoring Section */}
                 {showCustomize && (
-                  <div className="space-y-2 border rounded-md p-2 bg-muted/30">
+                  <div className="space-y-4 border rounded-md p-4 bg-muted/30">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium flex items-center gap-1">
-                        <Settings2 className="w-3 h-3" />
+                      <span className="text-sm font-medium flex items-center gap-2">
+                        <Settings2 className="w-4 h-4" />
                         Custom Scoring Instructions
                       </span>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-5 w-5 p-0"
+                        className="h-7 w-7 p-0"
                         onClick={() => setShowCustomize(false)}
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-4 h-4" />
                       </Button>
                     </div>
                     <Textarea
                       placeholder="e.g., No DRP relationships - prioritize buyers comfortable with non-DRP shops"
                       value={customInstructions}
                       onChange={(e) => setCustomInstructions(e.target.value)}
-                      className="text-xs min-h-[60px]"
+                      className="text-sm min-h-[100px]"
                     />
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-2">
                       {suggestions.map((suggestion, idx) => (
                         <Badge
                           key={idx}
                           variant="outline"
-                          className="text-[10px] cursor-pointer hover:bg-muted/50"
+                          className="text-xs cursor-pointer hover:bg-muted/50 py-1.5 px-2.5"
                           onClick={() => setCustomInstructions(suggestion)}
                         >
-                          {suggestion.length > 40 ? suggestion.slice(0, 40) + '...' : suggestion}
+                          {suggestion.length > 60 ? suggestion.slice(0, 60) + '...' : suggestion}
                         </Badge>
                       ))}
                     </div>
                     <Button
-                      size="sm"
-                      className="h-7 text-xs w-full"
+                      size="default"
+                      className="h-10 text-sm w-full"
                       onClick={handleParseInstructions}
                       disabled={isParsing || !customInstructions.trim()}
                     >
                       {isParsing ? (
-                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       ) : (
-                        <Sparkles className="w-3 h-3 mr-1" />
+                        <Sparkles className="w-4 h-4 mr-2" />
                       )}
                       Apply & Re-score
                     </Button>
@@ -511,14 +511,14 @@ export function DealScoringInsights({ dealId, industryType, onRecalculate }: Dea
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    className="h-7 text-xs"
+                    className="h-9 text-sm"
                     onClick={handleRecalculate}
                     disabled={isRecalculating}
                   >
                     {isRecalculating ? (
-                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     ) : (
-                      <RefreshCw className="w-3 h-3 mr-1" />
+                      <RefreshCw className="w-4 h-4 mr-2" />
                     )}
                     Calculate from decisions
                   </Button>
@@ -538,21 +538,21 @@ function WeightRow({ label, multiplier, passedCount }: { label: string; multipli
   const isDecreased = multiplier < 0.95;
   
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-xs w-20 text-muted-foreground">{label}</span>
+    <div className="flex items-center gap-4">
+      <span className="text-sm w-24 text-muted-foreground">{label}</span>
       <div className="flex-1">
         <Progress 
           value={percentage} 
           className={cn(
-            "h-2",
+            "h-2.5",
             isIncreased && "[&>div]:bg-amber-500",
             isDecreased && "[&>div]:bg-blue-500"
           )} 
         />
       </div>
-      <div className="flex items-center gap-1.5 w-24 justify-end">
+      <div className="flex items-center gap-2 w-28 justify-end">
         <span className={cn(
-          "text-xs font-medium",
+          "text-sm font-medium",
           isIncreased && "text-amber-500",
           isDecreased && "text-blue-500"
         )}>
@@ -561,7 +561,7 @@ function WeightRow({ label, multiplier, passedCount }: { label: string; multipli
         {isIncreased && (
           <Tooltip>
             <TooltipTrigger>
-              <TrendingUp className="w-3 h-3 text-amber-500" />
+              <TrendingUp className="w-4 h-4 text-amber-500" />
             </TooltipTrigger>
             <TooltipContent>
               <p>{passedCount} buyers passed due to {label.toLowerCase()}</p>
@@ -571,7 +571,7 @@ function WeightRow({ label, multiplier, passedCount }: { label: string; multipli
         {isDecreased && (
           <Tooltip>
             <TooltipTrigger>
-              <TrendingDown className="w-3 h-3 text-blue-500" />
+              <TrendingDown className="w-4 h-4 text-blue-500" />
             </TooltipTrigger>
             <TooltipContent>
               <p>Approved buyers had lower {label.toLowerCase()} scores</p>
