@@ -6,10 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Loader2, FileText, ChevronRight, MoreHorizontal, Archive, Trash2, Building2, Globe } from "lucide-react";
+import { Loader2, FileText, ChevronRight, MoreHorizontal, Archive, Trash2, Building2, Globe, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { normalizeDomain } from "@/lib/normalizeDomain";
 import { deleteDealWithRelated } from "@/lib/cascadeDelete";
+import { DealScoreBadge } from "@/components/DealScoreBadge";
+
+type SortOption = "date" | "score";
+type SortDirection = "asc" | "desc";
+
 interface CompanyGroup {
   companyId: string | null;
   companyName: string;
@@ -27,6 +32,8 @@ export default function AllDeals() {
   const [companyToDelete, setCompanyToDelete] = useState<CompanyGroup | null>(null);
   const [dealDeleteDialogOpen, setDealDeleteDialogOpen] = useState(false);
   const [dealToDelete, setDealToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [sortBy, setSortBy] = useState<SortOption>("score");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const { toast } = useToast();
   useEffect(() => {
     loadDeals();
@@ -155,11 +162,27 @@ export default function AllDeals() {
     });
 
     return Object.values(groups).sort((a, b) => {
-      // Sort by most recent deal
-      const aLatest = Math.max(...a.deals.map(d => new Date(d.created_at).getTime()));
-      const bLatest = Math.max(...b.deals.map(d => new Date(d.created_at).getTime()));
-      return bLatest - aLatest;
+      if (sortBy === "score") {
+        // Sort by highest deal score in the group
+        const aMaxScore = Math.max(...a.deals.map(d => d.deal_score ?? -1));
+        const bMaxScore = Math.max(...b.deals.map(d => d.deal_score ?? -1));
+        return sortDirection === "desc" ? bMaxScore - aMaxScore : aMaxScore - bMaxScore;
+      } else {
+        // Sort by most recent deal
+        const aLatest = Math.max(...a.deals.map(d => new Date(d.created_at).getTime()));
+        const bLatest = Math.max(...b.deals.map(d => new Date(d.created_at).getTime()));
+        return sortDirection === "desc" ? bLatest - aLatest : aLatest - bLatest;
+      }
     });
+  };
+
+  const toggleSort = (option: SortOption) => {
+    if (sortBy === option) {
+      setSortDirection(prev => prev === "desc" ? "asc" : "desc");
+    } else {
+      setSortBy(option);
+      setSortDirection("desc");
+    }
   };
 
   const companyGroups = groupByCompany();
@@ -174,11 +197,40 @@ export default function AllDeals() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-display font-bold">All Deals</h1>
-          <p className="text-muted-foreground">
-            {uniqueCompanies} {uniqueCompanies === 1 ? 'company' : 'companies'} across {totalTrackers} buyer universe{totalTrackers !== 1 ? 's' : ''}
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-display font-bold">All Deals</h1>
+            <p className="text-muted-foreground">
+              {uniqueCompanies} {uniqueCompanies === 1 ? 'company' : 'companies'} across {totalTrackers} buyer universe{totalTrackers !== 1 ? 's' : ''}
+            </p>
+          </div>
+          
+          {/* Sort Controls */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Sort by:</span>
+            <Button
+              variant={sortBy === "score" ? "default" : "outline"}
+              size="sm"
+              onClick={() => toggleSort("score")}
+              className="gap-1"
+            >
+              Score
+              {sortBy === "score" && (
+                sortDirection === "desc" ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />
+              )}
+            </Button>
+            <Button
+              variant={sortBy === "date" ? "default" : "outline"}
+              size="sm"
+              onClick={() => toggleSort("date")}
+              className="gap-1"
+            >
+              Date
+              {sortBy === "date" && (
+                sortDirection === "desc" ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />
+              )}
+            </Button>
+          </div>
         </div>
 
         {deals.length === 0 ? (
@@ -258,7 +310,8 @@ export default function AllDeals() {
                               </p>
                             )}
                           </Link>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-3">
+                            <DealScoreBadge score={deal.deal_score} size="sm" />
                             <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
