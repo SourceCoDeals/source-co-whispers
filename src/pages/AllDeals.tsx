@@ -403,8 +403,8 @@ export default function AllDeals() {
 
                     {/* Deals in this company */}
                     {/* Column Headers */}
-                    <div className="grid grid-cols-[1fr_180px_140px_auto] items-center gap-4 px-4 py-2 border-b bg-muted/20 text-xs text-muted-foreground font-medium">
-                      <span>Deal</span>
+                    <div className="grid grid-cols-[120px_1fr_140px_auto] items-center gap-4 px-4 py-2 border-b bg-muted/20 text-xs text-muted-foreground font-medium">
+                      <span>Listed</span>
                       <span>Buyer Universe</span>
                       <span>Engagement</span>
                       <span className="text-right">Score / Status</span>
@@ -417,31 +417,26 @@ export default function AllDeals() {
                         const isEnriched = !!deal.last_enriched_at;
                         
                         return (
-                          <div key={deal.id} className="grid grid-cols-[1fr_180px_140px_auto] items-center gap-4 p-4 hover:bg-muted/50 transition-colors group">
-                            {/* Column 1: Deal Info */}
-                            <Link to={`/deals/${deal.id}`} className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium truncate">{deal.deal_name}</span>
-                                {isEnriched && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Badge variant="secondary" className="text-xs gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20 shrink-0">
-                                        <Sparkles className="w-3 h-3" />
-                                        Enriched
-                                      </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      Enriched on {new Date(deal.last_enriched_at).toLocaleDateString()}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                )}
-                                <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                              </div>
-                              {isMultiTracker && (
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  Listed {new Date(deal.created_at).toLocaleDateString()}
-                                </p>
+                          <div key={deal.id} className="grid grid-cols-[120px_1fr_140px_auto] items-center gap-4 p-4 hover:bg-muted/50 transition-colors group">
+                            {/* Column 1: Deal Info - Date & Badges */}
+                            <Link to={`/deals/${deal.id}`} className="flex items-center gap-2 min-w-0">
+                              <span className="text-sm text-muted-foreground">
+                                {new Date(deal.created_at).toLocaleDateString()}
+                              </span>
+                              {isEnriched && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge variant="secondary" className="text-xs gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20 shrink-0">
+                                      <Sparkles className="w-3 h-3" />
+                                      Enriched
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Enriched on {new Date(deal.last_enriched_at).toLocaleDateString()}
+                                  </TooltipContent>
+                                </Tooltip>
                               )}
+                              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
                             </Link>
                             
                             {/* Column 2: Buyer Universe */}
