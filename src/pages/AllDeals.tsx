@@ -402,6 +402,14 @@ export default function AllDeals() {
                     </div>
 
                     {/* Deals in this company */}
+                    {/* Column Headers */}
+                    <div className="grid grid-cols-[1fr_180px_140px_auto] items-center gap-4 px-4 py-2 border-b bg-muted/20 text-xs text-muted-foreground font-medium">
+                      <span>Deal</span>
+                      <span>Buyer Universe</span>
+                      <span>Engagement</span>
+                      <span className="text-right">Score / Status</span>
+                    </div>
+
                     <div className="divide-y">
                       {group.deals.map((deal) => {
                         const tracker = trackers[deal.tracker_id];
@@ -409,16 +417,15 @@ export default function AllDeals() {
                         const isEnriched = !!deal.last_enriched_at;
                         
                         return (
-                          <div key={deal.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors group">
-                            <Link to={`/deals/${deal.id}`} className="flex-1 min-w-0">
+                          <div key={deal.id} className="grid grid-cols-[1fr_180px_140px_auto] items-center gap-4 p-4 hover:bg-muted/50 transition-colors group">
+                            {/* Column 1: Deal Info */}
+                            <Link to={`/deals/${deal.id}`} className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-primary">
-                                  {tracker?.industry_name || "Unknown"}
-                                </span>
+                                <span className="font-medium truncate">{deal.deal_name}</span>
                                 {isEnriched && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <Badge variant="secondary" className="text-xs gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20">
+                                      <Badge variant="secondary" className="text-xs gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20 shrink-0">
                                         <Sparkles className="w-3 h-3" />
                                         Enriched
                                       </Badge>
@@ -428,7 +435,7 @@ export default function AllDeals() {
                                     </TooltipContent>
                                   </Tooltip>
                                 )}
-                                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                                <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
                               </div>
                               {isMultiTracker && (
                                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -437,8 +444,20 @@ export default function AllDeals() {
                               )}
                             </Link>
                             
-                            {/* Buyer Counts */}
-                            <div className="flex items-center gap-4 mr-4">
+                            {/* Column 2: Buyer Universe */}
+                            <Link 
+                              to={`/trackers/${deal.tracker_id}`} 
+                              className="flex items-center gap-2 px-2 py-1 rounded-md bg-primary/5 hover:bg-primary/10 transition-colors"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Users className="w-4 h-4 text-primary shrink-0" />
+                              <span className="text-sm font-medium text-primary truncate">
+                                {tracker?.industry_name || "Unknown"}
+                              </span>
+                            </Link>
+                            
+                            {/* Column 3: Buyer Engagement Counts */}
+                            <div className="flex items-center gap-3">
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <div className="flex items-center gap-1 text-sm">
@@ -476,7 +495,8 @@ export default function AllDeals() {
                               </Tooltip>
                             </div>
 
-                            <div className="flex items-center gap-3">
+                            {/* Column 4: Score, Status, Actions */}
+                            <div className="flex items-center justify-end gap-3">
                               <DealScoreBadge score={deal.deal_score} size="sm" />
                               <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"}>{deal.status}</Badge>
                               <DropdownMenu>
