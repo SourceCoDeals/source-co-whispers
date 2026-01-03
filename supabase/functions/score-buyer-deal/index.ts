@@ -1943,35 +1943,131 @@ function calculateThesisBonus(buyer: Buyer, deal: Deal): number {
   
   return Math.min(30, bonus); // Cap at 30
 }
+// Calculate data completeness with detailed field tracking
+interface DataCompletenessResult {
+  level: 'High' | 'Medium' | 'Low';
+  percent: number;
+  missingFields: string[];
+  criticalMissing: string[];
+}
 
-// Calculate data completeness - returns capitalized values to match DB constraint
-function calculateDataCompleteness(buyer: Buyer, deal: Deal): 'High' | 'Medium' | 'Low' {
+function calculateDataCompletenessDetailed(buyer: Buyer, deal: Deal): DataCompletenessResult {
+  const missingFields: string[] = [];
+  const criticalMissing: string[] = [];
   let dataPoints = 0;
   let totalPoints = 0;
   
-  // Buyer data
-  totalPoints += 10;
-  if (buyer.hq_state || buyer.geographic_footprint?.length) dataPoints += 1;
-  if (buyer.target_geographies?.length) dataPoints += 1;
-  if (buyer.services_offered || buyer.target_services?.length) dataPoints += 1;
-  if (buyer.min_revenue || buyer.max_revenue) dataPoints += 1;
-  if (buyer.thesis_summary) dataPoints += 2;
-  if (buyer.owner_transition_goals) dataPoints += 1;
-  if (buyer.key_quotes?.length) dataPoints += 2;
-  if (buyer.acquisition_appetite) dataPoints += 1;
+  // Buyer data - weighted by importance
+  // Critical fields (higher weight)
+  totalPoints += 2;
+  if (buyer.target_geographies?.length) {
+    dataPoints += 2;
+  } else {
+    missingFields.push('Target geographies');
+    criticalMissing.push('Target geographies');
+  }
+  
+  totalPoints += 2;
+  if (buyer.min_revenue || buyer.max_revenue) {
+    dataPoints += 2;
+  } else {
+    missingFields.push('Revenue range');
+    criticalMissing.push('Revenue range');
+  }
+  
+  totalPoints += 2;
+  if (buyer.thesis_summary) {
+    dataPoints += 2;
+  } else {
+    missingFields.push('Investment thesis');
+    criticalMissing.push('Investment thesis');
+  }
+  
+  // Important fields
+  totalPoints += 1;
+  if (buyer.hq_state || buyer.geographic_footprint?.length) {
+    dataPoints += 1;
+  } else {
+    missingFields.push('HQ location');
+  }
+  
+  totalPoints += 1;
+  if (buyer.services_offered || buyer.target_services?.length) {
+    dataPoints += 1;
+  } else {
+    missingFields.push('Services offered');
+  }
+  
+  totalPoints += 1;
+  if (buyer.owner_transition_goals) {
+    dataPoints += 1;
+  } else {
+    missingFields.push('Owner transition goals');
+  }
+  
+  totalPoints += 1;
+  if (buyer.key_quotes?.length) {
+    dataPoints += 1;
+  } else {
+    missingFields.push('Call quotes');
+  }
+  
+  totalPoints += 1;
+  if (buyer.acquisition_appetite) {
+    dataPoints += 1;
+  } else {
+    missingFields.push('Acquisition appetite');
+  }
   
   // Deal data
-  totalPoints += 5;
-  if (deal.geography?.length || deal.headquarters) dataPoints += 1;
-  if (deal.revenue) dataPoints += 1;
-  if (deal.service_mix) dataPoints += 1;
-  if (deal.owner_goals) dataPoints += 1;
-  if (deal.location_count) dataPoints += 1;
+  totalPoints += 1;
+  if (deal.geography?.length || deal.headquarters) {
+    dataPoints += 1;
+  } else {
+    missingFields.push('Deal geography');
+  }
   
-  const percent = (dataPoints / totalPoints) * 100;
-  if (percent >= 70) return 'High';
-  if (percent >= 40) return 'Medium';
-  return 'Low';
+  totalPoints += 1;
+  if (deal.revenue) {
+    dataPoints += 1;
+  } else {
+    missingFields.push('Deal revenue');
+  }
+  
+  totalPoints += 1;
+  if (deal.service_mix) {
+    dataPoints += 1;
+  } else {
+    missingFields.push('Deal services');
+  }
+  
+  totalPoints += 1;
+  if (deal.owner_goals) {
+    dataPoints += 1;
+  } else {
+    missingFields.push('Owner goals');
+  }
+  
+  totalPoints += 1;
+  if (deal.location_count) {
+    dataPoints += 1;
+  } else {
+    missingFields.push('Location count');
+  }
+  
+  const percent = Math.round((dataPoints / totalPoints) * 100);
+  let level: 'High' | 'Medium' | 'Low';
+  
+  if (percent >= 70) level = 'High';
+  else if (percent >= 40) level = 'Medium';
+  else level = 'Low';
+  
+  return { level, percent, missingFields, criticalMissing };
+}
+
+// Wrapper for backward compatibility - returns capitalized values to match DB constraint
+function calculateDataCompleteness(buyer: Buyer, deal: Deal): 'High' | 'Medium' | 'Low' {
+  return calculateDataCompletenessDetailed(buyer, deal).level;
 }
 
 // Calculate learning penalty based on buyer's rejection history
@@ -2316,8 +2412,9 @@ serve(async (req) => {
         overallReasoning += ` 📉 Learning: ${learningResult.reasoning[0]}.`;
       }
       
-      // Determine if this score needs human review
-      const dataCompleteness = calculateDataCompleteness(buyer as Buyer, deal as Deal);
+      // Determine if this score needs human review - use detailed version
+      const completenessDetails = calculateDataCompletenessDetailed(buyer as Buyer, deal as Deal);
+      const dataCompleteness = completenessDetails.level;
       const lowConfidenceCategories = [
         sizeScore.confidence === 'low',
         geographyScore.confidence === 'low',
@@ -2354,6 +2451,9 @@ serve(async (req) => {
         needsReview,
         reviewReason,
         dataCompleteness,
+        dataCompletenessPercent: completenessDetails.percent,
+        missingFields: completenessDetails.missingFields,
+        criticalMissing: completenessDetails.criticalMissing,
         dealAttractiveness,
         engagementSignals,
       };
