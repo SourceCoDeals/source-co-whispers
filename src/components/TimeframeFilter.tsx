@@ -40,20 +40,17 @@ export const getDateRangeLabel = (timeframe: TimeframeOption): string => {
 
 export function TimeframeFilter({ value, onChange }: TimeframeFilterProps) {
   return (
-    <div className="flex flex-col items-end gap-1">
-      <Select value={value} onValueChange={(v) => onChange(v as TimeframeOption)}>
-        <SelectTrigger className="w-[140px] h-9">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="today">Today</SelectItem>
-          <SelectItem value="week">This Week</SelectItem>
-          <SelectItem value="month">This Month</SelectItem>
-          <SelectItem value="quarter">This Quarter</SelectItem>
-          <SelectItem value="all">All Time</SelectItem>
-        </SelectContent>
-      </Select>
-      <span className="text-xs text-muted-foreground">{getDateRangeLabel(value)}</span>
-    </div>
+    <Select value={value} onValueChange={(v) => onChange(v as TimeframeOption)}>
+      <SelectTrigger className="w-[140px] h-9">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="today">Today</SelectItem>
+        <SelectItem value="week">This Week</SelectItem>
+        <SelectItem value="month">This Month</SelectItem>
+        <SelectItem value="quarter">This Quarter</SelectItem>
+        <SelectItem value="all">All Time</SelectItem>
+      </SelectContent>
+    </Select>
   );
 }
