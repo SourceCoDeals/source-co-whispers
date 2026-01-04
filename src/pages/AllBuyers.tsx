@@ -1,41 +1,52 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Users, Search, ChevronDown, ChevronRight, Building2, Globe, Eye, FileCheck } from "lucide-react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Loader2, Users, Search, FileCheck, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { usePEFirmsHierarchy, PEFirmWithPlatforms } from "@/hooks/usePEFirmsHierarchy";
-import { ConfidenceBadge } from "@/components/ConfidenceBadge";
+import { Platform } from "@/hooks/usePEFirmsHierarchy";
 
-interface LegacyBuyer {
+type SortColumn = "platform" | "pe_firm" | "industry" | "geography" | "confidence";
+type SortDirection = "asc" | "desc";
+
+interface FlatBuyer {
   id: string;
-  pe_firm_name: string;
-  platform_company_name: string | null;
-  platform_website: string | null;
-  thesis_summary: string | null;
-  thesis_confidence: string | null;
-  industry_vertical: string | null;
-  tracker_id: string;
-  has_fee_agreement: boolean | null;
-  fee_agreement_status: string | null;
+  name: string;
+  peFirmId: string;
+  peFirmName: string;
+  industryVertical: string | null;
+  thesisSummary: string | null;
+  thesisConfidence: string | null;
+  targetGeographies: string[] | null;
+  hasFeeAgreement: boolean | null;
+  trackerIds: string[];
+  isLegacy: boolean;
 }
 
-interface GroupedBuyers {
-  peFirmName: string;
-  buyers: LegacyBuyer[];
-  trackerIds: string[];
-}
+const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
+  platform: 200,
+  pe_firm: 180,
+  industry: 130,
+  thesis: 250,
+  geography: 150,
+  fee: 110,
+  confidence: 100,
+  universe: 180,
+};
 
 export default function AllBuyers() {
   const { peFirms, isLoading: isLoadingNew } = usePEFirmsHierarchy();
-  const [legacyBuyers, setLegacyBuyers] = useState<LegacyBuyer[]>([]);
+  const [legacyBuyers, setLegacyBuyers] = useState<any[]>([]);
   const [trackers, setTrackers] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [expandedFirms, setExpandedFirms] = useState<Set<string>>(new Set());
+  const [sortColumn, setSortColumn] = useState<SortColumn>("platform");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(DEFAULT_COLUMN_WIDTHS);
 
   useEffect(() => {
     loadData();
@@ -44,7 +55,7 @@ export default function AllBuyers() {
   const loadData = async () => {
     const [trackersRes, buyersRes] = await Promise.all([
       supabase.from("industry_trackers").select("id, industry_name"),
-      supabase.from("buyers").select("id, pe_firm_name, platform_company_name, platform_website, thesis_summary, thesis_confidence, industry_vertical, tracker_id, has_fee_agreement, fee_agreement_status").order("pe_firm_name")
+      supabase.from("buyers").select("id, pe_firm_name, platform_company_name, platform_website, thesis_summary, thesis_confidence, industry_vertical, tracker_id, has_fee_agreement, fee_agreement_status, target_geographies").order("pe_firm_name")
     ]);
 
     const trackerMap: Record<string, string> = {};
@@ -55,74 +66,170 @@ export default function AllBuyers() {
     setLegacyBuyers(buyersRes.data || []);
     setIsLoading(false);
   };
-  
-  // Group legacy buyers by PE firm name
-  const groupedLegacyBuyers: GroupedBuyers[] = legacyBuyers.reduce((acc, buyer) => {
-    const existing = acc.find(g => g.peFirmName === buyer.pe_firm_name);
-    if (existing) {
-      existing.buyers.push(buyer);
-      if (!existing.trackerIds.includes(buyer.tracker_id)) {
-        existing.trackerIds.push(buyer.tracker_id);
-      }
-    } else {
-      acc.push({
-        peFirmName: buyer.pe_firm_name,
-        buyers: [buyer],
-        trackerIds: [buyer.tracker_id]
+
+  // Flatten data into a single array of buyers
+  const flatBuyers = useMemo((): FlatBuyer[] => {
+    const useLegacy = peFirms.length === 0 && legacyBuyers.length > 0;
+    
+    if (useLegacy) {
+      // Group legacy buyers by PE firm to get tracker IDs
+      const grouped: Record<string, { buyers: any[], trackerIds: Set<string> }> = {};
+      legacyBuyers.forEach(b => {
+        if (!grouped[b.pe_firm_name]) {
+          grouped[b.pe_firm_name] = { buyers: [], trackerIds: new Set() };
+        }
+        grouped[b.pe_firm_name].buyers.push(b);
+        grouped[b.pe_firm_name].trackerIds.add(b.tracker_id);
       });
+      
+      return legacyBuyers.map(b => ({
+        id: b.id,
+        name: b.platform_company_name || b.pe_firm_name,
+        peFirmId: b.pe_firm_name,
+        peFirmName: b.pe_firm_name,
+        industryVertical: b.industry_vertical,
+        thesisSummary: b.thesis_summary,
+        thesisConfidence: b.thesis_confidence,
+        targetGeographies: b.target_geographies,
+        hasFeeAgreement: b.has_fee_agreement || b.fee_agreement_status === 'Signed',
+        trackerIds: Array.from(grouped[b.pe_firm_name].trackerIds),
+        isLegacy: true,
+      }));
     }
-    return acc;
-  }, [] as GroupedBuyers[]);
+    
+    // Flatten new hierarchy
+    return peFirms.flatMap(firm => 
+      firm.platforms.map(platform => ({
+        id: platform.id,
+        name: platform.name,
+        peFirmId: firm.id,
+        peFirmName: firm.name,
+        industryVertical: platform.industry_vertical,
+        thesisSummary: platform.thesis_summary,
+        thesisConfidence: platform.thesis_confidence,
+        targetGeographies: (platform as any).target_geographies || null,
+        hasFeeAgreement: platform.has_fee_agreement || firm.has_fee_agreement,
+        trackerIds: firm.trackerIds,
+        isLegacy: false,
+      }))
+    );
+  }, [peFirms, legacyBuyers]);
 
-  // Determine if we should use legacy buyers (when pe_firms table is empty)
-  const useLegacyBuyers = peFirms.length === 0 && legacyBuyers.length > 0;
+  // Filter buyers
+  const filteredBuyers = useMemo(() => {
+    if (!search) return flatBuyers;
+    
+    const searchLower = search.toLowerCase();
+    return flatBuyers.filter(b => 
+      b.name.toLowerCase().includes(searchLower) ||
+      b.peFirmName.toLowerCase().includes(searchLower) ||
+      (b.industryVertical?.toLowerCase().includes(searchLower)) ||
+      (b.thesisSummary?.toLowerCase().includes(searchLower))
+    );
+  }, [flatBuyers, search]);
 
-  const toggleFirm = (firmId: string) => {
-    setExpandedFirms(prev => {
-      const next = new Set(prev);
-      if (next.has(firmId)) {
-        next.delete(firmId);
-      } else {
-        next.add(firmId);
+  // Sort buyers
+  const sortedBuyers = useMemo(() => {
+    return [...filteredBuyers].sort((a, b) => {
+      let aVal: string, bVal: string;
+      
+      switch (sortColumn) {
+        case "platform":
+          aVal = a.name.toLowerCase();
+          bVal = b.name.toLowerCase();
+          break;
+        case "pe_firm":
+          aVal = a.peFirmName.toLowerCase();
+          bVal = b.peFirmName.toLowerCase();
+          break;
+        case "industry":
+          aVal = (a.industryVertical || "").toLowerCase();
+          bVal = (b.industryVertical || "").toLowerCase();
+          break;
+        case "geography":
+          aVal = (a.targetGeographies?.[0] || "").toLowerCase();
+          bVal = (b.targetGeographies?.[0] || "").toLowerCase();
+          break;
+        case "confidence":
+          const order = { high: 3, medium: 2, low: 1 };
+          const aOrder = order[(a.thesisConfidence as keyof typeof order)] || 0;
+          const bOrder = order[(b.thesisConfidence as keyof typeof order)] || 0;
+          return sortDirection === "asc" ? aOrder - bOrder : bOrder - aOrder;
+        default:
+          return 0;
       }
-      return next;
+      
+      const comparison = aVal.localeCompare(bVal);
+      return sortDirection === "asc" ? comparison : -comparison;
     });
-  };
+  }, [filteredBuyers, sortColumn, sortDirection]);
 
-  // Filter PE firms and their platforms (new hierarchy)
-  const filteredFirms = peFirms.filter((firm) => {
-    const searchLower = search.toLowerCase();
-    if (firm.name.toLowerCase().includes(searchLower)) return true;
-    if (firm.platforms.some(p => p.name.toLowerCase().includes(searchLower))) return true;
-    return false;
-  });
-
-  // Filter legacy buyers
-  const filteredLegacyGroups = groupedLegacyBuyers.filter((group) => {
-    const searchLower = search.toLowerCase();
-    if (group.peFirmName.toLowerCase().includes(searchLower)) return true;
-    if (group.buyers.some(b => (b.platform_company_name || '').toLowerCase().includes(searchLower))) return true;
-    return false;
-  });
-
-  // Get total counts
-  const totalPlatforms = useLegacyBuyers 
-    ? legacyBuyers.length 
-    : peFirms.reduce((acc, firm) => acc + firm.platforms.length, 0);
-  const totalFirms = useLegacyBuyers ? groupedLegacyBuyers.length : peFirms.length;
-  const displayedItems = useLegacyBuyers ? filteredLegacyGroups : filteredFirms;
-
-  const expandAll = () => {
-    if (useLegacyBuyers) {
-      setExpandedFirms(new Set(filteredLegacyGroups.map(f => f.peFirmName)));
+  const toggleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => prev === "desc" ? "asc" : "desc");
     } else {
-      setExpandedFirms(new Set(filteredFirms.map(f => f.id)));
+      setSortColumn(column);
+      setSortDirection("asc");
     }
   };
 
-  const collapseAll = () => {
-    setExpandedFirms(new Set());
+  const handleResize = (columnKey: string, startX: number, startWidth: number) => (e: MouseEvent) => {
+    const newWidth = Math.max(50, startWidth + (e.clientX - startX));
+    setColumnWidths(prev => ({ ...prev, [columnKey]: newWidth }));
   };
+
+  const startResize = (columnKey: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = columnWidths[columnKey];
+    
+    const onMouseMove = handleResize(columnKey, startX, startWidth);
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  const ResizeHandle = ({ columnKey }: { columnKey: string }) => (
+    <div
+      onMouseDown={startResize(columnKey)}
+      className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50 active:bg-primary group-hover:bg-border"
+    />
+  );
+
+  const SortableHeader = ({ column, columnKey, children, className = "" }: { column: SortColumn; columnKey: string; children: React.ReactNode; className?: string }) => (
+    <TableHead className={`relative group ${className}`} style={{ width: columnWidths[columnKey], minWidth: columnWidths[columnKey] }}>
+      <button
+        onClick={() => toggleSort(column)}
+        className="flex items-center gap-1 hover:text-foreground transition-colors"
+      >
+        {children}
+        {sortColumn === column ? (
+          sortDirection === "desc" ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />
+        ) : (
+          <ArrowUpDown className="w-3 h-3 opacity-30" />
+        )}
+      </button>
+      <ResizeHandle columnKey={columnKey} />
+    </TableHead>
+  );
+
+  const ResizableHeader = ({ columnKey, children, className = "" }: { columnKey: string; children: React.ReactNode; className?: string }) => (
+    <TableHead className={`relative group ${className}`} style={{ width: columnWidths[columnKey], minWidth: columnWidths[columnKey] }}>
+      {children}
+      <ResizeHandle columnKey={columnKey} />
+    </TableHead>
+  );
+
+  const totalFirms = new Set(flatBuyers.map(b => b.peFirmName)).size;
 
   if (isLoading || isLoadingNew) {
     return (
@@ -136,393 +243,178 @@ export default function AllBuyers() {
 
   return (
     <AppLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-display font-bold">All Buyers</h1>
-            <p className="text-muted-foreground">
-              {totalFirms} PE firm{totalFirms !== 1 ? "s" : ""} · {totalPlatforms} platform{totalPlatforms !== 1 ? "s" : ""}
-            </p>
+      <TooltipProvider>
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-display font-bold">All Buyers</h1>
+              <p className="text-muted-foreground">
+                {totalFirms} PE firm{totalFirms !== 1 ? "s" : ""} · {flatBuyers.length} platform{flatBuyers.length !== 1 ? "s" : ""}
+                {search && <span className="text-primary"> (filtered: {filteredBuyers.length})</span>}
+              </p>
+            </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1 max-w-md">
+          <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
-              placeholder="Search PE firms or platforms..." 
+              placeholder="Search platforms, PE firms, industries..." 
               value={search} 
               onChange={(e) => setSearch(e.target.value)} 
               className="pl-10" 
             />
           </div>
-          {displayedItems.length > 0 && (
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={expandAll}>
-                Expand All
-              </Button>
-              <Button variant="outline" size="sm" onClick={collapseAll}>
-                Collapse All
-              </Button>
+
+          {sortedBuyers.length === 0 ? (
+            <div className="bg-card rounded-lg border p-12 text-center">
+              <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="font-semibold mb-2">
+                {search ? "No matches found" : "No buyers yet"}
+              </h3>
+              <p className="text-muted-foreground">
+                {search 
+                  ? "Try a different search term" 
+                  : "Add buyers to a universe to get started."
+                }
+              </p>
+            </div>
+          ) : (
+            <div className="bg-card rounded-lg border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <SortableHeader column="platform" columnKey="platform">Platform</SortableHeader>
+                    <SortableHeader column="pe_firm" columnKey="pe_firm">PE Firm</SortableHeader>
+                    <SortableHeader column="industry" columnKey="industry">Industry</SortableHeader>
+                    <ResizableHeader columnKey="thesis">Thesis</ResizableHeader>
+                    <SortableHeader column="geography" columnKey="geography">Geography</SortableHeader>
+                    <ResizableHeader columnKey="fee" className="text-center">Fee Agreement</ResizableHeader>
+                    <SortableHeader column="confidence" columnKey="confidence" className="text-center">Confidence</SortableHeader>
+                    <ResizableHeader columnKey="universe">Buyer Universe</ResizableHeader>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedBuyers.map((buyer) => {
+                    const universeNames = buyer.trackerIds
+                      .map(id => trackers[id])
+                      .filter(Boolean)
+                      .slice(0, 2);
+                    
+                    const linkTo = buyer.isLegacy ? `/buyers/${buyer.id}` : `/platforms/${buyer.id}`;
+                    
+                    return (
+                      <TableRow key={buyer.id} className="group">
+                        {/* Platform Name */}
+                        <TableCell className="font-medium">
+                          <Link to={linkTo} className="hover:text-primary transition-colors">
+                            {buyer.name}
+                          </Link>
+                        </TableCell>
+                        
+                        {/* PE Firm */}
+                        <TableCell className="text-muted-foreground">
+                          {buyer.peFirmName}
+                        </TableCell>
+                        
+                        {/* Industry */}
+                        <TableCell>
+                          {buyer.industryVertical ? (
+                            <Badge variant="secondary" className="text-xs font-normal">
+                              {buyer.industryVertical}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        
+                        {/* Thesis */}
+                        <TableCell className="max-w-[250px]">
+                          {buyer.thesisSummary ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-sm text-muted-foreground truncate block cursor-default">
+                                  {buyer.thesisSummary}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-sm">
+                                <p className="text-sm">{buyer.thesisSummary}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        
+                        {/* Geography */}
+                        <TableCell>
+                          {buyer.targetGeographies && buyer.targetGeographies.length > 0 ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-sm truncate block max-w-[130px]">
+                                  {buyer.targetGeographies.slice(0, 2).join(", ")}
+                                  {buyer.targetGeographies.length > 2 && ` +${buyer.targetGeographies.length - 2}`}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="text-sm">{buyer.targetGeographies.join(", ")}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        
+                        {/* Fee Agreement */}
+                        <TableCell className="text-center">
+                          {buyer.hasFeeAgreement && (
+                            <Badge variant="outline" className="text-xs flex items-center gap-1 bg-primary/10 border-primary/20 w-fit mx-auto">
+                              <FileCheck className="w-3 h-3" />
+                              Signed
+                            </Badge>
+                          )}
+                        </TableCell>
+                        
+                        {/* Confidence */}
+                        <TableCell className="text-center">
+                          {buyer.thesisConfidence ? (
+                            <Badge 
+                              variant={buyer.thesisConfidence === "high" ? "default" : "secondary"}
+                              className="text-xs capitalize"
+                            >
+                              {buyer.thesisConfidence}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        
+                        {/* Buyer Universe */}
+                        <TableCell>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {universeNames.map((name, i) => (
+                              <Badge key={i} variant="secondary" className="text-xs">
+                                {name}
+                              </Badge>
+                            ))}
+                            {buyer.trackerIds.length > 2 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{buyer.trackerIds.length - 2}
+                              </Badge>
+                            )}
+                            {universeNames.length === 0 && (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           )}
         </div>
-
-        {displayedItems.length === 0 ? (
-          <div className="bg-card rounded-lg border p-12 text-center">
-            <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="font-semibold mb-2">
-              {search ? "No matches found" : "No buyers yet"}
-            </h3>
-            <p className="text-muted-foreground">
-              {search 
-                ? "Try a different search term" 
-                : "Add buyers to a universe to get started."
-              }
-            </p>
-          </div>
-        ) : useLegacyBuyers ? (
-          <div className="bg-card rounded-lg border">
-            {/* Column Headers */}
-            <div className="grid grid-cols-[1fr_160px_200px] gap-4 px-4 py-3 border-b bg-muted/50 text-sm font-medium text-muted-foreground">
-              <div>PE Firm / Platform</div>
-              <div className="text-center">Fee Agreement</div>
-              <div className="text-right">Buyer Universe</div>
-            </div>
-            <div className="divide-y">
-              {filteredLegacyGroups.map((group) => (
-                <LegacyPEFirmRow 
-                  key={group.peFirmName} 
-                  group={group} 
-                  trackers={trackers}
-                  isExpanded={expandedFirms.has(group.peFirmName)}
-                  onToggle={() => toggleFirm(group.peFirmName)}
-                  searchTerm={search}
-                />
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="bg-card rounded-lg border">
-            {/* Column Headers */}
-            <div className="grid grid-cols-[1fr_160px_200px] gap-4 px-4 py-3 border-b bg-muted/50 text-sm font-medium text-muted-foreground">
-              <div>PE Firm / Platform</div>
-              <div className="text-center">Fee Agreement</div>
-              <div className="text-right">Buyer Universe</div>
-            </div>
-            <div className="divide-y">
-              {filteredFirms.map((firm) => (
-                <PEFirmRow 
-                  key={firm.id} 
-                  firm={firm} 
-                  trackers={trackers}
-                  isExpanded={expandedFirms.has(firm.id)}
-                  onToggle={() => toggleFirm(firm.id)}
-                  searchTerm={search}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+      </TooltipProvider>
     </AppLayout>
-  );
-}
-
-// Legacy buyer row component (for buyers table fallback)
-interface LegacyPEFirmRowProps {
-  group: GroupedBuyers;
-  trackers: Record<string, string>;
-  isExpanded: boolean;
-  onToggle: () => void;
-  searchTerm: string;
-}
-
-function LegacyPEFirmRow({ group, trackers, isExpanded, onToggle, searchTerm }: LegacyPEFirmRowProps) {
-  const universeNames = group.trackerIds
-    .map(id => trackers[id])
-    .filter(Boolean)
-    .slice(0, 3);
-
-  const hasMultipleBuyers = group.buyers.length > 1;
-  const searchLower = searchTerm.toLowerCase();
-
-  // Filter buyers if searching
-  const visibleBuyers = searchTerm 
-    ? group.buyers.filter(b => 
-        (b.platform_company_name || '').toLowerCase().includes(searchLower) || 
-        group.peFirmName.toLowerCase().includes(searchLower)
-      )
-    : group.buyers;
-
-  // Get the first buyer ID for direct navigation when there's only 1 platform
-  const firstBuyerId = group.buyers[0]?.id;
-
-  const hasPeFirmFeeAgreement = group.buyers.some(b => b.fee_agreement_status === 'Signed');
-
-  return (
-    <Collapsible open={isExpanded} onOpenChange={onToggle}>
-      <div className="grid grid-cols-[1fr_160px_200px] gap-4 items-center p-4 hover:bg-muted/50 transition-colors">
-        {/* Column 1: PE Firm Name */}
-        <CollapsibleTrigger asChild>
-          <div className="flex items-center gap-3 cursor-pointer">
-            {hasMultipleBuyers ? (
-              isExpanded ? (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              )
-            ) : (
-              <div className="w-4" />
-            )}
-            <Building2 className="w-5 h-5 text-primary" />
-            <div className="flex items-center gap-2">
-              <p className="font-medium">{group.peFirmName}</p>
-              {firstBuyerId && (
-                <Link 
-                  to={`/buyers/${firstBuyerId}`}
-                  className="p-1 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                  title="View buyer profile"
-                >
-                  <Eye className="w-4 h-4" />
-                </Link>
-              )}
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>{group.buyers.length} platform{group.buyers.length !== 1 ? "s" : ""}</span>
-            </div>
-          </div>
-        </CollapsibleTrigger>
-
-        {/* Column 2: Fee Agreement */}
-        <div className="flex justify-center">
-          {hasPeFirmFeeAgreement && (
-            <Badge variant="outline" className="text-xs flex items-center gap-1 bg-primary/10 border-primary/20">
-              <FileCheck className="w-3 h-3" />
-              Fee Agreement
-            </Badge>
-          )}
-        </div>
-
-        {/* Column 3: Buyer Universe */}
-        <div className="flex items-center justify-end gap-2">
-          {universeNames.map((name, i) => (
-            <Badge key={i} variant="secondary" className="text-xs">
-              {name}
-            </Badge>
-          ))}
-          {group.trackerIds.length > 3 && (
-            <Badge variant="outline" className="text-xs">
-              +{group.trackerIds.length - 3}
-            </Badge>
-          )}
-        </div>
-      </div>
-
-      <CollapsibleContent>
-        <div className="border-t bg-muted/30">
-          {visibleBuyers.map((buyer) => (
-            <Link 
-              key={buyer.id} 
-              to={`/buyers/${buyer.id}`}
-              className="grid grid-cols-[1fr_160px_200px] gap-4 items-center px-4 py-3 pl-12 hover:bg-muted/50 transition-colors border-t first:border-t-0"
-            >
-              {/* Column 1: Platform Name */}
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-primary/60" />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium text-sm">{buyer.platform_company_name || buyer.pe_firm_name}</p>
-                    <Eye className="w-3.5 h-3.5 text-muted-foreground" />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {buyer.industry_vertical || "No industry specified"}
-                    {buyer.thesis_summary && ` · ${buyer.thesis_summary.slice(0, 60)}...`}
-                  </p>
-                </div>
-              </div>
-
-              {/* Column 2: Fee Agreement */}
-              <div className="flex justify-center">
-                {buyer.has_fee_agreement && (
-                  <Badge variant="outline" className="text-xs flex items-center gap-1 bg-primary/10 border-primary/20">
-                    <FileCheck className="w-3 h-3" />
-                    Fee Agreement
-                  </Badge>
-                )}
-              </div>
-
-              {/* Column 3: Empty for platforms (confidence badge optional) */}
-              <div className="flex items-center justify-end gap-2">
-                {buyer.thesis_confidence && (
-                  <Badge 
-                    variant={buyer.thesis_confidence === "high" ? "default" : "secondary"}
-                    className="text-xs"
-                  >
-                    {buyer.thesis_confidence}
-                  </Badge>
-                )}
-              </div>
-            </Link>
-          ))}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-// PE Firm Row for new hierarchy
-interface PEFirmRowProps {
-  firm: PEFirmWithPlatforms;
-  trackers: Record<string, string>;
-  isExpanded: boolean;
-  onToggle: () => void;
-  searchTerm: string;
-}
-
-function PEFirmRow({ firm, trackers, isExpanded, onToggle, searchTerm }: PEFirmRowProps) {
-  const universeNames = firm.trackerIds
-    .map(id => trackers[id])
-    .filter(Boolean)
-    .slice(0, 3);
-
-  const hasMultiplePlatforms = firm.platforms.length > 1;
-  const searchLower = searchTerm.toLowerCase();
-
-  // Filter platforms if searching
-  const visiblePlatforms = searchTerm 
-    ? firm.platforms.filter(p => 
-        p.name.toLowerCase().includes(searchLower) || 
-        firm.name.toLowerCase().includes(searchLower)
-      )
-    : firm.platforms;
-
-  return (
-    <Collapsible open={isExpanded} onOpenChange={onToggle}>
-      <div className="grid grid-cols-[1fr_160px_200px] gap-4 items-center p-4 hover:bg-muted/50 transition-colors">
-        {/* Column 1: PE Firm Name */}
-        <CollapsibleTrigger asChild>
-          <div className="flex items-center gap-3 cursor-pointer">
-            {hasMultiplePlatforms ? (
-              isExpanded ? (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              )
-            ) : (
-              <div className="w-4" />
-            )}
-            <Building2 className="w-5 h-5 text-primary" />
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="font-medium">{firm.name}</p>
-                {firm.platforms.length > 0 && (
-                  <Link 
-                    to={`/platforms/${firm.platforms[0].id}`}
-                    className="p-1 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
-                    onClick={(e) => e.stopPropagation()}
-                    title="View platform profile"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </Link>
-                )}
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span>{firm.platforms.length} platform{firm.platforms.length !== 1 ? "s" : ""}</span>
-                {firm.website && (
-                  <>
-                    <span>·</span>
-                    <a 
-                      href={firm.website} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="hover:text-primary flex items-center gap-1"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Globe className="w-3 h-3" />
-                      Website
-                    </a>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </CollapsibleTrigger>
-
-        {/* Column 2: Fee Agreement */}
-        <div className="flex justify-center">
-          {firm.has_fee_agreement && (
-            <Badge variant="outline" className="text-xs flex items-center gap-1 bg-primary/10 border-primary/20">
-              <FileCheck className="w-3 h-3" />
-              Fee Agreement
-            </Badge>
-          )}
-        </div>
-
-        {/* Column 3: Buyer Universe */}
-        <div className="flex items-center justify-end gap-2">
-          {universeNames.map((name, i) => (
-            <Badge key={i} variant="secondary" className="text-xs">
-              {name}
-            </Badge>
-          ))}
-          {firm.trackerIds.length > 3 && (
-            <Badge variant="outline" className="text-xs">
-              +{firm.trackerIds.length - 3}
-            </Badge>
-          )}
-        </div>
-      </div>
-
-      <CollapsibleContent>
-        <div className="border-t bg-muted/30">
-          {visiblePlatforms.map((platform) => (
-            <Link 
-              key={platform.id} 
-              to={`/platforms/${platform.id}`}
-              className="grid grid-cols-[1fr_160px_200px] gap-4 items-center px-4 py-3 pl-12 hover:bg-muted/50 transition-colors border-t first:border-t-0"
-            >
-              {/* Column 1: Platform Name */}
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-primary/60" />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium text-sm">{platform.name}</p>
-                    <Eye className="w-3.5 h-3.5 text-muted-foreground" />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {platform.industry_vertical || "No industry specified"}
-                    {platform.thesis_summary && ` · ${platform.thesis_summary.slice(0, 60)}...`}
-                  </p>
-                </div>
-              </div>
-
-              {/* Column 2: Fee Agreement */}
-              <div className="flex justify-center">
-                {platform.has_fee_agreement && (
-                  <Badge variant="outline" className="text-xs flex items-center gap-1 bg-primary/10 border-primary/20">
-                    <FileCheck className="w-3 h-3" />
-                    Fee Agreement
-                  </Badge>
-                )}
-              </div>
-
-              {/* Column 3: Confidence badge */}
-              <div className="flex items-center justify-end gap-2">
-                {platform.thesis_confidence && (
-                  <Badge 
-                    variant={platform.thesis_confidence === "high" ? "default" : "secondary"}
-                    className="text-xs"
-                  >
-                    {platform.thesis_confidence}
-                  </Badge>
-                )}
-              </div>
-            </Link>
-          ))}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
   );
 }
