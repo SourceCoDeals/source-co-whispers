@@ -298,6 +298,7 @@ export default function AllDeals() {
                   <TableRow className="hover:bg-transparent">
                     <SortableHeader column="deal_name">Deal Name</SortableHeader>
                     <SortableHeader column="tracker">Buyer Universe</SortableHeader>
+                    <TableHead className="max-w-[250px]">Description</TableHead>
                     <SortableHeader column="geography">Geography</SortableHeader>
                     <SortableHeader column="revenue" className="text-right">Revenue</SortableHeader>
                     <SortableHeader column="ebitda" className="text-right">EBITDA</SortableHeader>
@@ -342,6 +343,24 @@ export default function AllDeals() {
                           >
                             {tracker?.industry_name || "Unknown"}
                           </Link>
+                        </TableCell>
+                        
+                        {/* Description */}
+                        <TableCell className="max-w-[250px]">
+                          {deal.company_overview ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-sm text-muted-foreground truncate block cursor-default">
+                                  {deal.company_overview}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-sm">
+                                <p className="text-sm">{deal.company_overview}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                         
                         {/* Geography */}
