@@ -25,6 +25,20 @@ interface BuyerCounts {
   passed: number;
 }
 
+const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
+  deal_name: 180,
+  tracker: 140,
+  description: 250,
+  geography: 120,
+  revenue: 90,
+  ebitda: 90,
+  score: 70,
+  engagement: 120,
+  date: 100,
+  status: 90,
+  actions: 50,
+};
+
 export default function AllDeals() {
   const [deals, setDeals] = useState<any[]>([]);
   const [trackers, setTrackers] = useState<Record<string, any>>({});
@@ -34,6 +48,7 @@ export default function AllDeals() {
   const [dealToDelete, setDealToDelete] = useState<{ id: string; name: string } | null>(null);
   const [sortColumn, setSortColumn] = useState<SortColumn>("score");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(DEFAULT_COLUMN_WIDTHS);
   
   // Filter states
   const [searchQuery, setSearchQuery] = useState("");
@@ -206,8 +221,40 @@ export default function AllDeals() {
     }
   };
 
-  const SortableHeader = ({ column, children, className = "" }: { column: SortColumn; children: React.ReactNode; className?: string }) => (
-    <TableHead className={className}>
+  const handleResize = (columnKey: string, startX: number, startWidth: number) => (e: MouseEvent) => {
+    const newWidth = Math.max(50, startWidth + (e.clientX - startX));
+    setColumnWidths(prev => ({ ...prev, [columnKey]: newWidth }));
+  };
+
+  const startResize = (columnKey: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = columnWidths[columnKey];
+    
+    const onMouseMove = handleResize(columnKey, startX, startWidth);
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  const ResizeHandle = ({ columnKey }: { columnKey: string }) => (
+    <div
+      onMouseDown={startResize(columnKey)}
+      className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50 active:bg-primary group-hover:bg-border"
+    />
+  );
+
+  const SortableHeader = ({ column, columnKey, children, className = "" }: { column: SortColumn; columnKey: string; children: React.ReactNode; className?: string }) => (
+    <TableHead className={`relative group ${className}`} style={{ width: columnWidths[columnKey], minWidth: columnWidths[columnKey] }}>
       <button
         onClick={() => toggleSort(column)}
         className="flex items-center gap-1 hover:text-foreground transition-colors"
@@ -219,6 +266,14 @@ export default function AllDeals() {
           <ArrowUpDown className="w-3 h-3 opacity-30" />
         )}
       </button>
+      <ResizeHandle columnKey={columnKey} />
+    </TableHead>
+  );
+
+  const ResizableHeader = ({ columnKey, children, className = "" }: { columnKey: string; children: React.ReactNode; className?: string }) => (
+    <TableHead className={`relative group ${className}`} style={{ width: columnWidths[columnKey], minWidth: columnWidths[columnKey] }}>
+      {children}
+      <ResizeHandle columnKey={columnKey} />
     </TableHead>
   );
 
@@ -296,17 +351,17 @@ export default function AllDeals() {
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <SortableHeader column="deal_name">Deal Name</SortableHeader>
-                    <SortableHeader column="tracker">Buyer Universe</SortableHeader>
-                    <TableHead className="max-w-[250px]">Description</TableHead>
-                    <SortableHeader column="geography">Geography</SortableHeader>
-                    <SortableHeader column="revenue" className="text-right">Revenue</SortableHeader>
-                    <SortableHeader column="ebitda" className="text-right">EBITDA</SortableHeader>
-                    <SortableHeader column="score" className="text-right">Score</SortableHeader>
-                    <TableHead className="text-center">Engagement</TableHead>
-                    <SortableHeader column="date">Added</SortableHeader>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
+                    <SortableHeader column="deal_name" columnKey="deal_name">Deal Name</SortableHeader>
+                    <SortableHeader column="tracker" columnKey="tracker">Buyer Universe</SortableHeader>
+                    <ResizableHeader columnKey="description">Description</ResizableHeader>
+                    <SortableHeader column="geography" columnKey="geography">Geography</SortableHeader>
+                    <SortableHeader column="revenue" columnKey="revenue" className="text-right">Revenue</SortableHeader>
+                    <SortableHeader column="ebitda" columnKey="ebitda" className="text-right">EBITDA</SortableHeader>
+                    <SortableHeader column="score" columnKey="score" className="text-right">Score</SortableHeader>
+                    <ResizableHeader columnKey="engagement" className="text-center">Engagement</ResizableHeader>
+                    <SortableHeader column="date" columnKey="date">Added</SortableHeader>
+                    <ResizableHeader columnKey="status">Status</ResizableHeader>
+                    <TableHead style={{ width: columnWidths.actions }}></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
