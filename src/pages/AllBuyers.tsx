@@ -4,13 +4,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader2, Users, Search, FileCheck, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
-import { usePEFirmsHierarchy, PEFirmWithPlatforms } from "@/hooks/usePEFirmsHierarchy";
-import { Platform } from "@/hooks/usePEFirmsHierarchy";
+import { Loader2, Users, Search, FileCheck, ArrowUp, ArrowDown, ArrowUpDown, Building2, Layers } from "lucide-react";
+import { usePEFirmsHierarchy } from "@/hooks/usePEFirmsHierarchy";
 
-type SortColumn = "platform" | "pe_firm" | "industry" | "geography" | "confidence";
+type ViewMode = "all" | "pe_firms" | "platforms";
+type SortColumn = "name" | "pe_firm" | "industry" | "confidence" | "platforms_count";
 type SortDirection = "asc" | "desc";
 
 interface FlatBuyer {
@@ -21,18 +22,28 @@ interface FlatBuyer {
   industryVertical: string | null;
   thesisSummary: string | null;
   thesisConfidence: string | null;
-  targetGeographies: string[] | null;
   hasFeeAgreement: boolean | null;
   trackerIds: string[];
   isLegacy: boolean;
 }
 
+interface FlatPEFirm {
+  id: string;
+  name: string;
+  platformsCount: number;
+  industryVertical: string | null;
+  thesisSummary: string | null;
+  thesisConfidence: string | null;
+  hasFeeAgreement: boolean | null;
+  trackerIds: string[];
+}
+
 const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
-  platform: 200,
+  name: 200,
   pe_firm: 180,
+  platforms_count: 100,
   industry: 130,
   thesis: 250,
-  geography: 150,
   fee: 110,
   confidence: 100,
   universe: 180,
@@ -44,7 +55,8 @@ export default function AllBuyers() {
   const [trackers, setTrackers] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [sortColumn, setSortColumn] = useState<SortColumn>("platform");
+  const [viewMode, setViewMode] = useState<ViewMode>("all");
+  const [sortColumn, setSortColumn] = useState<SortColumn>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(DEFAULT_COLUMN_WIDTHS);
 
@@ -55,7 +67,7 @@ export default function AllBuyers() {
   const loadData = async () => {
     const [trackersRes, buyersRes] = await Promise.all([
       supabase.from("industry_trackers").select("id, industry_name"),
-      supabase.from("buyers").select("id, pe_firm_name, platform_company_name, platform_website, thesis_summary, thesis_confidence, industry_vertical, tracker_id, has_fee_agreement, fee_agreement_status, target_geographies").order("pe_firm_name")
+      supabase.from("buyers").select("id, pe_firm_name, platform_company_name, platform_website, thesis_summary, thesis_confidence, industry_vertical, tracker_id, has_fee_agreement, fee_agreement_status").order("pe_firm_name")
     ]);
 
     const trackerMap: Record<string, string> = {};
@@ -67,12 +79,11 @@ export default function AllBuyers() {
     setIsLoading(false);
   };
 
-  // Flatten data into a single array of buyers
+  // Flatten platforms into a single array
   const flatBuyers = useMemo((): FlatBuyer[] => {
     const useLegacy = peFirms.length === 0 && legacyBuyers.length > 0;
     
     if (useLegacy) {
-      // Group legacy buyers by PE firm to get tracker IDs
       const grouped: Record<string, { buyers: any[], trackerIds: Set<string> }> = {};
       legacyBuyers.forEach(b => {
         if (!grouped[b.pe_firm_name]) {
@@ -90,14 +101,12 @@ export default function AllBuyers() {
         industryVertical: b.industry_vertical,
         thesisSummary: b.thesis_summary,
         thesisConfidence: b.thesis_confidence,
-        targetGeographies: b.target_geographies,
         hasFeeAgreement: b.has_fee_agreement || b.fee_agreement_status === 'Signed',
         trackerIds: Array.from(grouped[b.pe_firm_name].trackerIds),
         isLegacy: true,
       }));
     }
     
-    // Flatten new hierarchy
     return peFirms.flatMap(firm => 
       firm.platforms.map(platform => ({
         id: platform.id,
@@ -107,7 +116,6 @@ export default function AllBuyers() {
         industryVertical: platform.industry_vertical,
         thesisSummary: platform.thesis_summary,
         thesisConfidence: platform.thesis_confidence,
-        targetGeographies: (platform as any).target_geographies || null,
         hasFeeAgreement: platform.has_fee_agreement || firm.has_fee_agreement,
         trackerIds: firm.trackerIds,
         isLegacy: false,
@@ -115,54 +123,115 @@ export default function AllBuyers() {
     );
   }, [peFirms, legacyBuyers]);
 
-  // Filter buyers
-  const filteredBuyers = useMemo(() => {
-    if (!search) return flatBuyers;
+  // Aggregate PE Firms for PE Firms view
+  const flatPEFirms = useMemo((): FlatPEFirm[] => {
+    const useLegacy = peFirms.length === 0 && legacyBuyers.length > 0;
     
+    if (useLegacy) {
+      const grouped: Record<string, FlatPEFirm> = {};
+      legacyBuyers.forEach(b => {
+        if (!grouped[b.pe_firm_name]) {
+          grouped[b.pe_firm_name] = {
+            id: b.pe_firm_name,
+            name: b.pe_firm_name,
+            platformsCount: 0,
+            industryVertical: b.industry_vertical,
+            thesisSummary: b.thesis_summary,
+            thesisConfidence: b.thesis_confidence,
+            hasFeeAgreement: b.has_fee_agreement || b.fee_agreement_status === 'Signed',
+            trackerIds: [],
+          };
+        }
+        grouped[b.pe_firm_name].platformsCount++;
+        if (b.tracker_id && !grouped[b.pe_firm_name].trackerIds.includes(b.tracker_id)) {
+          grouped[b.pe_firm_name].trackerIds.push(b.tracker_id);
+        }
+        if (b.has_fee_agreement) grouped[b.pe_firm_name].hasFeeAgreement = true;
+      });
+      return Object.values(grouped);
+    }
+    
+    return peFirms.map(firm => {
+      const firstPlatform = firm.platforms[0];
+      const highestConfidence = firm.platforms.reduce((best, p) => {
+        const order = { high: 3, medium: 2, low: 1 };
+        const currentOrder = order[(p.thesis_confidence as keyof typeof order)] || 0;
+        const bestOrder = order[(best as keyof typeof order)] || 0;
+        return currentOrder > bestOrder ? p.thesis_confidence : best;
+      }, firstPlatform?.thesis_confidence || null);
+      
+      return {
+        id: firm.id,
+        name: firm.name,
+        platformsCount: firm.platforms.length,
+        industryVertical: firstPlatform?.industry_vertical || null,
+        thesisSummary: firstPlatform?.thesis_summary || null,
+        thesisConfidence: highestConfidence,
+        hasFeeAgreement: firm.has_fee_agreement || firm.platforms.some(p => p.has_fee_agreement),
+        trackerIds: firm.trackerIds,
+      };
+    });
+  }, [peFirms, legacyBuyers]);
+
+  // Filter based on view mode and search
+  const filteredData = useMemo(() => {
     const searchLower = search.toLowerCase();
-    return flatBuyers.filter(b => 
+    
+    if (viewMode === "pe_firms") {
+      if (!search) return flatPEFirms;
+      return flatPEFirms.filter(f => 
+        f.name.toLowerCase().includes(searchLower) ||
+        (f.industryVertical?.toLowerCase().includes(searchLower)) ||
+        (f.thesisSummary?.toLowerCase().includes(searchLower))
+      );
+    }
+    
+    const buyers = viewMode === "platforms" ? flatBuyers : flatBuyers;
+    if (!search) return buyers;
+    
+    return buyers.filter(b => 
       b.name.toLowerCase().includes(searchLower) ||
       b.peFirmName.toLowerCase().includes(searchLower) ||
       (b.industryVertical?.toLowerCase().includes(searchLower)) ||
       (b.thesisSummary?.toLowerCase().includes(searchLower))
     );
-  }, [flatBuyers, search]);
+  }, [flatBuyers, flatPEFirms, viewMode, search]);
 
-  // Sort buyers
-  const sortedBuyers = useMemo(() => {
-    return [...filteredBuyers].sort((a, b) => {
-      let aVal: string, bVal: string;
+  // Sort data
+  const sortedData = useMemo(() => {
+    return [...filteredData].sort((a, b) => {
+      let aVal: string | number, bVal: string | number;
       
       switch (sortColumn) {
-        case "platform":
+        case "name":
           aVal = a.name.toLowerCase();
           bVal = b.name.toLowerCase();
           break;
         case "pe_firm":
-          aVal = a.peFirmName.toLowerCase();
-          bVal = b.peFirmName.toLowerCase();
+          aVal = ((a as FlatBuyer).peFirmName || "").toLowerCase();
+          bVal = ((b as FlatBuyer).peFirmName || "").toLowerCase();
           break;
+        case "platforms_count":
+          aVal = (a as FlatPEFirm).platformsCount || 0;
+          bVal = (b as FlatPEFirm).platformsCount || 0;
+          return sortDirection === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
         case "industry":
-          aVal = (a.industryVertical || "").toLowerCase();
-          bVal = (b.industryVertical || "").toLowerCase();
-          break;
-        case "geography":
-          aVal = (a.targetGeographies?.[0] || "").toLowerCase();
-          bVal = (b.targetGeographies?.[0] || "").toLowerCase();
+          aVal = ((a as FlatBuyer).industryVertical || "").toLowerCase();
+          bVal = ((b as FlatBuyer).industryVertical || "").toLowerCase();
           break;
         case "confidence":
           const order = { high: 3, medium: 2, low: 1 };
-          const aOrder = order[(a.thesisConfidence as keyof typeof order)] || 0;
-          const bOrder = order[(b.thesisConfidence as keyof typeof order)] || 0;
+          const aOrder = order[((a as FlatBuyer).thesisConfidence as keyof typeof order)] || 0;
+          const bOrder = order[((b as FlatBuyer).thesisConfidence as keyof typeof order)] || 0;
           return sortDirection === "asc" ? aOrder - bOrder : bOrder - aOrder;
         default:
           return 0;
       }
       
-      const comparison = aVal.localeCompare(bVal);
+      const comparison = (aVal as string).localeCompare(bVal as string);
       return sortDirection === "asc" ? comparison : -comparison;
     });
-  }, [filteredBuyers, sortColumn, sortDirection]);
+  }, [filteredData, sortColumn, sortDirection]);
 
   const toggleSort = (column: SortColumn) => {
     if (sortColumn === column) {
@@ -250,22 +319,53 @@ export default function AllBuyers() {
               <h1 className="text-2xl font-display font-bold">All Buyers</h1>
               <p className="text-muted-foreground">
                 {totalFirms} PE firm{totalFirms !== 1 ? "s" : ""} · {flatBuyers.length} platform{flatBuyers.length !== 1 ? "s" : ""}
-                {search && <span className="text-primary"> (filtered: {filteredBuyers.length})</span>}
+                {search && <span className="text-primary"> (filtered: {filteredData.length})</span>}
               </p>
+            </div>
+            
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+              <Button
+                variant={viewMode === "all" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("all")}
+                className="gap-1.5"
+              >
+                <Layers className="w-4 h-4" />
+                All
+              </Button>
+              <Button
+                variant={viewMode === "pe_firms" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("pe_firms")}
+                className="gap-1.5"
+              >
+                <Building2 className="w-4 h-4" />
+                PE Firms
+              </Button>
+              <Button
+                variant={viewMode === "platforms" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("platforms")}
+                className="gap-1.5"
+              >
+                <Users className="w-4 h-4" />
+                Platforms
+              </Button>
             </div>
           </div>
 
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
-              placeholder="Search platforms, PE firms, industries..." 
+              placeholder={viewMode === "pe_firms" ? "Search PE firms, industries..." : "Search platforms, PE firms, industries..."} 
               value={search} 
               onChange={(e) => setSearch(e.target.value)} 
               className="pl-10" 
             />
           </div>
 
-          {sortedBuyers.length === 0 ? (
+          {sortedData.length === 0 ? (
             <div className="bg-card rounded-lg border p-12 text-center">
               <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="font-semibold mb-2">
@@ -283,132 +383,196 @@ export default function AllBuyers() {
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <SortableHeader column="platform" columnKey="platform">Platform</SortableHeader>
-                    <SortableHeader column="pe_firm" columnKey="pe_firm">PE Firm</SortableHeader>
+                    {viewMode === "pe_firms" ? (
+                      <>
+                        <SortableHeader column="name" columnKey="name">PE Firm</SortableHeader>
+                        <SortableHeader column="platforms_count" columnKey="platforms_count">Platforms</SortableHeader>
+                      </>
+                    ) : (
+                      <>
+                        <SortableHeader column="name" columnKey="name">Platform</SortableHeader>
+                        <SortableHeader column="pe_firm" columnKey="pe_firm">PE Firm</SortableHeader>
+                      </>
+                    )}
                     <SortableHeader column="industry" columnKey="industry">Industry</SortableHeader>
                     <ResizableHeader columnKey="thesis">Thesis</ResizableHeader>
-                    <SortableHeader column="geography" columnKey="geography">Geography</SortableHeader>
                     <ResizableHeader columnKey="fee" className="text-center">Fee Agreement</ResizableHeader>
                     <SortableHeader column="confidence" columnKey="confidence" className="text-center">Confidence</SortableHeader>
                     <ResizableHeader columnKey="universe">Buyer Universe</ResizableHeader>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedBuyers.map((buyer) => {
-                    const universeNames = buyer.trackerIds
-                      .map(id => trackers[id])
-                      .filter(Boolean)
-                      .slice(0, 2);
-                    
-                    const linkTo = buyer.isLegacy ? `/buyers/${buyer.id}` : `/platforms/${buyer.id}`;
-                    
-                    return (
-                      <TableRow key={buyer.id} className="group">
-                        {/* Platform Name */}
-                        <TableCell className="font-medium">
-                          <Link to={linkTo} className="hover:text-primary transition-colors">
-                            {buyer.name}
-                          </Link>
-                        </TableCell>
-                        
-                        {/* PE Firm */}
-                        <TableCell className="text-muted-foreground">
-                          {buyer.peFirmName}
-                        </TableCell>
-                        
-                        {/* Industry */}
-                        <TableCell>
-                          {buyer.industryVertical ? (
-                            <Badge variant="secondary" className="text-xs font-normal">
-                              {buyer.industryVertical}
+                  {viewMode === "pe_firms" ? (
+                    // PE Firms View
+                    (sortedData as FlatPEFirm[]).map((firm) => {
+                      const universeNames = firm.trackerIds
+                        .map(id => trackers[id])
+                        .filter(Boolean)
+                        .slice(0, 2);
+                      
+                      return (
+                        <TableRow key={firm.id} className="group">
+                          <TableCell className="font-medium">
+                            <Link to={`/pe-firms/${firm.id}`} className="hover:text-primary transition-colors">
+                              {firm.name}
+                            </Link>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {firm.platformsCount}
                             </Badge>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        
-                        {/* Thesis */}
-                        <TableCell className="max-w-[250px]">
-                          {buyer.thesisSummary ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="text-sm text-muted-foreground truncate block cursor-default">
-                                  {buyer.thesisSummary}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-sm">
-                                <p className="text-sm">{buyer.thesisSummary}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        
-                        {/* Geography */}
-                        <TableCell>
-                          {buyer.targetGeographies && buyer.targetGeographies.length > 0 ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="text-sm truncate block max-w-[130px]">
-                                  {buyer.targetGeographies.slice(0, 2).join(", ")}
-                                  {buyer.targetGeographies.length > 2 && ` +${buyer.targetGeographies.length - 2}`}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p className="text-sm">{buyer.targetGeographies.join(", ")}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        
-                        {/* Fee Agreement */}
-                        <TableCell className="text-center">
-                          {buyer.hasFeeAgreement && (
-                            <Badge variant="outline" className="text-xs flex items-center gap-1 bg-primary/10 border-primary/20 w-fit mx-auto">
-                              <FileCheck className="w-3 h-3" />
-                              Signed
-                            </Badge>
-                          )}
-                        </TableCell>
-                        
-                        {/* Confidence */}
-                        <TableCell className="text-center">
-                          {buyer.thesisConfidence ? (
-                            <Badge 
-                              variant={buyer.thesisConfidence === "high" ? "default" : "secondary"}
-                              className="text-xs capitalize"
-                            >
-                              {buyer.thesisConfidence}
-                            </Badge>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        
-                        {/* Buyer Universe */}
-                        <TableCell>
-                          <div className="flex items-center gap-1 flex-wrap">
-                            {universeNames.map((name, i) => (
-                              <Badge key={i} variant="secondary" className="text-xs">
-                                {name}
+                          </TableCell>
+                          <TableCell>
+                            {firm.industryVertical ? (
+                              <Badge variant="secondary" className="text-xs font-normal">
+                                {firm.industryVertical}
                               </Badge>
-                            ))}
-                            {buyer.trackerIds.length > 2 && (
-                              <Badge variant="outline" className="text-xs">
-                                +{buyer.trackerIds.length - 2}
-                              </Badge>
-                            )}
-                            {universeNames.length === 0 && (
+                            ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                          </TableCell>
+                          <TableCell className="max-w-[250px]">
+                            {firm.thesisSummary ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="text-sm text-muted-foreground truncate block cursor-default">
+                                    {firm.thesisSummary}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-sm">
+                                  <p className="text-sm">{firm.thesisSummary}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {firm.hasFeeAgreement && (
+                              <Badge variant="outline" className="text-xs flex items-center gap-1 bg-primary/10 border-primary/20 w-fit mx-auto">
+                                <FileCheck className="w-3 h-3" />
+                                Signed
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {firm.thesisConfidence ? (
+                              <Badge 
+                                variant={firm.thesisConfidence === "high" ? "default" : "secondary"}
+                                className="text-xs capitalize"
+                              >
+                                {firm.thesisConfidence}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {universeNames.map((name, i) => (
+                                <Badge key={i} variant="secondary" className="text-xs">
+                                  {name}
+                                </Badge>
+                              ))}
+                              {firm.trackerIds.length > 2 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{firm.trackerIds.length - 2}
+                                </Badge>
+                              )}
+                              {universeNames.length === 0 && (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  ) : (
+                    // Platforms View (All or Platforms only)
+                    (sortedData as FlatBuyer[]).map((buyer) => {
+                      const universeNames = buyer.trackerIds
+                        .map(id => trackers[id])
+                        .filter(Boolean)
+                        .slice(0, 2);
+                      
+                      const linkTo = buyer.isLegacy ? `/buyers/${buyer.id}` : `/platforms/${buyer.id}`;
+                      
+                      return (
+                        <TableRow key={buyer.id} className="group">
+                          <TableCell className="font-medium">
+                            <Link to={linkTo} className="hover:text-primary transition-colors">
+                              {buyer.name}
+                            </Link>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {buyer.peFirmName}
+                          </TableCell>
+                          <TableCell>
+                            {buyer.industryVertical ? (
+                              <Badge variant="secondary" className="text-xs font-normal">
+                                {buyer.industryVertical}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="max-w-[250px]">
+                            {buyer.thesisSummary ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="text-sm text-muted-foreground truncate block cursor-default">
+                                    {buyer.thesisSummary}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-sm">
+                                  <p className="text-sm">{buyer.thesisSummary}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {buyer.hasFeeAgreement && (
+                              <Badge variant="outline" className="text-xs flex items-center gap-1 bg-primary/10 border-primary/20 w-fit mx-auto">
+                                <FileCheck className="w-3 h-3" />
+                                Signed
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {buyer.thesisConfidence ? (
+                              <Badge 
+                                variant={buyer.thesisConfidence === "high" ? "default" : "secondary"}
+                                className="text-xs capitalize"
+                              >
+                                {buyer.thesisConfidence}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {universeNames.map((name, i) => (
+                                <Badge key={i} variant="secondary" className="text-xs">
+                                  {name}
+                                </Badge>
+                              ))}
+                              {buyer.trackerIds.length > 2 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{buyer.trackerIds.length - 2}
+                                </Badge>
+                              )}
+                              {universeNames.length === 0 && (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
                 </TableBody>
               </Table>
             </div>
