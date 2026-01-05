@@ -77,9 +77,9 @@ serve(async (req) => {
       );
     }
 
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-    if (!OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY is not configured');
+    const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY is not configured');
     }
 
     const systemPrompt = `You are an M&A analyst expert at extracting buyer universe criteria from unstructured notes.
@@ -103,40 +103,56 @@ SCORING HINTS:
 - Geography mode should be "strict" for local service businesses (auto repair, plumbing, HVAC)
 - Geography mode should be "moderate" for regional businesses
 
-Extract as much relevant information as possible from the notes.`;
+Extract as much relevant information as possible from the notes.
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+Return your extraction as a JSON object matching this exact schema:
+${JSON.stringify(extractTrackerCriteriaTool.function.parameters, null, 2)}`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'x-api-key': ANTHROPIC_API_KEY,
         'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        system: systemPrompt,
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Extract buyer universe criteria from these notes:\n\n${notes}` }
+          { role: 'user', content: `Extract buyer universe criteria from these notes:\n\n${notes}\n\nReturn ONLY a valid JSON object, no other text.` }
         ],
-        tools: [extractTrackerCriteriaTool],
-        tool_choice: { type: "function", function: { name: "extract_tracker_criteria" } }
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenAI API error:', response.status, errorText);
+      console.error('Claude API error:', response.status, errorText);
       throw new Error(`AI API error: ${response.status}`);
     }
 
     const data = await response.json();
-    console.log('OpenAI response:', JSON.stringify(data, null, 2));
+    console.log('Claude response received');
 
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall || toolCall.function.name !== 'extract_tracker_criteria') {
+    const content = data.content?.[0]?.text;
+    if (!content) {
       throw new Error('No valid extraction result');
     }
 
-    const extracted = JSON.parse(toolCall.function.arguments);
+    // Parse the JSON from Claude's response
+    let extracted;
+    try {
+      // Try to extract JSON from the response (handle markdown code blocks)
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        extracted = JSON.parse(jsonMatch[0]);
+      } else {
+        extracted = JSON.parse(content);
+      }
+    } catch (parseError) {
+      console.error('Failed to parse Claude response:', content);
+      throw new Error('Failed to parse extraction result');
+    }
     console.log('Extracted criteria:', JSON.stringify(extracted, null, 2));
 
     return new Response(

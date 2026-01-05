@@ -400,7 +400,7 @@ async function scrapeWithLocationPages(baseUrl: string, firecrawlApiKey: string)
   return { main: mainContent, locations: locationsContent };
 }
 
-async function callAIWithTool(openaiApiKey: string, systemPrompt: string, userPrompt: string, tool: any, maxRetries = 3): Promise<any> {
+async function callAIWithTool(anthropicApiKey: string, systemPrompt: string, userPrompt: string, tool: any, maxRetries = 3): Promise<any> {
   let lastError: Error | null = null;
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -412,50 +412,52 @@ async function callAIWithTool(openaiApiKey: string, systemPrompt: string, userPr
         await new Promise(resolve => setTimeout(resolve, delay));
       }
       
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
+          'x-api-key': anthropicApiKey,
           'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4096,
+          system: systemPrompt,
+          tools: [{
+            name: tool.function.name,
+            description: tool.function.description,
+            input_schema: tool.function.parameters
+          }],
+          tool_choice: { type: 'tool', name: tool.function.name },
           messages: [
-            { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
           ],
-          tools: [tool],
-          tool_choice: { type: 'function', function: { name: tool.function.name } },
         }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`AI call failed (attempt ${attempt + 1}):`, response.status, errorText);
+        console.error(`Claude call failed (attempt ${attempt + 1}):`, response.status, errorText);
         
         // Only retry on 5xx errors (server errors)
         if (response.status >= 500 && attempt < maxRetries - 1) {
-          lastError = new Error(`AI call failed: ${response.status}`);
+          lastError = new Error(`Claude call failed: ${response.status}`);
           continue;
         }
-        throw new Error(`AI call failed: ${response.status}`);
+        throw new Error(`Claude call failed: ${response.status}`);
       }
 
       const data = await response.json();
-      const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+      const toolUse = data.content?.find((block: any) => block.type === 'tool_use');
       
-      if (!toolCall) {
+      if (!toolUse) {
         return {};
       }
 
-      try {
-        return JSON.parse(toolCall.function.arguments);
-      } catch {
-        return {};
-      }
+      return toolUse.input || {};
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      console.error(`AI call error (attempt ${attempt + 1}):`, lastError.message);
+      console.error(`Claude call error (attempt ${attempt + 1}):`, lastError.message);
       
       if (attempt >= maxRetries - 1) {
         throw lastError;
@@ -463,7 +465,7 @@ async function callAIWithTool(openaiApiKey: string, systemPrompt: string, userPr
     }
   }
   
-  throw lastError || new Error('AI call failed after retries');
+  throw lastError || new Error('Claude call failed after retries');
 }
 
 // Import geography utilities from shared module
@@ -761,7 +763,7 @@ Deno.serve(async (req) => {
     }
 
     const firecrawlApiKey = Deno.env.get('FIRECRAWL_API_KEY');
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
@@ -772,9 +774,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!openaiApiKey) {
+    if (!anthropicApiKey) {
       return new Response(
-        JSON.stringify({ success: false, error: 'OpenAI API key not configured' }),
+        JSON.stringify({ success: false, error: 'Anthropic API key not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -901,7 +903,7 @@ EXAMPLE OUTPUT:
 - revenue_model: "Project-based and recurring maintenance contracts"`;
 
       const businessOverview = await callAIWithTool(
-        openaiApiKey,
+        anthropicApiKey,
         'You are extracting business overview information from a company website. Be precise and only include information clearly stated.',
         businessOverviewPrompt,
         extractBusinessOverviewTool
@@ -923,7 +925,7 @@ EXAMPLE OUTPUT:
 - go_to_market_strategy: "Direct sales with dedicated account managers for commercial clients"`;
 
       const customers = await callAIWithTool(
-        openaiApiKey,
+        anthropicApiKey,
         'You are extracting customer and market information from a company website. Be precise and only include information clearly stated.',
         customersPrompt,
         extractCustomersEndMarketTool
@@ -981,7 +983,7 @@ DO NOT use the example states below - they are ONLY for formatting reference:
 ONLY extract states that appear as explicit addresses or location names in the content above.`;
 
       const geography = await callAIWithTool(
-        openaiApiKey,
+        anthropicApiKey,
         `You are extracting ONLY explicitly mentioned physical locations from website content. 
 
 CRITICAL RULES:
@@ -1051,7 +1053,7 @@ EXAMPLE OUTPUT:
 - last_acquisition_date: "2024-03-15"`;
 
       const acquisitions = await callAIWithTool(
-        openaiApiKey,
+        anthropicApiKey,
         'You are extracting PLATFORM acquisition history - companies acquired BY this platform. Look for press releases, news, and announcements about their acquisitions.',
         acquisitionsPrompt,
         extractPlatformAcquisitionsTool
@@ -1092,7 +1094,7 @@ EXAMPLE OUTPUT:
 - target_industries: ["HVAC", "Plumbing", "Electrical", "Home Services"]`;
 
       const thesis = await callAIWithTool(
-        openaiApiKey,
+        anthropicApiKey,
         'You are extracting investment thesis information from a PE firm website. Be precise and only include information clearly stated.',
         thesisPrompt,
         extractPEInvestmentThesisTool
@@ -1115,7 +1117,7 @@ EXAMPLE OUTPUT:
 - num_platforms: 3`;
 
       const portfolio = await callAIWithTool(
-        openaiApiKey,
+        anthropicApiKey,
         'You are extracting portfolio and acquisition history from a PE firm website. Be precise and only include information clearly stated.',
         portfolioPrompt,
         extractPEPortfolioTool
@@ -1143,7 +1145,7 @@ EXAMPLE OUTPUT:
 - max_ebitda: 10`;
 
       const criteria = await callAIWithTool(
-        openaiApiKey,
+        anthropicApiKey,
         'You are extracting target SIZE criteria ONLY from a PE firm website. Only extract revenue/EBITDA ranges. Do NOT extract geography preferences, business model preferences, or any deal structure preferences.',
         criteriaPrompt,
         extractPETargetCriteriaTool
