@@ -1,47 +1,27 @@
-import { useEffect, useState, useRef, useMemo } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { CSVImport } from "@/components/CSVImport";
-import { DealCSVImport } from "@/components/DealCSVImport";
-import { BulkProgressBar } from "@/components/BulkProgressBar";
 import { StructuredCriteriaPanel } from "@/components/StructuredCriteriaPanel";
 import { KPIConfigPanel } from "@/components/KPIConfigPanel";
 import { ScoringBehaviorPanel } from "@/components/ScoringBehaviorPanel";
 import { TrackerQueryChat } from "@/components/TrackerQueryChat";
 import { TrackerNotesSection } from "@/components/TrackerNotesSection";
 import { AIResearchSection } from "@/components/AIResearchSection";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, ArrowLeft, Search, FileText, Users, ExternalLink, Building2, ArrowUpDown, Trash2, MapPin, Sparkles, Archive, Pencil, Check, X, Info, Wand2, DollarSign, Briefcase, ChevronRight, ChevronDown, Target, FileSearch, Download, MoreHorizontal, Upload, TrendingUp, ArrowUp, ArrowDown, Filter, BookOpen, CheckSquare, Square, GitMerge, Send, MessageSquare } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, FileText, Users, Info, Wand2, ChevronRight, ChevronDown, FileSearch, Download, Upload, BookOpen, X, Pencil, Check, Send, MessageSquare, DollarSign, Briefcase, MapPin, Target } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { IntelligenceBadge } from "@/components/IntelligenceBadge";
-import { DealScoreBadge } from "@/components/DealScoreBadge";
 import { deleteBuyerWithRelated, deleteDealWithRelated } from "@/lib/cascadeDelete";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { TrackerBuyersTab } from "@/components/tracker/TrackerBuyersTab";
+import { TrackerDealsTab } from "@/components/tracker/TrackerDealsTab";
 
 // LocalStorage key for enrichment progress persistence
 const getEnrichmentStorageKey = (trackerId: string) => `enrichment_progress_${trackerId}`;
@@ -52,24 +32,64 @@ interface EnrichmentProgress {
   lastUpdatedAt: string;
 }
 
+// Helper functions
+const isMeaningfulText = (value: unknown) => {
+  if (typeof value !== "string") return false;
+  const v = value.trim();
+  if (!v) return false;
+  return !["not specified", "n/a", "na", "unknown", "none", "tbd"].includes(v.toLowerCase());
+};
+
+const isActuallyEnriched = (buyer: any) => {
+  return (
+    isMeaningfulText(buyer.business_summary) ||
+    isMeaningfulText(buyer.services_offered) ||
+    isMeaningfulText(buyer.thesis_summary) ||
+    isMeaningfulText(buyer.strategic_priorities) ||
+    (Array.isArray(buyer.portfolio_companies) && buyer.portfolio_companies.length > 0) ||
+    (Array.isArray(buyer.target_industries) && buyer.target_industries.length > 0) ||
+    (Array.isArray(buyer.recent_acquisitions) && buyer.recent_acquisitions.length > 0)
+  );
+};
+
 export default function TrackerDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  
+  // Core data state
   const [tracker, setTracker] = useState<any>(null);
   const [buyers, setBuyers] = useState<any[]>([]);
   const [deals, setDeals] = useState<any[]>([]);
+  const [dealBuyerCounts, setDealBuyerCounts] = useState<Record<string, { approved: number; interested: number; passed: number }>>({});
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Buyer state
   const [search, setSearch] = useState("");
-  const [newBuyer, setNewBuyer] = useState({ pe_firm_name: "", pe_firm_website: "", platform_company_name: "", platform_website: "" });
-  const [dialogOpen, setDialogOpen] = useState(false);
   const [enrichingBuyers, setEnrichingBuyers] = useState<Set<string>>(new Set());
   const [isBulkEnriching, setIsBulkEnriching] = useState(false);
   const [buyerEnrichmentProgress, setBuyerEnrichmentProgress] = useState({ current: 0, total: 0 });
+  const [selectedBuyerIds, setSelectedBuyerIds] = useState<Set<string>>(new Set());
+  const [highlightedBuyerIds, setHighlightedBuyerIds] = useState<Set<string>>(new Set());
+  const [buyerSortColumn, setBuyerSortColumn] = useState<string>("platform_company_name");
+  const [buyerSortDirection, setBuyerSortDirection] = useState<"asc" | "desc">("asc");
+  const [hasInterruptedSession, setHasInterruptedSession] = useState(false);
+  const [interruptedSessionInfo, setInterruptedSessionInfo] = useState<{ processed: number; remaining: number } | null>(null);
+  const [isDeduping, setIsDeduping] = useState(false);
+  const [dedupeDialogOpen, setDedupeDialogOpen] = useState(false);
+  const [dedupePreview, setDedupePreview] = useState<any>(null);
+  
+  // Deal state
   const [enrichingDeals, setEnrichingDeals] = useState<Set<string>>(new Set());
   const [isBulkEnrichingDeals, setIsBulkEnrichingDeals] = useState(false);
   const [dealEnrichmentProgress, setDealEnrichmentProgress] = useState({ current: 0, total: 0 });
-  const [dealBuyerCounts, setDealBuyerCounts] = useState<Record<string, { approved: number; interested: number; passed: number }>>({});
+  const [dealSortColumn, setDealSortColumn] = useState<string>("deal_score");
+  const [dealSortDirection, setDealSortDirection] = useState<"asc" | "desc">("desc");
+  const [isScoringAll, setIsScoringAll] = useState(false);
+  const [scoringProgress, setScoringProgress] = useState({ current: 0, total: 0 });
+  
+  // Criteria state
+  const [isCriteriaCollapsed, setIsCriteriaCollapsed] = useState(true);
   const [isEditingFitCriteria, setIsEditingFitCriteria] = useState(false);
   const [editedSizeCriteria, setEditedSizeCriteria] = useState("");
   const [editedServiceCriteria, setEditedServiceCriteria] = useState("");
@@ -80,50 +100,19 @@ export default function TrackerDetail() {
   const [criteriaEditInstruction, setCriteriaEditInstruction] = useState("");
   const [isApplyingCriteriaEdit, setIsApplyingCriteriaEdit] = useState(false);
   const [lastCriteriaChangesSummary, setLastCriteriaChangesSummary] = useState("");
+  const [isExtractingFromGuide, setIsExtractingFromGuide] = useState(false);
+  
+  // Document state
+  const [isUploadingDocs, setIsUploadingDocs] = useState(false);
   const [isAnalyzingDocuments, setIsAnalyzingDocuments] = useState(false);
   const [showAnalysisConfirmDialog, setShowAnalysisConfirmDialog] = useState(false);
-  const [isCriteriaCollapsed, setIsCriteriaCollapsed] = useState(true);
-  const [isUploadingDocs, setIsUploadingDocs] = useState(false);
-  const [isExtractingFromGuide, setIsExtractingFromGuide] = useState(false);
   const docFileInputRef = useRef<HTMLInputElement>(null);
   const autoExtractAttemptedRef = useRef(false);
-  
-  // Deal scoring state
-  const [isScoringAll, setIsScoringAll] = useState(false);
-  const [scoringProgress, setScoringProgress] = useState({ current: 0, total: 0 });
-  
-  // Deal sorting state
-  const [dealSortColumn, setDealSortColumn] = useState<string>("deal_score");
-  const [dealSortDirection, setDealSortDirection] = useState<"asc" | "desc">("desc");
-  
-  // Buyer sorting state
-  const [buyerSortColumn, setBuyerSortColumn] = useState<string>("platform_company_name");
-  const [buyerSortDirection, setBuyerSortDirection] = useState<"asc" | "desc">("asc");
-  
-  // Buyer highlighting state (from AI chat)
-  const [highlightedBuyerIds, setHighlightedBuyerIds] = useState<Set<string>>(new Set());
-  const [selectedBuyerIds, setSelectedBuyerIds] = useState<Set<string>>(new Set());
-  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
-  
-  // Deduplication state
-  const [isDeduping, setIsDeduping] = useState(false);
-  const [dedupeDialogOpen, setDedupeDialogOpen] = useState(false);
-  const [dedupePreview, setDedupePreview] = useState<{
-    duplicateGroups: Array<{
-      key: string;
-      matchType: 'domain' | 'name';
-      count: number;
-      platformNames: string[];
-      peFirmNames: string[];
-      mergedPeFirmName: string;
-      keeperName: string;
-    }>;
-    stats: { groupsFound: number; totalDuplicates: number };
-  } | null>(null);
-  
-  // Check for interrupted enrichment session
-  const [hasInterruptedSession, setHasInterruptedSession] = useState(false);
-  const [interruptedSessionInfo, setInterruptedSessionInfo] = useState<{ processed: number; remaining: number } | null>(null);
+
+  // Constants for retry logic
+  const MAX_ENRICHMENT_RETRIES = 3;
+  const RETRY_DELAY_MS = 2000;
+  const BETWEEN_BUYER_DELAY_MS = 500;
 
   // Navigation warning when bulk enriching
   useEffect(() => {
@@ -134,7 +123,6 @@ export default function TrackerDetail() {
         return e.returnValue;
       }
     };
-
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isBulkEnriching]);
@@ -142,28 +130,20 @@ export default function TrackerDetail() {
   // Check for interrupted enrichment session on load
   useEffect(() => {
     if (!id || buyers.length === 0) return;
-    
     const storageKey = getEnrichmentStorageKey(id);
     const savedProgress = localStorage.getItem(storageKey);
-    
     if (savedProgress) {
       try {
         const progress: EnrichmentProgress = JSON.parse(savedProgress);
         const buyersWithWebsites = buyers.filter((b) => b.platform_website || b.pe_firm_website);
         const unenrichedBuyers = buyersWithWebsites.filter((b) => !isActuallyEnriched(b));
-        
-        // Only show resume if there are still unenriched buyers
         if (unenrichedBuyers.length > 0 && progress.processedIds.length > 0) {
           setHasInterruptedSession(true);
-          setInterruptedSessionInfo({
-            processed: progress.processedIds.length,
-            remaining: unenrichedBuyers.length
-          });
+          setInterruptedSessionInfo({ processed: progress.processedIds.length, remaining: unenrichedBuyers.length });
         } else {
-          // Clear stale progress
           localStorage.removeItem(storageKey);
         }
-      } catch (e) {
+      } catch {
         localStorage.removeItem(storageKey);
       }
     }
@@ -171,71 +151,18 @@ export default function TrackerDetail() {
 
   useEffect(() => { loadData(); }, [id]);
   
-  // Auto-extract criteria from M&A guide if guide exists but criteria are empty
+  // Auto-extract criteria from M&A guide
   useEffect(() => {
     if (!tracker || autoExtractAttemptedRef.current || isExtractingFromGuide) return;
-    
     const hasGuide = !!tracker.ma_guide_content;
-    const hasStructuredCriteria = tracker.size_criteria || tracker.service_criteria || 
-                                   tracker.geography_criteria || tracker.buyer_types_criteria;
-    
+    const hasStructuredCriteria = tracker.size_criteria || tracker.service_criteria || tracker.geography_criteria || tracker.buyer_types_criteria;
     if (hasGuide && !hasStructuredCriteria) {
-      console.log('[TrackerDetail] Auto-extracting criteria from M&A guide...');
       autoExtractAttemptedRef.current = true;
-      
-      // Auto-trigger extraction
-      (async () => {
-        setIsExtractingFromGuide(true);
-        try {
-          const { data, error } = await supabase.functions.invoke('parse-fit-criteria', {
-            body: { fit_criteria: tracker.ma_guide_content }
-          });
-
-          if (error || !data?.success) {
-            console.error('[TrackerDetail] Auto-extraction failed:', error || data?.error);
-            toast({ 
-              title: "Criteria auto-extraction failed", 
-              description: "You can manually extract using the button in Buyer Fit Criteria section",
-              variant: "destructive" 
-            });
-            return;
-          }
-
-          const { error: updateError } = await supabase
-            .from("industry_trackers")
-            .update({
-              size_criteria: data.size_criteria,
-              service_criteria: data.service_criteria,
-              geography_criteria: data.geography_criteria,
-              buyer_types_criteria: data.buyer_types_criteria,
-              updated_at: new Date().toISOString()
-            })
-            .eq("id", id);
-
-          if (!updateError) {
-            setTracker((prev: any) => ({
-              ...prev,
-              size_criteria: data.size_criteria,
-              service_criteria: data.service_criteria,
-              geography_criteria: data.geography_criteria,
-              buyer_types_criteria: data.buyer_types_criteria
-            }));
-
-            toast({ 
-              title: "Criteria auto-extracted", 
-              description: "Buyer fit criteria populated from M&A guide" 
-            });
-          }
-        } catch (err) {
-          console.error('[TrackerDetail] Auto-extraction error:', err);
-        } finally {
-          setIsExtractingFromGuide(false);
-        }
-      })();
+      extractCriteriaFromGuide();
     }
-  }, [tracker, id, isExtractingFromGuide]);
+  }, [tracker, isExtractingFromGuide]);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     const [trackerRes, buyersRes, dealsRes] = await Promise.all([
       supabase.from("industry_trackers").select("*").eq("id", id).single(),
       supabase.from("buyers").select("*").eq("tracker_id", id).order("pe_firm_name"),
@@ -245,7 +172,6 @@ export default function TrackerDetail() {
     setBuyers(buyersRes.data || []);
     setDeals(dealsRes.data || []);
     
-    // Fetch buyer counts for each deal
     if (dealsRes.data && dealsRes.data.length > 0) {
       const dealIds = dealsRes.data.map(d => d.id);
       const { data: scores } = await supabase
@@ -266,18 +192,17 @@ export default function TrackerDetail() {
         setDealBuyerCounts(counts);
       }
     }
-    
     setIsLoading(false);
-  };
+  }, [id]);
 
-  const addBuyer = async () => {
-    if (!newBuyer.pe_firm_name.trim()) return;
+  // Buyer actions
+  const addBuyer = async (newBuyer: { pe_firm_name: string; pe_firm_website: string; platform_company_name: string; platform_website: string }) => {
+    if (!newBuyer.pe_firm_name.trim()) return false;
     const { error } = await supabase.from("buyers").insert({ tracker_id: id, ...newBuyer });
-    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return false; }
     toast({ title: "Buyer added" });
-    setNewBuyer({ pe_firm_name: "", pe_firm_website: "", platform_company_name: "", platform_website: "" });
-    setDialogOpen(false);
     loadData();
+    return true;
   };
 
   const deleteBuyer = async (buyerId: string, buyerName: string) => {
@@ -287,6 +212,125 @@ export default function TrackerDetail() {
     loadData();
   };
 
+  const enrichBuyer = async (buyerId: string, buyerName: string) => {
+    setEnrichingBuyers(prev => new Set(prev).add(buyerId));
+    try {
+      const { data, error } = await supabase.functions.invoke('enrich-buyer', { body: { buyerId } });
+      if (error || !data?.success) {
+        toast({ title: "Enrichment failed", description: error?.message || data?.error || "Unknown error", variant: "destructive" });
+        return;
+      }
+      toast({ title: data.warning ? "Partial enrichment" : "Buyer enriched", description: data.warning || `${buyerName}: ${data.message}` });
+      await loadData();
+    } catch (err) {
+      toast({ title: "Enrichment failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setEnrichingBuyers(prev => { const next = new Set(prev); next.delete(buyerId); return next; });
+    }
+  };
+
+  const saveEnrichmentProgress = (processedIds: string[]) => {
+    if (!id) return;
+    localStorage.setItem(getEnrichmentStorageKey(id), JSON.stringify({
+      processedIds, startedAt: new Date().toISOString(), lastUpdatedAt: new Date().toISOString()
+    }));
+  };
+
+  const clearEnrichmentProgress = () => {
+    if (!id) return;
+    localStorage.removeItem(getEnrichmentStorageKey(id));
+    setHasInterruptedSession(false);
+    setInterruptedSessionInfo(null);
+  };
+
+  const enrichSingleBuyerWithRetry = async (buyer: any): Promise<{ success: boolean; partial?: boolean; reason?: string }> => {
+    try {
+      const { data, error } = await supabase.functions.invoke("enrich-buyer", { body: { buyerId: buyer.id } });
+      if (error) return { success: false, reason: error.message };
+      if (!data?.success || (Number(data.fieldsUpdated ?? 0) <= 0)) return { success: false, reason: data?.error || "0 fields updated" };
+      return { success: true, partial: !!data.warning };
+    } catch (e) {
+      return { success: false, reason: e instanceof Error ? e.message : "Unknown error" };
+    }
+  };
+
+  const enrichAllBuyers = async () => {
+    const buyersWithWebsites = buyers.filter((b) => b.platform_website || b.pe_firm_website);
+    const unenrichedBuyers = buyersWithWebsites.filter((b) => !isActuallyEnriched(b));
+    if (buyersWithWebsites.length === 0) { toast({ title: "No websites to scrape", description: "Add website URLs to buyers first", variant: "destructive" }); return; }
+    if (unenrichedBuyers.length === 0) { toast({ title: "All buyers already enriched" }); clearEnrichmentProgress(); return; }
+
+    setIsBulkEnriching(true);
+    setBuyerEnrichmentProgress({ current: 0, total: unenrichedBuyers.length });
+
+    let enrichedCount = 0, failedCount = 0;
+    const processedIds: string[] = [];
+
+    for (let i = 0; i < unenrichedBuyers.length; i++) {
+      const buyer = unenrichedBuyers[i];
+      setEnrichingBuyers(prev => new Set(prev).add(buyer.id));
+      setBuyerEnrichmentProgress({ current: i + 1, total: unenrichedBuyers.length });
+
+      const result = await enrichSingleBuyerWithRetry(buyer);
+      processedIds.push(buyer.id);
+      saveEnrichmentProgress(processedIds);
+
+      if (result.success) enrichedCount++; else failedCount++;
+      setEnrichingBuyers(prev => { const next = new Set(prev); next.delete(buyer.id); return next; });
+      if (i < unenrichedBuyers.length - 1) await new Promise(r => setTimeout(r, BETWEEN_BUYER_DELAY_MS));
+    }
+
+    await loadData();
+    toast({ title: "Bulk enrichment complete", description: `${enrichedCount} enriched, ${failedCount} failed` });
+    clearEnrichmentProgress();
+    setIsBulkEnriching(false);
+    setEnrichingBuyers(new Set());
+    setBuyerEnrichmentProgress({ current: 0, total: 0 });
+  };
+
+  const deleteSelectedBuyers = async () => {
+    for (const buyerId of selectedBuyerIds) {
+      await deleteBuyerWithRelated(buyerId);
+    }
+    toast({ title: "Buyers deleted", description: `${selectedBuyerIds.size} buyer(s) removed` });
+    setSelectedBuyerIds(new Set());
+    setHighlightedBuyerIds(new Set());
+    loadData();
+  };
+
+  const checkForDuplicates = async () => {
+    setIsDeduping(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('dedupe-buyers', { body: { tracker_id: id, preview_only: true } });
+      if (error || !data?.success) { toast({ title: "Error", description: error?.message || data?.error, variant: "destructive" }); return; }
+      if (data.stats.groupsFound === 0) { toast({ title: "No duplicates found" }); return; }
+      setDedupePreview(data);
+      setDedupeDialogOpen(true);
+    } finally {
+      setIsDeduping(false);
+    }
+  };
+
+  const executeDedupe = async () => {
+    setIsDeduping(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('dedupe-buyers', { body: { tracker_id: id, preview_only: false } });
+      if (error || !data?.success) { toast({ title: "Error", description: error?.message || data?.error, variant: "destructive" }); return; }
+      toast({ title: "Duplicates merged", description: `Merged ${data.stats.groupsMerged} groups` });
+      setDedupeDialogOpen(false);
+      setDedupePreview(null);
+      loadData();
+    } finally {
+      setIsDeduping(false);
+    }
+  };
+
+  const handleBuyerSort = (column: string) => {
+    if (buyerSortColumn === column) setBuyerSortDirection(prev => prev === "asc" ? "desc" : "asc");
+    else { setBuyerSortColumn(column); setBuyerSortDirection("asc"); }
+  };
+
+  // Deal actions
   const deleteDeal = async (dealId: string, dealName: string) => {
     const { error } = await deleteDealWithRelated(dealId);
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
@@ -301,910 +345,119 @@ export default function TrackerDetail() {
     loadData();
   };
 
-  const enrichBuyer = async (buyerId: string, buyerName: string) => {
-    setEnrichingBuyers(prev => new Set(prev).add(buyerId));
-    
-    try {
-      const { data, error } = await supabase.functions.invoke('enrich-buyer', {
-        body: { buyerId }
-      });
-
-      if (error) {
-        toast({ 
-          title: "Enrichment failed", 
-          description: error.message, 
-          variant: "destructive" 
-        });
-        return;
-      }
-
-      if (!data.success) {
-        toast({ 
-          title: "Enrichment failed", 
-          description: data.error || "Unknown error", 
-          variant: "destructive" 
-        });
-        return;
-      }
-
-      // Show warning if partial enrichment (some websites failed)
-      if (data.warning) {
-        toast({ 
-          title: "Partial enrichment", 
-          description: data.warning
-        });
-      } else {
-        toast({ 
-          title: "Buyer enriched", 
-          description: `${buyerName}: ${data.message}` 
-        });
-      }
-      
-      await loadData();
-    } catch (err) {
-      toast({ 
-        title: "Enrichment failed", 
-        description: err instanceof Error ? err.message : "Unknown error", 
-        variant: "destructive" 
-      });
-    } finally {
-      setEnrichingBuyers(prev => {
-        const next = new Set(prev);
-        next.delete(buyerId);
-        return next;
-      });
-    }
-  };
-
-  // Constants for retry logic
-  const MAX_ENRICHMENT_RETRIES = 3;
-  const RETRY_DELAY_MS = 2000;
-  const BETWEEN_BUYER_DELAY_MS = 500;
-
-  const isMeaningfulText = (value: unknown) => {
-    if (typeof value !== "string") return false;
-    const v = value.trim();
-    if (!v) return false;
-    const lower = v.toLowerCase();
-    return ![
-      "not specified",
-      "n/a",
-      "na",
-      "unknown",
-      "none",
-      "tbd",
-    ].includes(lower);
-  };
-
-  const isActuallyEnriched = (buyer: any) => {
-    return (
-      isMeaningfulText(buyer.business_summary) ||
-      isMeaningfulText(buyer.services_offered) ||
-      isMeaningfulText(buyer.thesis_summary) ||
-      isMeaningfulText(buyer.strategic_priorities) ||
-      (Array.isArray(buyer.portfolio_companies) && buyer.portfolio_companies.length > 0) ||
-      (Array.isArray(buyer.target_industries) && buyer.target_industries.length > 0) ||
-      (Array.isArray(buyer.recent_acquisitions) && buyer.recent_acquisitions.length > 0)
-    );
-  };
-
-  const enrichSingleBuyerWithRetry = async (
-    buyer: any,
-    attempt: number,
-    maxAttempts: number
-  ): Promise<{ success: boolean; partial?: boolean; reason?: string; fieldsUpdated?: number }> => {
-    try {
-      const { data, error } = await supabase.functions.invoke("enrich-buyer", {
-        body: { buyerId: buyer.id },
-      });
-
-      if (error) {
-        return { success: false, reason: error.message };
-      }
-
-      if (!data?.success) {
-        return { success: false, reason: data?.error || "Unknown enrichment error" };
-      }
-
-      const fieldsUpdated = Number(data.fieldsUpdated ?? 0);
-      if (!Number.isFinite(fieldsUpdated) || fieldsUpdated <= 0) {
-        return { success: false, reason: "0 fields updated", fieldsUpdated: 0 };
-      }
-
-      return { success: true, partial: !!data.warning, fieldsUpdated };
-    } catch (e) {
-      return { success: false, reason: e instanceof Error ? e.message : "Unknown error" };
-    }
-  };
-
-  const saveEnrichmentProgress = (processedIds: string[]) => {
-    if (!id) return;
-    const storageKey = getEnrichmentStorageKey(id);
-    const progress: EnrichmentProgress = {
-      processedIds,
-      startedAt: new Date().toISOString(),
-      lastUpdatedAt: new Date().toISOString()
-    };
-    localStorage.setItem(storageKey, JSON.stringify(progress));
-  };
-
-  const clearEnrichmentProgress = () => {
-    if (!id) return;
-    const storageKey = getEnrichmentStorageKey(id);
-    localStorage.removeItem(storageKey);
-    setHasInterruptedSession(false);
-    setInterruptedSessionInfo(null);
-  };
-
-  const enrichAllBuyers = async () => {
-    // Filter to buyers with websites that are NOT already enriched
-    const buyersWithWebsites = buyers.filter((b) => b.platform_website || b.pe_firm_website);
-    const unenrichedBuyers = buyersWithWebsites.filter((b) => !isActuallyEnriched(b));
-
-    if (buyersWithWebsites.length === 0) {
-      toast({
-        title: "No websites to scrape",
-        description: "Add website URLs to buyers first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (unenrichedBuyers.length === 0) {
-      toast({
-        title: "All buyers already enriched",
-        description: `${buyersWithWebsites.length} buyers with websites are already enriched`,
-      });
-      clearEnrichmentProgress();
-      return;
-    }
-
-    // Request wake lock to prevent browser throttling
-    let wakeLock: WakeLockSentinel | null = null;
-    try {
-      if ('wakeLock' in navigator) {
-        wakeLock = await navigator.wakeLock.request('screen');
-        console.log('[enrichAllBuyers] Wake lock acquired');
-      }
-    } catch (err) {
-      console.log('[enrichAllBuyers] Wake lock not available:', err);
-    }
-
-    setIsBulkEnriching(true);
-    setBuyerEnrichmentProgress({ current: 0, total: unenrichedBuyers.length });
-
-    const enrichedBuyerIds = new Set<string>();
-    const partialBuyerIds = new Set<string>();
-    let failedBuyerIds = new Set<string>();
-    const failureReasons = new Map<string, string>();
-    const processedIds: string[] = [];
-
-    try {
-      // Phase 1: Initial enrichment pass (only unenriched buyers)
-      const skippedCount = buyersWithWebsites.length - unenrichedBuyers.length;
-      toast({
-        title: "Starting enrichment",
-        description: skippedCount > 0 
-          ? `Processing ${unenrichedBuyers.length} buyers (${skippedCount} already enriched, skipping)...`
-          : `Processing ${unenrichedBuyers.length} buyers...`,
-      });
-
-      for (let i = 0; i < unenrichedBuyers.length; i++) {
-        const buyer = unenrichedBuyers[i];
-        setEnrichingBuyers((prev) => new Set(prev).add(buyer.id));
-        setBuyerEnrichmentProgress({ current: i + 1, total: unenrichedBuyers.length });
-
-        const result = await enrichSingleBuyerWithRetry(buyer, 1, MAX_ENRICHMENT_RETRIES);
-
-        // Track processed buyers for persistence
-        processedIds.push(buyer.id);
-        saveEnrichmentProgress(processedIds);
-
-        if (!result.success) {
-          failedBuyerIds.add(buyer.id);
-          if (result.reason) failureReasons.set(buyer.id, result.reason);
-        } else {
-          enrichedBuyerIds.add(buyer.id);
-          if (result.partial) partialBuyerIds.add(buyer.id);
-        }
-
-        setEnrichingBuyers((prev) => {
-          const next = new Set(prev);
-          next.delete(buyer.id);
-          return next;
-        });
-
-        if (i < unenrichedBuyers.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, BETWEEN_BUYER_DELAY_MS));
-        }
-      }
-
-      // Phase 2: Retry failed buyers with exponential backoff
-      let retryAttempt = 1;
-      while (failedBuyerIds.size > 0 && retryAttempt <= MAX_ENRICHMENT_RETRIES) {
-        const delay = RETRY_DELAY_MS * Math.pow(2, retryAttempt - 1);
-        toast({
-          title: `Retry attempt ${retryAttempt} of ${MAX_ENRICHMENT_RETRIES}`,
-          description: `Retrying ${failedBuyerIds.size} buyer(s)...`,
-        });
-
-        await new Promise((resolve) => setTimeout(resolve, delay));
-
-        const buyersToRetry = unenrichedBuyers.filter((b) => failedBuyerIds.has(b.id));
-
-        for (const buyer of buyersToRetry) {
-          setEnrichingBuyers((prev) => new Set(prev).add(buyer.id));
-
-          const result = await enrichSingleBuyerWithRetry(buyer, retryAttempt, MAX_ENRICHMENT_RETRIES);
-
-          if (result.success) {
-            failedBuyerIds.delete(buyer.id);
-            failureReasons.delete(buyer.id);
-            enrichedBuyerIds.add(buyer.id);
-            if (result.partial) partialBuyerIds.add(buyer.id);
-          } else {
-            if (result.reason) failureReasons.set(buyer.id, result.reason);
-          }
-
-          setEnrichingBuyers((prev) => {
-            const next = new Set(prev);
-            next.delete(buyer.id);
-            return next;
-          });
-
-          await new Promise((resolve) => setTimeout(resolve, BETWEEN_BUYER_DELAY_MS));
-        }
-
-        retryAttempt++;
-      }
-
-      // Phase 3: Reload data and retry only buyers that still aren't actually enriched
-      await new Promise((resolve) => setTimeout(resolve, 800));
-
-      const { data: refreshedBuyers, error: refreshError } = await supabase
-        .from("buyers")
-        .select("*")
-        .eq("tracker_id", id)
-        .order("pe_firm_name");
-
-      if (!refreshError && refreshedBuyers) {
-        const stillUnenriched = refreshedBuyers.filter(
-          (b) => (b.platform_website || b.pe_firm_website) && !isActuallyEnriched(b)
-        );
-
-        if (stillUnenriched.length > 0) {
-          toast({
-            title: "Final verification pass",
-            description: `Retrying ${stillUnenriched.length} buyer(s) that still look empty...`,
-          });
-
-          for (const buyer of stillUnenriched) {
-            setEnrichingBuyers((prev) => new Set(prev).add(buyer.id));
-
-            const result = await enrichSingleBuyerWithRetry(buyer, 1, 1);
-
-            if (result.success) {
-              enrichedBuyerIds.add(buyer.id);
-              failedBuyerIds.delete(buyer.id);
-              failureReasons.delete(buyer.id);
-              if (result.partial) partialBuyerIds.add(buyer.id);
-            } else {
-              failedBuyerIds.add(buyer.id);
-              if (result.reason) failureReasons.set(buyer.id, result.reason);
-            }
-
-            setEnrichingBuyers((prev) => {
-              const next = new Set(prev);
-              next.delete(buyer.id);
-              return next;
-            });
-
-            await new Promise((resolve) => setTimeout(resolve, BETWEEN_BUYER_DELAY_MS));
-          }
-        }
-      }
-
-      await loadData();
-
-      // Summary
-      const failed = unenrichedBuyers
-        .filter((b) => failedBuyerIds.has(b.id))
-        .map((b) => ({
-          id: b.id,
-          name: b.platform_company_name || b.pe_firm_name,
-          reason: failureReasons.get(b.id) || "Unknown",
-        }));
-
-      let description = `${enrichedBuyerIds.size} enriched`;
-      if (partialBuyerIds.size > 0) description += ` (${partialBuyerIds.size} partial)`;
-      if (failed.length > 0) {
-        const top = failed.slice(0, 3).map((f) => `${f.name} (${f.reason})`).join(", ");
-        description += `, ${failed.length} failed`;
-        if (top) description += `: ${top}`;
-      }
-
-      toast({ title: "Bulk enrichment complete", description });
-      
-      // Clear progress on successful completion
-      clearEnrichmentProgress();
-    } finally {
-      // Release wake lock
-      if (wakeLock) {
-        try {
-          await wakeLock.release();
-          console.log('[enrichAllBuyers] Wake lock released');
-        } catch (err) {
-          console.log('[enrichAllBuyers] Error releasing wake lock:', err);
-        }
-      }
-      setIsBulkEnriching(false);
-      setEnrichingBuyers(new Set());
-      setBuyerEnrichmentProgress({ current: 0, total: 0 });
-    }
-  };
-
-  // Retry only unenriched buyers (for interrupted sessions or quick retry)
-  const retryUnenrichedBuyers = async () => {
-    clearEnrichmentProgress();
-    await enrichAllBuyers();
-  };
-
-  // Get count of unenriched buyers for UI
-  const unenrichedBuyerCount = useMemo(() => {
-    const buyersWithWebsites = buyers.filter((b) => b.platform_website || b.pe_firm_website);
-    return buyersWithWebsites.filter((b) => !isActuallyEnriched(b)).length;
-  }, [buyers]);
-
-  // Deduplicate buyers functions
-  const checkForDuplicates = async () => {
-    setIsDeduping(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('dedupe-buyers', {
-        body: { tracker_id: id, preview_only: true }
-      });
-
-      if (error) {
-        toast({ title: "Error", description: error.message, variant: "destructive" });
-        return;
-      }
-
-      if (!data.success) {
-        toast({ title: "Error", description: data.error, variant: "destructive" });
-        return;
-      }
-
-      if (data.stats.groupsFound === 0) {
-        toast({ title: "No duplicates found", description: "All buyers are unique" });
-        return;
-      }
-
-      setDedupePreview(data);
-      setDedupeDialogOpen(true);
-    } catch (err) {
-      toast({ 
-        title: "Error checking duplicates", 
-        description: err instanceof Error ? err.message : "Unknown error",
-        variant: "destructive" 
-      });
-    } finally {
-      setIsDeduping(false);
-    }
-  };
-
-  const executeDedupe = async () => {
-    setIsDeduping(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('dedupe-buyers', {
-        body: { tracker_id: id, preview_only: false }
-      });
-
-      if (error) {
-        toast({ title: "Error", description: error.message, variant: "destructive" });
-        return;
-      }
-
-      if (!data.success) {
-        toast({ title: "Error", description: data.error, variant: "destructive" });
-        return;
-      }
-
-      toast({ 
-        title: "Duplicates merged", 
-        description: `Merged ${data.stats.groupsMerged} groups, removed ${data.stats.duplicatesDeleted} duplicate records` 
-      });
-      
-      setDedupeDialogOpen(false);
-      setDedupePreview(null);
-      loadData();
-    } catch (err) {
-      toast({ 
-        title: "Error merging duplicates", 
-        description: err instanceof Error ? err.message : "Unknown error",
-        variant: "destructive" 
-      });
-    } finally {
-      setIsDeduping(false);
-    }
-  };
-
-  const filteredBuyers = buyers.filter((b) =>
-    b.pe_firm_name.toLowerCase().includes(search.toLowerCase()) ||
-    (b.platform_company_name || "").toLowerCase().includes(search.toLowerCase())
-  );
-
-  const getWebsiteUrl = (url: string | null) => {
-    if (!url) return null;
-    return url.startsWith('http') ? url : `https://${url}`;
-  };
-
-  const getHQ = (buyer: any) => {
-    if (buyer.hq_city && buyer.hq_state) return `${buyer.hq_city}, ${buyer.hq_state}`;
-    if (buyer.hq_state) return buyer.hq_state;
-    if (buyer.hq_city) return buyer.hq_city;
-    return null;
-  };
-
-  const getDescription = (buyer: any) => {
-    return buyer.business_summary || buyer.services_offered || null;
-  };
-
-  const hasWebsite = (buyer: any) => buyer.platform_website || buyer.pe_firm_website;
-
-  const canEnrichDeal = (deal: any) => deal.transcript_link || deal.additional_info || deal.company_website;
-
-  // Score all deals function
-  const scoreAllDeals = async () => {
-    if (deals.length === 0) return;
-    
-    setIsScoringAll(true);
-    setScoringProgress({ current: 0, total: deals.length });
-    
-    let scored = 0;
-    let failed = 0;
-    
-    for (const deal of deals) {
-      try {
-        await supabase.functions.invoke('score-deal', { body: { dealId: deal.id } });
-        scored++;
-      } catch (err) {
-        console.error(`Failed to score ${deal.deal_name}:`, err);
-        failed++;
-      }
-      setScoringProgress({ current: scored + failed, total: deals.length });
-    }
-    
-    await loadData();
-    
-    toast({
-      title: "Scoring complete",
-      description: `${scored} deals scored${failed > 0 ? `, ${failed} failed` : ""}`,
-    });
-    
-    setIsScoringAll(false);
-  };
-
-  // Deal sorting handler
-  const handleDealSort = (column: string) => {
-    if (dealSortColumn === column) {
-      setDealSortDirection(prev => prev === "asc" ? "desc" : "asc");
-    } else {
-      setDealSortColumn(column);
-      setDealSortDirection("desc");
-    }
-  };
-
-  // Buyer sorting handler
-  const handleBuyerSort = (column: string) => {
-    if (buyerSortColumn === column) {
-      setBuyerSortDirection(prev => prev === "asc" ? "desc" : "asc");
-    } else {
-      setBuyerSortColumn(column);
-      setBuyerSortDirection("asc"); // Default to A-Z when changing columns
-    }
-  };
-
-  // Sorted buyers
-  const sortedBuyers = useMemo(() => {
-    return [...filteredBuyers].sort((a, b) => {
-      let aVal: string = "";
-      let bVal: string = "";
-      
-      switch (buyerSortColumn) {
-        case "platform_company_name":
-          aVal = (a.platform_company_name || a.pe_firm_name || "").toLowerCase();
-          bVal = (b.platform_company_name || b.pe_firm_name || "").toLowerCase();
-          break;
-        case "pe_firm_name":
-          aVal = (a.pe_firm_name || "").toLowerCase();
-          bVal = (b.pe_firm_name || "").toLowerCase();
-          break;
-        default:
-          aVal = (a.platform_company_name || a.pe_firm_name || "").toLowerCase();
-          bVal = (b.platform_company_name || b.pe_firm_name || "").toLowerCase();
-      }
-      
-      return buyerSortDirection === "asc" 
-        ? aVal.localeCompare(bVal) 
-        : bVal.localeCompare(aVal);
-    });
-  }, [filteredBuyers, buyerSortColumn, buyerSortDirection]);
-
-  // Sorted deals
-  const sortedAndFilteredDeals = useMemo(() => {
-    return [...deals].sort((a, b) => {
-      let aVal: any, bVal: any;
-      
-      switch (dealSortColumn) {
-        case "deal_name":
-          aVal = a.deal_name?.toLowerCase() || "";
-          bVal = b.deal_name?.toLowerCase() || "";
-          break;
-        case "geography":
-          aVal = a.geography?.join(", ")?.toLowerCase() || "";
-          bVal = b.geography?.join(", ")?.toLowerCase() || "";
-          break;
-        case "approved":
-          aVal = dealBuyerCounts[a.id]?.approved || 0;
-          bVal = dealBuyerCounts[b.id]?.approved || 0;
-          break;
-        case "interested":
-          aVal = dealBuyerCounts[a.id]?.interested || 0;
-          bVal = dealBuyerCounts[b.id]?.interested || 0;
-          break;
-        case "passed":
-          aVal = dealBuyerCounts[a.id]?.passed || 0;
-          bVal = dealBuyerCounts[b.id]?.passed || 0;
-          break;
-        case "created_at":
-          aVal = new Date(a.created_at).getTime();
-          bVal = new Date(b.created_at).getTime();
-          break;
-        case "revenue":
-          aVal = a.revenue || 0;
-          bVal = b.revenue || 0;
-          break;
-        case "ebitda":
-          aVal = a.ebitda_amount || a.ebitda_percentage || 0;
-          bVal = b.ebitda_amount || b.ebitda_percentage || 0;
-          break;
-        case "deal_score":
-        default:
-          aVal = a.deal_score || 0;
-          bVal = b.deal_score || 0;
-          break;
-      }
-
-      if (typeof aVal === "string") {
-        return dealSortDirection === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-      }
-      return dealSortDirection === "asc" ? aVal - bVal : bVal - aVal;
-    });
-  }, [deals, dealSortColumn, dealSortDirection, dealBuyerCounts]);
-
-  // Sortable header component
-  const SortableHeader = ({ column, children, className = "" }: { column: string; children: React.ReactNode; className?: string }) => (
-    <TableHead 
-      className={`cursor-pointer hover:bg-muted/50 select-none ${className}`}
-      onClick={() => handleDealSort(column)}
-    >
-      <div className="flex items-center gap-1">
-        {children}
-        {dealSortColumn === column ? (
-          dealSortDirection === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-        ) : (
-          <ArrowUpDown className="w-3 h-3 opacity-30" />
-        )}
-      </div>
-    </TableHead>
-  );
-
-  const isDealEnriched = (deal: any) => {
-    return (
-      isMeaningfulText(deal.company_overview) ||
-      isMeaningfulText(deal.service_mix) ||
-      isMeaningfulText(deal.business_model) ||
-      (deal.revenue && deal.revenue > 0) ||
-      (deal.ebitda_percentage && deal.ebitda_percentage > 0) ||
-      (Array.isArray(deal.geography) && deal.geography.length > 0)
-    );
-  };
-
   const enrichDeal = async (dealId: string, dealName: string) => {
     setEnrichingDeals(prev => new Set(prev).add(dealId));
-    
     try {
       const deal = deals.find(d => d.id === dealId);
       if (!deal) return;
-
       let enriched = false;
-
-      // 1. Try transcript first (highest priority)
-      if (deal.transcript_link) {
-        try {
-          const { error } = await supabase.functions.invoke('extract-deal-transcript', { 
-            body: { dealId } 
-          });
-          if (!error) enriched = true;
-        } catch (e) {
-          console.error('Transcript extraction failed:', e);
-        }
-      }
-
-      // 2. Try notes (medium priority)
-      if (deal.additional_info) {
-        try {
-          const { error } = await supabase.functions.invoke('analyze-deal-notes', { 
-            body: { dealId, notes: deal.additional_info, applyToRecord: true } 
-          });
-          if (!error) enriched = true;
-        } catch (e) {
-          console.error('Notes analysis failed:', e);
-        }
-      }
-
-      // 3. Try website (fallback)
-      if (deal.company_website) {
-        try {
-          const { error } = await supabase.functions.invoke('enrich-deal', { 
-            body: { dealId, onlyFillEmpty: true } 
-          });
-          if (!error) enriched = true;
-        } catch (e) {
-          console.error('Website enrichment failed:', e);
-        }
-      }
-
-      if (enriched) {
-        toast({ title: "Deal enriched", description: dealName });
-      } else {
-        toast({ title: "Enrichment failed", description: "No data sources available", variant: "destructive" });
-      }
-      
+      if (deal.transcript_link) { const { error } = await supabase.functions.invoke('extract-deal-transcript', { body: { dealId } }); if (!error) enriched = true; }
+      if (deal.additional_info) { const { error } = await supabase.functions.invoke('analyze-deal-notes', { body: { dealId, notes: deal.additional_info, applyToRecord: true } }); if (!error) enriched = true; }
+      if (deal.company_website) { const { error } = await supabase.functions.invoke('enrich-deal', { body: { dealId, onlyFillEmpty: true } }); if (!error) enriched = true; }
+      toast({ title: enriched ? "Deal enriched" : "Enrichment failed", description: enriched ? dealName : "No data sources available", variant: enriched ? "default" : "destructive" });
       await loadData();
-    } catch (err) {
-      toast({ 
-        title: "Enrichment failed", 
-        description: err instanceof Error ? err.message : "Unknown error", 
-        variant: "destructive" 
-      });
     } finally {
-      setEnrichingDeals(prev => {
-        const next = new Set(prev);
-        next.delete(dealId);
-        return next;
-      });
+      setEnrichingDeals(prev => { const next = new Set(prev); next.delete(dealId); return next; });
     }
   };
 
   const enrichAllDeals = async () => {
-    const enrichableDeals = deals.filter(canEnrichDeal);
-
-    if (enrichableDeals.length === 0) {
-      toast({
-        title: "No deals to enrich",
-        description: "Add transcripts, notes, or websites to deals first",
-        variant: "destructive",
-      });
-      return;
-    }
-
+    const enrichableDeals = deals.filter(d => d.transcript_link || d.additional_info || d.company_website);
+    if (enrichableDeals.length === 0) { toast({ title: "No deals to enrich", variant: "destructive" }); return; }
     setIsBulkEnrichingDeals(true);
     setDealEnrichmentProgress({ current: 0, total: enrichableDeals.length });
-    let successCount = 0;
-    let failCount = 0;
 
     for (let i = 0; i < enrichableDeals.length; i++) {
       const deal = enrichableDeals[i];
       setDealEnrichmentProgress({ current: i + 1, total: enrichableDeals.length });
       setEnrichingDeals(prev => new Set(prev).add(deal.id));
-      
       try {
-        let enriched = false;
-
-        if (deal.transcript_link) {
-          try {
-            const { error } = await supabase.functions.invoke('extract-deal-transcript', { 
-              body: { dealId: deal.id } 
-            });
-            if (!error) enriched = true;
-          } catch (e) {
-            console.error('Transcript extraction failed:', e);
-          }
-        }
-
-        if (deal.additional_info) {
-          try {
-            const { error } = await supabase.functions.invoke('analyze-deal-notes', { 
-              body: { dealId: deal.id, notes: deal.additional_info, applyToRecord: true } 
-            });
-            if (!error) enriched = true;
-          } catch (e) {
-            console.error('Notes analysis failed:', e);
-          }
-        }
-
-        if (deal.company_website) {
-          try {
-            const { error } = await supabase.functions.invoke('enrich-deal', { 
-              body: { dealId: deal.id, onlyFillEmpty: true } 
-            });
-            if (!error) enriched = true;
-          } catch (e) {
-            console.error('Website enrichment failed:', e);
-          }
-        }
-
-        if (enriched) successCount++;
-        else failCount++;
-      } catch (err) {
-        failCount++;
-        console.error('Error enriching deal:', deal.deal_name, err);
-      }
-
-      setEnrichingDeals(prev => {
-        const next = new Set(prev);
-        next.delete(deal.id);
-        return next;
-      });
-
-      // Small delay between deals
-      await new Promise(resolve => setTimeout(resolve, 500));
+        if (deal.transcript_link) await supabase.functions.invoke('extract-deal-transcript', { body: { dealId: deal.id } });
+        if (deal.additional_info) await supabase.functions.invoke('analyze-deal-notes', { body: { dealId: deal.id, notes: deal.additional_info, applyToRecord: true } });
+        if (deal.company_website) await supabase.functions.invoke('enrich-deal', { body: { dealId: deal.id, onlyFillEmpty: true } });
+      } catch {}
+      setEnrichingDeals(prev => { const next = new Set(prev); next.delete(deal.id); return next; });
+      await new Promise(r => setTimeout(r, 500));
     }
 
     await loadData();
     setDealEnrichmentProgress({ current: 0, total: 0 });
     setIsBulkEnrichingDeals(false);
-
-    toast({ 
-      title: "Deal enrichment complete", 
-      description: `Successfully enriched ${successCount} of ${enrichableDeals.length} deals${failCount > 0 ? `. ${failCount} failed.` : '.'}` 
-    });
+    toast({ title: "Deal enrichment complete" });
   };
-  
+
+  const scoreAllDeals = async () => {
+    if (deals.length === 0) return;
+    setIsScoringAll(true);
+    setScoringProgress({ current: 0, total: deals.length });
+    let scored = 0;
+    for (const deal of deals) {
+      try { await supabase.functions.invoke('score-deal', { body: { dealId: deal.id } }); scored++; } catch {}
+      setScoringProgress({ current: scored, total: deals.length });
+    }
+    await loadData();
+    toast({ title: "Scoring complete", description: `${scored} deals scored` });
+    setIsScoringAll(false);
+  };
+
+  const handleDealSort = (column: string) => {
+    if (dealSortColumn === column) setDealSortDirection(prev => prev === "asc" ? "desc" : "asc");
+    else { setDealSortColumn(column); setDealSortDirection("desc"); }
+  };
+
+  // Criteria actions
+  const hasExistingCriteria = () => tracker?.size_criteria || tracker?.service_criteria || tracker?.geography_criteria || tracker?.buyer_types_criteria;
+
+  const extractCriteriaFromGuide = async () => {
+    if (!tracker?.ma_guide_content) return;
+    setIsExtractingFromGuide(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('parse-fit-criteria', { body: { fit_criteria: tracker.ma_guide_content } });
+      if (error || !data?.success) { toast({ title: "Extraction failed", variant: "destructive" }); return; }
+      await supabase.from("industry_trackers").update({
+        size_criteria: data.size_criteria, service_criteria: data.service_criteria,
+        geography_criteria: data.geography_criteria, buyer_types_criteria: data.buyer_types_criteria, updated_at: new Date().toISOString()
+      }).eq("id", id);
+      setTracker({ ...tracker, size_criteria: data.size_criteria, service_criteria: data.service_criteria, geography_criteria: data.geography_criteria, buyer_types_criteria: data.buyer_types_criteria });
+      toast({ title: "Criteria extracted" });
+    } finally {
+      setIsExtractingFromGuide(false);
+    }
+  };
 
   const startEditingFitCriteria = () => {
-    // For Size Criteria - check text field first, then convert from JSONB
     let sizeText = tracker?.fit_criteria_size || "";
-    if (!sizeText && tracker?.size_criteria) {
-      const sc = tracker.size_criteria as any;
-      const parts: string[] = [];
-      if (sc.min_revenue) parts.push(`Min Revenue: ${sc.min_revenue}`);
-      if (sc.max_revenue) parts.push(`Max Revenue: ${sc.max_revenue}`);
-      if (sc.min_ebitda) parts.push(`Min EBITDA: ${sc.min_ebitda}`);
-      if (sc.max_ebitda) parts.push(`Max EBITDA: ${sc.max_ebitda}`);
-      // NEW: Valuation multiples
-      if (sc.ebitda_multiple_min || sc.ebitda_multiple_max) {
-        const range = sc.ebitda_multiple_min && sc.ebitda_multiple_max 
-          ? `${sc.ebitda_multiple_min} - ${sc.ebitda_multiple_max}`
-          : sc.ebitda_multiple_min || sc.ebitda_multiple_max;
-        parts.push(`EBITDA Multiple: ${range}`);
-      }
-      if (sc.revenue_multiple_min || sc.revenue_multiple_max) {
-        const range = sc.revenue_multiple_min && sc.revenue_multiple_max 
-          ? `${sc.revenue_multiple_min} - ${sc.revenue_multiple_max}`
-          : sc.revenue_multiple_min || sc.revenue_multiple_max;
-        parts.push(`Revenue Multiple: ${range}`);
-      }
-      // NEW: Per-location metrics
-      if (sc.min_revenue_per_location) parts.push(`Revenue/Location: ${sc.min_revenue_per_location}`);
-      if (sc.min_sqft_per_location) parts.push(`Sq Ft/Location: ${sc.min_sqft_per_location}`);
-      if (sc.location_count) parts.push(`Locations: ${sc.location_count}`);
-      if (sc.sqft_requirements) parts.push(`Total Sq Ft: ${sc.sqft_requirements}`);
-      if (sc.other?.length) parts.push(`Other: ${sc.other.join(', ')}`);
-      sizeText = parts.join('\n');
-    }
-    setEditedSizeCriteria(sizeText);
-
-    // For Service Criteria - check text field first, then convert from JSONB
     let serviceText = tracker?.fit_criteria_service || "";
-    if (!serviceText && tracker?.service_criteria) {
-      const svc = tracker.service_criteria as any;
-      const parts: string[] = [];
-      if (svc.required_services?.length) parts.push(`Required: ${svc.required_services.join(', ')}`);
-      if (svc.preferred_services?.length) parts.push(`Preferred: ${svc.preferred_services.join(', ')}`);
-      if (svc.excluded_services?.length) parts.push(`Excluded: ${svc.excluded_services.join(', ')}`);
-      if (svc.business_model) parts.push(`Business Model: ${svc.business_model}`);
-      if (svc.customer_profile) parts.push(`Customer Profile: ${svc.customer_profile}`);
-      if (svc.other?.length) parts.push(`Other: ${svc.other.join(', ')}`);
-      serviceText = parts.join('\n');
-    }
-    setEditedServiceCriteria(serviceText);
-
-    // For Geography Criteria - check text field first, then convert from JSONB
     let geoText = tracker?.fit_criteria_geography || "";
-    if (!geoText && tracker?.geography_criteria) {
-      const geo = tracker.geography_criteria as any;
-      const parts: string[] = [];
-      if (geo.required_regions?.length) parts.push(`Required Regions: ${geo.required_regions.join(', ')}`);
-      if (geo.preferred_regions?.length) parts.push(`Preferred Regions: ${geo.preferred_regions.join(', ')}`);
-      if (geo.excluded_regions?.length) parts.push(`Excluded Regions: ${geo.excluded_regions.join(', ')}`);
-      if (geo.coverage_type) parts.push(`Coverage: ${geo.coverage_type}`);
-      if (geo.hq_requirements) parts.push(`HQ Requirements: ${geo.hq_requirements}`);
-      if (geo.other?.length) parts.push(`Other: ${geo.other.join(', ')}`);
-      geoText = parts.join('\n');
-    }
-    setEditedGeographyCriteria(geoText);
-
-    // For Buyer Types - check text field first, then convert from JSONB
     let buyerTypesText = tracker?.fit_criteria_buyer_types || "";
-    if (!buyerTypesText && tracker?.buyer_types_criteria) {
-      const btc = tracker.buyer_types_criteria as any;
-      if (btc.buyer_types?.length) {
-        buyerTypesText = btc.buyer_types.map((bt: any, idx: number) => {
-          const parts: string[] = [`Priority ${bt.priority || idx + 1}: ${bt.type_name || 'Buyer Type'}`];
-          if (bt.description) parts.push(`  Description: ${bt.description}`);
-          if (bt.min_locations || bt.max_locations) {
-            const locRange = bt.min_locations && bt.max_locations 
-              ? `${bt.min_locations} - ${bt.max_locations}`
-              : bt.min_locations ? `${bt.min_locations}+` : `up to ${bt.max_locations}`;
-            parts.push(`  Locations: ${locRange}`);
-          }
-          if (bt.min_revenue_per_location) parts.push(`  Revenue/Location: ${bt.min_revenue_per_location}`);
-          if (bt.min_square_footage) parts.push(`  Min Sq Ft: ${bt.min_square_footage}`);
-          if (bt.geographic_requirements) parts.push(`  Geography: ${bt.geographic_requirements}`);
-          if (bt.deal_requirements) parts.push(`  Deal Requirements: ${bt.deal_requirements}`);
-          return parts.join('\n');
-        }).join('\n\n');
-      }
-    }
+    setEditedSizeCriteria(sizeText);
+    setEditedServiceCriteria(serviceText);
+    setEditedGeographyCriteria(geoText);
     setEditedBuyerTypesCriteria(buyerTypesText);
-
     setIsEditingFitCriteria(true);
   };
 
   const cancelEditingFitCriteria = () => {
     setIsEditingFitCriteria(false);
-    setEditedSizeCriteria("");
-    setEditedServiceCriteria("");
-    setEditedGeographyCriteria("");
-    setEditedBuyerTypesCriteria("");
-    setCriteriaEditInstruction("");
-    setLastCriteriaChangesSummary("");
+    setEditedSizeCriteria(""); setEditedServiceCriteria(""); setEditedGeographyCriteria(""); setEditedBuyerTypesCriteria("");
+    setCriteriaEditInstruction(""); setLastCriteriaChangesSummary("");
   };
 
   const applyCriteriaEditWithAI = async () => {
-    if (!criteriaEditInstruction.trim()) {
-      toast({ title: "Enter an instruction", description: "Type what you'd like to change", variant: "destructive" });
-      return;
-    }
-
+    if (!criteriaEditInstruction.trim()) return;
     setIsApplyingCriteriaEdit(true);
-    setLastCriteriaChangesSummary("");
-
     try {
       const { data, error } = await supabase.functions.invoke('update-fit-criteria-chat', {
-        body: {
-          instruction: criteriaEditInstruction,
-          currentCriteria: {
-            size: editedSizeCriteria,
-            service: editedServiceCriteria,
-            geography: editedGeographyCriteria,
-            buyerTypes: editedBuyerTypesCriteria
-          }
-        }
+        body: { instruction: criteriaEditInstruction, currentCriteria: { size: editedSizeCriteria, service: editedServiceCriteria, geography: editedGeographyCriteria, buyerTypes: editedBuyerTypesCriteria } }
       });
-
-      if (error) {
-        toast({ title: "AI update failed", description: error.message, variant: "destructive" });
-        return;
-      }
-
-      if (!data?.success) {
-        toast({ title: "AI update failed", description: data?.error || "Unknown error", variant: "destructive" });
-        return;
-      }
-
-      // Update the text fields with AI response
+      if (error || !data?.success) { toast({ title: "AI update failed", variant: "destructive" }); return; }
       setEditedSizeCriteria(data.updatedCriteria.size);
       setEditedServiceCriteria(data.updatedCriteria.service);
       setEditedGeographyCriteria(data.updatedCriteria.geography);
       setEditedBuyerTypesCriteria(data.updatedCriteria.buyerTypes);
       setLastCriteriaChangesSummary(data.changesSummary);
       setCriteriaEditInstruction("");
-
       toast({ title: "Criteria updated", description: data.changesSummary });
-    } catch (err) {
-      toast({ title: "AI update failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
       setIsApplyingCriteriaEdit(false);
     }
@@ -1212,460 +465,88 @@ export default function TrackerDetail() {
 
   const saveFitCriteria = async () => {
     setIsSavingFitCriteria(true);
-    
-    // 1. Save text fields immediately
-    const { error } = await supabase
-      .from("industry_trackers")
-      .update({ 
-        fit_criteria_size: editedSizeCriteria,
-        fit_criteria_service: editedServiceCriteria,
-        fit_criteria_geography: editedGeographyCriteria,
-        fit_criteria_buyer_types: editedBuyerTypesCriteria,
-        updated_at: new Date().toISOString() 
-      })
-      .eq("id", id);
-    
-    if (error) {
-      toast({ title: "Error", description: "Failed to save fit criteria", variant: "destructive" });
-      setIsSavingFitCriteria(false);
-      return;
-    }
+    await supabase.from("industry_trackers").update({
+      fit_criteria_size: editedSizeCriteria, fit_criteria_service: editedServiceCriteria,
+      fit_criteria_geography: editedGeographyCriteria, fit_criteria_buyer_types: editedBuyerTypesCriteria, updated_at: new Date().toISOString()
+    }).eq("id", id);
 
-    // 2. Auto-parse text to JSONB for structured display
-    const criteriaText = `Size Criteria: ${editedSizeCriteria}\n\nService/Product Criteria: ${editedServiceCriteria}\n\nGeography Criteria: ${editedGeographyCriteria}\n\nBuyer Types: ${editedBuyerTypesCriteria}`;
-    
     try {
-      const { data: parsedData } = await supabase.functions.invoke('parse-fit-criteria', {
-        body: { fit_criteria: criteriaText }
-      });
-
+      const criteriaText = `Size Criteria: ${editedSizeCriteria}\n\nService/Product Criteria: ${editedServiceCriteria}\n\nGeography Criteria: ${editedGeographyCriteria}\n\nBuyer Types: ${editedBuyerTypesCriteria}`;
+      const { data: parsedData } = await supabase.functions.invoke('parse-fit-criteria', { body: { fit_criteria: criteriaText } });
       if (parsedData?.success) {
-        // Preserve existing primary_focus if already set, otherwise use parsed
-        const existingPrimaryFocus = (tracker?.service_criteria as any)?.primary_focus || [];
-        const parsedPrimaryFocus = parsedData.service_criteria?.primary_focus || [];
-        
-        const mergedServiceCriteria = {
-          ...parsedData.service_criteria,
-          // Keep existing primary_focus if it has values, otherwise use parsed
-          primary_focus: existingPrimaryFocus.length > 0 
-            ? existingPrimaryFocus 
-            : parsedPrimaryFocus,
-        };
-        
-        await supabase
-          .from("industry_trackers")
-          .update({
-            size_criteria: parsedData.size_criteria,
-            service_criteria: mergedServiceCriteria,
-            geography_criteria: parsedData.geography_criteria,
-            buyer_types_criteria: parsedData.buyer_types_criteria,
-          })
-          .eq("id", id);
-        
-        console.log('[TrackerDetail] Saved service_criteria with primary_focus:', mergedServiceCriteria.primary_focus);
-        
-        // Validation check: warn if primary_focus is still empty
-        if (!mergedServiceCriteria.primary_focus?.length) {
-          toast({ 
-            title: "Warning: Missing Primary Focus", 
-            description: "No primary services defined. Deal scoring may give 'needs review' status.",
-          });
-        }
-        
-        setTracker({ 
-          ...tracker, 
-          fit_criteria_size: editedSizeCriteria,
-          fit_criteria_service: editedServiceCriteria,
-          fit_criteria_geography: editedGeographyCriteria,
-          fit_criteria_buyer_types: editedBuyerTypesCriteria,
-          size_criteria: parsedData.size_criteria,
-          service_criteria: mergedServiceCriteria,
-          geography_criteria: parsedData.geography_criteria,
-          buyer_types_criteria: parsedData.buyer_types_criteria
-        });
-      } else {
-        setTracker({ 
-          ...tracker, 
-          fit_criteria_size: editedSizeCriteria,
-          fit_criteria_service: editedServiceCriteria,
-          fit_criteria_geography: editedGeographyCriteria,
-          fit_criteria_buyer_types: editedBuyerTypesCriteria
-        });
+        await supabase.from("industry_trackers").update({ size_criteria: parsedData.size_criteria, service_criteria: parsedData.service_criteria, geography_criteria: parsedData.geography_criteria, buyer_types_criteria: parsedData.buyer_types_criteria }).eq("id", id);
+        setTracker({ ...tracker, fit_criteria_size: editedSizeCriteria, fit_criteria_service: editedServiceCriteria, fit_criteria_geography: editedGeographyCriteria, fit_criteria_buyer_types: editedBuyerTypesCriteria, size_criteria: parsedData.size_criteria, service_criteria: parsedData.service_criteria, geography_criteria: parsedData.geography_criteria, buyer_types_criteria: parsedData.buyer_types_criteria });
       }
-    } catch {
-      // Parsing failed but text was saved
-      setTracker({ 
-        ...tracker, 
-        fit_criteria_size: editedSizeCriteria,
-        fit_criteria_service: editedServiceCriteria,
-        fit_criteria_geography: editedGeographyCriteria,
-        fit_criteria_buyer_types: editedBuyerTypesCriteria
-      });
-    }
-    
+    } catch {}
     toast({ title: "Fit criteria updated" });
     setIsEditingFitCriteria(false);
     setIsSavingFitCriteria(false);
   };
 
-  const parseFitCriteria = async () => {
-    // Use the original fit_criteria text if structured fields are empty, otherwise combine structured fields
-    let criteriaText = tracker?.fit_criteria || '';
-    
-    if (isEditingFitCriteria) {
-      criteriaText = `Size Criteria: ${editedSizeCriteria}\n\nService/Product Criteria: ${editedServiceCriteria}\n\nGeography Criteria: ${editedGeographyCriteria}\n\nBuyer Types: ${editedBuyerTypesCriteria}`;
-    } else if (tracker?.fit_criteria_size || tracker?.fit_criteria_service || tracker?.fit_criteria_geography || tracker?.fit_criteria_buyer_types) {
-      criteriaText = `Size Criteria: ${tracker?.fit_criteria_size || ''}\n\nService/Product Criteria: ${tracker?.fit_criteria_service || ''}\n\nGeography Criteria: ${tracker?.fit_criteria_geography || ''}\n\nBuyer Types: ${tracker?.fit_criteria_buyer_types || ''}`;
-    }
-    
-    if (!criteriaText.trim() || criteriaText === 'Size Criteria: \n\nService/Product Criteria: \n\nGeography Criteria: \n\nBuyer Types: ') {
-      toast({ title: "No criteria to parse", description: "Please add fit criteria text first", variant: "destructive" });
-      return;
-    }
-
-    setIsParsingCriteria(true);
+  const handleApplyCriteria = async (data: { sizeCriteria: string; serviceCriteria: string; geographyCriteria: string; buyerTypesCriteria: string }) => {
+    await supabase.from("industry_trackers").update({
+      fit_criteria_size: data.sizeCriteria, fit_criteria_service: data.serviceCriteria,
+      fit_criteria_geography: data.geographyCriteria, fit_criteria_buyer_types: data.buyerTypesCriteria, updated_at: new Date().toISOString()
+    }).eq("id", id);
     try {
-      const { data, error } = await supabase.functions.invoke('parse-fit-criteria', {
-        body: { fit_criteria: criteriaText }
-      });
-
-      if (error) {
-        toast({ title: "Parsing failed", description: error.message, variant: "destructive" });
-        return;
+      const criteriaText = `Size Criteria: ${data.sizeCriteria}\n\nService/Product Criteria: ${data.serviceCriteria}\n\nGeography Criteria: ${data.geographyCriteria}\n\nBuyer Types: ${data.buyerTypesCriteria}`;
+      const { data: parsedData } = await supabase.functions.invoke('parse-fit-criteria', { body: { fit_criteria: criteriaText } });
+      if (parsedData?.success) {
+        await supabase.from("industry_trackers").update({ size_criteria: parsedData.size_criteria, service_criteria: parsedData.service_criteria, geography_criteria: parsedData.geography_criteria, buyer_types_criteria: parsedData.buyer_types_criteria }).eq("id", id);
+        setTracker({ ...tracker, ...data, size_criteria: parsedData.size_criteria, service_criteria: parsedData.service_criteria, geography_criteria: parsedData.geography_criteria, buyer_types_criteria: parsedData.buyer_types_criteria });
       }
-
-      if (!data.success) {
-        toast({ title: "Parsing failed", description: data.error || "Unknown error", variant: "destructive" });
-        return;
-      }
-
-      // Update the tracker with structured criteria
-      const { error: updateError } = await supabase
-        .from("industry_trackers")
-        .update({
-          size_criteria: data.size_criteria,
-          service_criteria: data.service_criteria,
-          geography_criteria: data.geography_criteria,
-          buyer_types_criteria: data.buyer_types_criteria,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", id);
-
-      if (updateError) {
-        toast({ title: "Failed to save", description: updateError.message, variant: "destructive" });
-        return;
-      }
-
-      setTracker({
-        ...tracker,
-        size_criteria: data.size_criteria,
-        service_criteria: data.service_criteria,
-        geography_criteria: data.geography_criteria,
-        buyer_types_criteria: data.buyer_types_criteria
-      });
-
-      toast({ title: "Criteria parsed", description: "Structured criteria extracted successfully" });
-    } catch (err) {
-      toast({ title: "Parsing failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-    } finally {
-      setIsParsingCriteria(false);
-    }
+    } catch {}
+    toast({ title: "Criteria applied" });
   };
 
-  // Extract criteria from existing M&A guide content
-  const extractCriteriaFromGuide = async () => {
-    if (!tracker?.ma_guide_content) {
-      toast({ title: "No M&A Guide", description: "Generate an M&A guide first to extract criteria from it", variant: "destructive" });
-      return;
+  // Document actions
+  const uploadDocuments = async (files: FileList) => {
+    setIsUploadingDocs(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { toast({ title: "Error", description: "You must be logged in", variant: "destructive" }); setIsUploadingDocs(false); return; }
+    const existingDocs = (tracker?.documents as any[]) || [];
+    const newDocs = [...existingDocs];
+    for (const file of Array.from(files)) {
+      const filePath = `${user.id}/${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from('tracker-documents').upload(filePath, file);
+      if (!error) newDocs.push({ name: file.name, path: filePath, size: file.size });
     }
-
-    setIsExtractingFromGuide(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('parse-fit-criteria', {
-        body: { fit_criteria: tracker.ma_guide_content }
-      });
-
-      if (error) {
-        toast({ title: "Extraction failed", description: error.message, variant: "destructive" });
-        return;
-      }
-
-      if (!data.success) {
-        toast({ title: "Extraction failed", description: data.error || "Unknown error", variant: "destructive" });
-        return;
-      }
-
-      const { error: updateError } = await supabase
-        .from("industry_trackers")
-        .update({
-          size_criteria: data.size_criteria,
-          service_criteria: data.service_criteria,
-          geography_criteria: data.geography_criteria,
-          buyer_types_criteria: data.buyer_types_criteria,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", id);
-
-      if (updateError) {
-        toast({ title: "Failed to save", description: updateError.message, variant: "destructive" });
-        return;
-      }
-
-      setTracker({
-        ...tracker,
-        size_criteria: data.size_criteria,
-        service_criteria: data.service_criteria,
-        geography_criteria: data.geography_criteria,
-        buyer_types_criteria: data.buyer_types_criteria
-      });
-
-      toast({ title: "Criteria extracted", description: "Successfully extracted structured criteria from M&A guide" });
-    } catch (err) {
-      toast({ title: "Extraction failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-    } finally {
-      setIsExtractingFromGuide(false);
-    }
+    await supabase.from('industry_trackers').update({ documents: newDocs, updated_at: new Date().toISOString() }).eq('id', id);
+    setTracker({ ...tracker, documents: newDocs });
+    toast({ title: "Documents uploaded" });
+    setIsUploadingDocs(false);
   };
 
-  // Handle criteria applied from TrackerNotesSection or AIResearchSection
-  const handleApplyCriteria = async (data: {
-    industryName?: string;
-    sizeCriteria: string;
-    serviceCriteria: string;
-    geographyCriteria: string;
-    buyerTypesCriteria: string;
-    primaryFocusServices?: string[];
-    excludedServices?: string[];
-  }) => {
-    // Merge with existing criteria if present
-    const newSizeCriteria = data.sizeCriteria || tracker?.fit_criteria_size || '';
-    const newServiceCriteria = data.serviceCriteria || tracker?.fit_criteria_service || '';
-    const newGeographyCriteria = data.geographyCriteria || tracker?.fit_criteria_geography || '';
-    const newBuyerTypesCriteria = data.buyerTypesCriteria || tracker?.fit_criteria_buyer_types || '';
-    
-    // Save the text criteria
-    const { error } = await supabase
-      .from("industry_trackers")
-      .update({ 
-        fit_criteria_size: newSizeCriteria,
-        fit_criteria_service: newServiceCriteria,
-        fit_criteria_geography: newGeographyCriteria,
-        fit_criteria_buyer_types: newBuyerTypesCriteria,
-        updated_at: new Date().toISOString() 
-      })
-      .eq("id", id);
-    
-    if (error) {
-      toast({ title: "Error", description: "Failed to save criteria", variant: "destructive" });
-      return;
-    }
-    
-    // Parse to structured JSONB
-    const criteriaText = `Size Criteria: ${newSizeCriteria}\n\nService/Product Criteria: ${newServiceCriteria}\n\nGeography Criteria: ${newGeographyCriteria}\n\nBuyer Types: ${newBuyerTypesCriteria}`;
-    
-    try {
-      const { data: parsedData, error: parseError } = await supabase.functions.invoke('parse-fit-criteria', {
-        body: { fit_criteria: criteriaText }
-      });
-
-      if (!parseError && parsedData?.success) {
-        // Merge primary_focus from applied data if provided
-        const existingPrimaryFocus = (tracker?.service_criteria as any)?.primary_focus || [];
-        const newPrimaryFocus = data.primaryFocusServices || [];
-        const mergedPrimaryFocus = [...new Set([...existingPrimaryFocus, ...newPrimaryFocus])];
-        
-        const mergedServiceCriteria = {
-          ...parsedData.service_criteria,
-          primary_focus: mergedPrimaryFocus.length > 0 ? mergedPrimaryFocus : parsedData.service_criteria?.primary_focus || [],
-        };
-        
-        await supabase
-          .from("industry_trackers")
-          .update({
-            size_criteria: parsedData.size_criteria,
-            service_criteria: mergedServiceCriteria,
-            geography_criteria: parsedData.geography_criteria,
-            buyer_types_criteria: parsedData.buyer_types_criteria,
-          })
-          .eq("id", id);
-        
-        setTracker({ 
-          ...tracker, 
-          fit_criteria_size: newSizeCriteria,
-          fit_criteria_service: newServiceCriteria,
-          fit_criteria_geography: newGeographyCriteria,
-          fit_criteria_buyer_types: newBuyerTypesCriteria,
-          size_criteria: parsedData.size_criteria,
-          service_criteria: mergedServiceCriteria,
-          geography_criteria: parsedData.geography_criteria,
-          buyer_types_criteria: parsedData.buyer_types_criteria
-        });
-      } else {
-        setTracker({ 
-          ...tracker, 
-          fit_criteria_size: newSizeCriteria,
-          fit_criteria_service: newServiceCriteria,
-          fit_criteria_geography: newGeographyCriteria,
-          fit_criteria_buyer_types: newBuyerTypesCriteria
-        });
-      }
-    } catch {
-      setTracker({ 
-        ...tracker, 
-        fit_criteria_size: newSizeCriteria,
-        fit_criteria_service: newServiceCriteria,
-        fit_criteria_geography: newGeographyCriteria,
-        fit_criteria_buyer_types: newBuyerTypesCriteria
-      });
-    }
-    
-    toast({ title: "Criteria applied", description: "Buyer fit criteria has been updated" });
+  const removeDocument = async (doc: { name: string; path: string }) => {
+    await supabase.storage.from('tracker-documents').remove([doc.path]);
+    const updatedDocs = ((tracker?.documents as any[]) || []).filter(d => d.path !== doc.path);
+    await supabase.from('industry_trackers').update({ documents: updatedDocs, updated_at: new Date().toISOString() }).eq('id', id);
+    setTracker({ ...tracker, documents: updatedDocs });
+    toast({ title: "Document removed" });
   };
 
-  const hasExistingCriteria = () => {
-    return tracker?.size_criteria || tracker?.service_criteria || 
-           tracker?.geography_criteria || tracker?.buyer_types_criteria ||
-           tracker?.fit_criteria_size || tracker?.fit_criteria_service ||
-           tracker?.fit_criteria_geography || tracker?.fit_criteria_buyer_types;
-  };
-
-  const handleAnalyzeDocuments = () => {
-    const documents = tracker?.documents as { name: string; path: string; size: number }[] | null;
-    if (!documents || documents.length === 0) {
-      toast({ title: "No documents", description: "Upload documents first to analyze them", variant: "destructive" });
-      return;
-    }
-
-    // Check if existing criteria exists - show confirmation dialog
-    if (hasExistingCriteria()) {
-      setShowAnalysisConfirmDialog(true);
-      return;
-    }
-
-    performDocumentAnalysis();
+  const downloadDocument = async (doc: { name: string; path: string }) => {
+    const { data } = await supabase.storage.from('tracker-documents').createSignedUrl(doc.path, 3600);
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank');
   };
 
   const performDocumentAnalysis = async () => {
     setShowAnalysisConfirmDialog(false);
     setIsAnalyzingDocuments(true);
     try {
-      const { data, error } = await supabase.functions.invoke('parse-tracker-documents', {
-        body: { tracker_id: id }
-      });
-
-      if (error) {
-        toast({ title: "Analysis failed", description: error.message, variant: "destructive" });
-        return;
-      }
-
-      if (!data.success) {
-        toast({ title: "Analysis failed", description: data.error || "Unknown error", variant: "destructive" });
-        return;
-      }
-
-      setTracker({
-        ...tracker,
-        size_criteria: data.size_criteria,
-        service_criteria: data.service_criteria,
-        geography_criteria: data.geography_criteria,
-        buyer_types_criteria: data.buyer_types_criteria,
-        documents_analyzed_at: new Date().toISOString()
-      });
-
-      toast({ 
-        title: "Documents analyzed", 
-        description: `Extracted criteria from ${data.documents_processed} document(s)` 
-      });
-    } catch (err) {
-      toast({ title: "Analysis failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+      const { data, error } = await supabase.functions.invoke('parse-tracker-documents', { body: { tracker_id: id } });
+      if (error || !data?.success) { toast({ title: "Analysis failed", variant: "destructive" }); return; }
+      setTracker({ ...tracker, size_criteria: data.size_criteria, service_criteria: data.service_criteria, geography_criteria: data.geography_criteria, buyer_types_criteria: data.buyer_types_criteria, documents_analyzed_at: new Date().toISOString() });
+      toast({ title: "Documents analyzed" });
     } finally {
       setIsAnalyzingDocuments(false);
     }
   };
 
-  const getDocumentDownloadUrl = async (path: string) => {
-    const { data } = await supabase.storage
-      .from('tracker-documents')
-      .createSignedUrl(path, 3600); // 1 hour expiry
-    return data?.signedUrl;
-  };
-
-  const downloadDocument = async (doc: { name: string; path: string }) => {
-    const url = await getDocumentDownloadUrl(doc.path);
-    if (url) {
-      window.open(url, '_blank');
-    } else {
-      toast({ title: "Error", description: "Could not generate download link", variant: "destructive" });
-    }
-  };
-
-  const uploadDocuments = async (files: FileList) => {
-    setIsUploadingDocs(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast({ title: "Error", description: "You must be logged in to upload documents", variant: "destructive" });
-      setIsUploadingDocs(false);
-      return;
-    }
-
-    const existingDocs = (tracker?.documents as { name: string; path: string; size: number }[]) || [];
-    const newDocs = [...existingDocs];
-
-    for (const file of Array.from(files)) {
-      const timestamp = Date.now();
-      const filePath = `${user.id}/${timestamp}-${file.name}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from('tracker-documents')
-        .upload(filePath, file);
-
-      if (uploadError) {
-        toast({ title: "Upload failed", description: `${file.name}: ${uploadError.message}`, variant: "destructive" });
-        continue;
-      }
-
-      newDocs.push({ name: file.name, path: filePath, size: file.size });
-    }
-
-    const { error: updateError } = await supabase
-      .from('industry_trackers')
-      .update({ documents: newDocs, updated_at: new Date().toISOString() })
-      .eq('id', id);
-
-    if (updateError) {
-      toast({ title: "Error", description: "Failed to save document list", variant: "destructive" });
-    } else {
-      setTracker({ ...tracker, documents: newDocs });
-      toast({ title: "Documents uploaded", description: `${files.length} file(s) added` });
-    }
-
-    setIsUploadingDocs(false);
-  };
-
-  const removeDocument = async (doc: { name: string; path: string }) => {
-    const { error: deleteError } = await supabase.storage
-      .from('tracker-documents')
-      .remove([doc.path]);
-
-    if (deleteError) {
-      toast({ title: "Error", description: `Failed to delete ${doc.name}`, variant: "destructive" });
-      return;
-    }
-
-    const existingDocs = (tracker?.documents as { name: string; path: string; size: number }[]) || [];
-    const updatedDocs = existingDocs.filter(d => d.path !== doc.path);
-
-    const { error: updateError } = await supabase
-      .from('industry_trackers')
-      .update({ documents: updatedDocs, updated_at: new Date().toISOString() })
-      .eq('id', id);
-
-    if (updateError) {
-      toast({ title: "Error", description: "Failed to update document list", variant: "destructive" });
-    } else {
-      setTracker({ ...tracker, documents: updatedDocs });
-      toast({ title: "Document removed", description: doc.name });
-    }
+  const handleAnalyzeDocuments = () => {
+    if (!tracker?.documents?.length) { toast({ title: "No documents", variant: "destructive" }); return; }
+    if (hasExistingCriteria()) { setShowAnalysisConfirmDialog(true); return; }
+    performDocumentAnalysis();
   };
 
   if (isLoading) return <AppLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin" /></div></AppLayout>;
@@ -1678,20 +559,17 @@ export default function TrackerDetail() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Replace existing criteria?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This tracker already has buyer fit criteria defined. Analyzing documents will replace the current structured criteria with new data extracted from the uploaded documents. Your original text criteria will be preserved.
-            </AlertDialogDescription>
+            <AlertDialogDescription>This will replace current structured criteria with data from uploaded documents.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={performDocumentAnalysis}>
-              Replace & Analyze
-            </AlertDialogAction>
+            <AlertDialogAction onClick={performDocumentAnalysis}>Replace & Analyze</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       <div className="space-y-6">
+        {/* Header */}
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate("/trackers")}><ArrowLeft className="w-4 h-4" /></Button>
           <div className="flex-1">
@@ -1701,1217 +579,212 @@ export default function TrackerDetail() {
           <Button onClick={() => navigate(`/trackers/${id}/deals/new`)}><Plus className="w-4 h-4 mr-2" />List New Deal</Button>
         </div>
 
-        {/* Scoring Behavior Configuration */}
+        {/* Scoring Behavior */}
         <ScoringBehaviorPanel
           scoringBehavior={tracker.scoring_behavior}
           industryName={tracker.industry_name}
           onSave={async (behavior) => {
-            const { error } = await supabase
-              .from("industry_trackers")
-              .update({ scoring_behavior: behavior as any, updated_at: new Date().toISOString() })
-              .eq("id", id);
-            if (error) {
-              toast({ title: "Error", description: "Failed to save scoring configuration", variant: "destructive" });
-            } else {
-              setTracker({ ...tracker, scoring_behavior: behavior });
-              toast({ title: "Scoring configuration saved" });
-            }
+            await supabase.from("industry_trackers").update({ scoring_behavior: behavior as any, updated_at: new Date().toISOString() }).eq("id", id);
+            setTracker({ ...tracker, scoring_behavior: behavior });
+            toast({ title: "Scoring configuration saved" });
           }}
         />
 
         {/* Fit Criteria Section */}
         <div className="bg-card rounded-lg border p-4">
           <div className="flex items-start justify-between gap-4">
-            <button 
-              onClick={() => !isEditingFitCriteria && setIsCriteriaCollapsed(!isCriteriaCollapsed)}
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-              disabled={isEditingFitCriteria}
-            >
-              {isCriteriaCollapsed ? (
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              )}
+            <button onClick={() => !isEditingFitCriteria && setIsCriteriaCollapsed(!isCriteriaCollapsed)} className="flex items-center gap-2 hover:opacity-80" disabled={isEditingFitCriteria}>
+              {isCriteriaCollapsed ? <ChevronRight className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
               <Info className="w-4 h-4 text-primary" />
               <h3 className="font-semibold text-sm">Buyer Fit Criteria</h3>
             </button>
             <div className="flex items-center gap-2">
               {!isEditingFitCriteria && tracker?.ma_guide_content && !hasExistingCriteria() && (
                 <Button variant="outline" size="sm" onClick={extractCriteriaFromGuide} disabled={isExtractingFromGuide}>
-                  {isExtractingFromGuide ? (
-                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-                  ) : (
-                    <BookOpen className="w-3.5 h-3.5 mr-1" />
-                  )}
+                  {isExtractingFromGuide ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <BookOpen className="w-3.5 h-3.5 mr-1" />}
                   Extract from Guide
                 </Button>
               )}
               {!isEditingFitCriteria && (
-                <Button variant="ghost" size="sm" onClick={startEditingFitCriteria}>
-                  <Pencil className="w-3.5 h-3.5 mr-1" />
-                  Edit
-                </Button>
+                <Button variant="ghost" size="sm" onClick={startEditingFitCriteria}><Pencil className="w-3.5 h-3.5 mr-1" />Edit</Button>
               )}
             </div>
           </div>
-          
+
           {/* Fit Criteria Edit Dialog */}
           <Dialog open={isEditingFitCriteria} onOpenChange={(open) => !open && cancelEditingFitCriteria()}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <Info className="w-5 h-5 text-primary" />
-                  Edit Buyer Fit Criteria
-                </DialogTitle>
-                <DialogDescription>
-                  Define the criteria that will guide buyer matching for this tracker.
-                </DialogDescription>
+                <DialogTitle className="flex items-center gap-2"><Info className="w-5 h-5 text-primary" />Edit Buyer Fit Criteria</DialogTitle>
+                <DialogDescription>Define the criteria that will guide buyer matching.</DialogDescription>
               </DialogHeader>
               
-              {/* AI Quick Edit Section */}
+              {/* AI Quick Edit */}
               <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-primary">
-                  <MessageSquare className="w-4 h-4" />
-                  Quick Edit with AI
-                </div>
+                <div className="flex items-center gap-2 text-sm font-medium text-primary"><MessageSquare className="w-4 h-4" />Quick Edit with AI</div>
                 <div className="flex gap-2">
-                  <Input
-                    value={criteriaEditInstruction}
-                    onChange={(e) => setCriteriaEditInstruction(e.target.value)}
-                    placeholder="e.g., Large MSOs should accept 3 locations minimum instead of 10"
-                    className="flex-1"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey && !isApplyingCriteriaEdit) {
-                        e.preventDefault();
-                        applyCriteriaEditWithAI();
-                      }
-                    }}
-                    disabled={isApplyingCriteriaEdit}
+                  <Input value={criteriaEditInstruction} onChange={(e) => setCriteriaEditInstruction(e.target.value)} placeholder="e.g., Lower minimum locations to 3" className="flex-1" disabled={isApplyingCriteriaEdit}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !isApplyingCriteriaEdit) { e.preventDefault(); applyCriteriaEditWithAI(); } }}
                   />
-                  <Button 
-                    onClick={applyCriteriaEditWithAI} 
-                    disabled={isApplyingCriteriaEdit || !criteriaEditInstruction.trim()}
-                    size="sm"
-                  >
-                    {isApplyingCriteriaEdit ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Send className="w-4 h-4" />
-                    )}
+                  <Button onClick={applyCriteriaEditWithAI} disabled={isApplyingCriteriaEdit || !criteriaEditInstruction.trim()} size="sm">
+                    {isApplyingCriteriaEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                   </Button>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    "Lower Large MSO location minimum to 3",
-                    "Remove towing exclusion",
-                    "Add ADAS calibration as required"
-                  ].map((example) => (
-                    <button
-                      key={example}
-                      onClick={() => setCriteriaEditInstruction(example)}
-                      className="text-xs px-2 py-1 bg-muted/50 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      {example}
-                    </button>
-                  ))}
-                </div>
-                {lastCriteriaChangesSummary && (
-                  <div className="text-xs text-green-600 flex items-center gap-1">
-                    <Check className="w-3 h-3" />
-                    {lastCriteriaChangesSummary}
-                  </div>
-                )}
+                {lastCriteriaChangesSummary && <div className="text-xs text-green-600 flex items-center gap-1"><Check className="w-3 h-3" />{lastCriteriaChangesSummary}</div>}
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
-                {/* Size Criteria */}
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-primary" />
-                    Size Criteria
-                  </Label>
-                  <Textarea
-                    value={editedSizeCriteria}
-                    onChange={(e) => setEditedSizeCriteria(e.target.value)}
-                    placeholder="Revenue thresholds, EBITDA ranges, employee count, location count, sq ft requirements..."
-                    className="min-h-[180px] text-base resize-y"
-                  />
-                </div>
-                
-                {/* Service/Product Mix */}
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium flex items-center gap-2">
-                    <Briefcase className="w-4 h-4 text-primary" />
-                    Service/Product Mix
-                  </Label>
-                  <Textarea
-                    value={editedServiceCriteria}
-                    onChange={(e) => setEditedServiceCriteria(e.target.value)}
-                    placeholder="Required services, preferred capabilities, excluded services, business model preferences..."
-                    className="min-h-[180px] text-base resize-y"
-                  />
-                </div>
-                
-                {/* Geography */}
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-primary" />
-                    Geography
-                  </Label>
-                  <Textarea
-                    value={editedGeographyCriteria}
-                    onChange={(e) => setEditedGeographyCriteria(e.target.value)}
-                    placeholder="Target regions, excluded areas, coverage type, HQ requirements..."
-                    className="min-h-[180px] text-base resize-y"
-                  />
-                </div>
-                
-                {/* Buyer Types */}
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium flex items-center gap-2">
-                    <Target className="w-4 h-4 text-primary" />
-                    Buyer Types
-                  </Label>
-                  <Textarea
-                    value={editedBuyerTypesCriteria}
-                    onChange={(e) => setEditedBuyerTypesCriteria(e.target.value)}
-                    placeholder="Large MSOs: National presence, 3+ locations, $2M+ per location...
 
-Regional MSOs: 6-50 locations, 7,500+ sq ft, $1.2M+/location...
-
-PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
-                    className="min-h-[180px] text-base resize-y"
-                  />
-                </div>
+              {/* Criteria Fields */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2"><Label className="flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" />Size Criteria</Label><Textarea value={editedSizeCriteria} onChange={(e) => setEditedSizeCriteria(e.target.value)} rows={6} /></div>
+                <div className="space-y-2"><Label className="flex items-center gap-1"><Briefcase className="w-3.5 h-3.5" />Service/Product Mix</Label><Textarea value={editedServiceCriteria} onChange={(e) => setEditedServiceCriteria(e.target.value)} rows={6} /></div>
+                <div className="space-y-2"><Label className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />Geography</Label><Textarea value={editedGeographyCriteria} onChange={(e) => setEditedGeographyCriteria(e.target.value)} rows={6} /></div>
+                <div className="space-y-2"><Label className="flex items-center gap-1"><Target className="w-3.5 h-3.5" />Buyer Types</Label><Textarea value={editedBuyerTypesCriteria} onChange={(e) => setEditedBuyerTypesCriteria(e.target.value)} rows={6} /></div>
               </div>
-              
-              <DialogFooter className="flex-col sm:flex-row gap-2">
-                <Button variant="ghost" onClick={cancelEditingFitCriteria} disabled={isSavingFitCriteria || isParsingCriteria}>
-                  Cancel
-                </Button>
-                <Button variant="outline" onClick={parseFitCriteria} disabled={isParsingCriteria || isSavingFitCriteria}>
-                  {isParsingCriteria ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Wand2 className="w-4 h-4 mr-2" />
-                  )}
-                  Parse Criteria
-                </Button>
-                <Button onClick={saveFitCriteria} disabled={isSavingFitCriteria || isParsingCriteria}>
-                  {isSavingFitCriteria ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Check className="w-4 h-4 mr-2" />
-                  )}
-                  Save Changes
+
+              <DialogFooter>
+                <Button variant="outline" onClick={cancelEditingFitCriteria}>Cancel</Button>
+                <Button onClick={saveFitCriteria} disabled={isSavingFitCriteria}>
+                  {isSavingFitCriteria ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}Save Changes
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
 
+          {/* Collapsed/Expanded Content */}
           {!isCriteriaCollapsed && (
             <>
-              {/* Show structured criteria if available */}
-              {(tracker.size_criteria || tracker.service_criteria || tracker.geography_criteria || tracker.buyer_types_criteria) ? (
-                <>
-                  <StructuredCriteriaPanel
-                    sizeCriteria={tracker.size_criteria}
-                    serviceCriteria={tracker.service_criteria}
-                    geographyCriteria={tracker.geography_criteria}
-                    buyerTypesCriteria={tracker.buyer_types_criteria}
-                  />
-                  {/* Show raw text in collapsible if it exists */}
-                  {(tracker.fit_criteria || tracker.fit_criteria_size || tracker.fit_criteria_service || tracker.fit_criteria_geography || tracker.fit_criteria_buyer_types) && (
-                    <Collapsible defaultOpen={false} className="mt-4">
-                      <CollapsibleTrigger asChild>
-                        <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground hover:text-foreground">
-                          <ChevronRight className="w-4 h-4 transition-transform duration-200 [[data-state=open]>&]:rotate-90" />
-                          View Source Text
-                        </Button>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <div className="bg-muted/20 rounded-lg p-3 border mt-2 text-xs text-muted-foreground">
-                          {tracker.fit_criteria && (
-                            <p className="whitespace-pre-wrap">{tracker.fit_criteria}</p>
-                          )}
-                          {(tracker.fit_criteria_size || tracker.fit_criteria_service || tracker.fit_criteria_geography || tracker.fit_criteria_buyer_types) && (
-                            <div className="grid grid-cols-2 gap-3 mt-2">
-                              {tracker.fit_criteria_size && <div><strong>Size:</strong> {tracker.fit_criteria_size}</div>}
-                              {tracker.fit_criteria_service && <div><strong>Service:</strong> {tracker.fit_criteria_service}</div>}
-                              {tracker.fit_criteria_geography && <div><strong>Geography:</strong> {tracker.fit_criteria_geography}</div>}
-                              {tracker.fit_criteria_buyer_types && <div><strong>Buyer Types:</strong> {tracker.fit_criteria_buyer_types}</div>}
-                            </div>
-                          )}
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  )}
-                </>
-              ) : (tracker.fit_criteria || tracker.fit_criteria_size || tracker.fit_criteria_service || tracker.fit_criteria_geography || tracker.fit_criteria_buyer_types) ? (
-                <>
-                  {/* Show raw criteria with parse button */}
-                  <div className="mt-3 flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={parseFitCriteria} disabled={isParsingCriteria}>
-                      {isParsingCriteria ? (
-                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-                      ) : (
-                        <Wand2 className="w-3.5 h-3.5 mr-1" />
-                      )}
-                      Parse into Structured Criteria
-                    </Button>
-                  </div>
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {tracker.fit_criteria_size && (
-                      <div className="bg-muted/30 rounded-lg p-3 border">
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <DollarSign className="w-3.5 h-3.5 text-primary" />
-                          <span className="text-xs font-medium">Size</span>
-                        </div>
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_size}</p>
-                      </div>
-                    )}
-                    {tracker.fit_criteria_service && (
-                      <div className="bg-muted/30 rounded-lg p-3 border">
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <Briefcase className="w-3.5 h-3.5 text-primary" />
-                          <span className="text-xs font-medium">Service/Product Mix</span>
-                        </div>
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_service}</p>
-                      </div>
-                    )}
-                    {tracker.fit_criteria_geography && (
-                      <div className="bg-muted/30 rounded-lg p-3 border">
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <MapPin className="w-3.5 h-3.5 text-primary" />
-                          <span className="text-xs font-medium">Geography</span>
-                        </div>
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_geography}</p>
-                      </div>
-                    )}
-                    {tracker.fit_criteria_buyer_types && (
-                      <div className="bg-muted/30 rounded-lg p-3 border">
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <Target className="w-3.5 h-3.5 text-primary" />
-                          <span className="text-xs font-medium">Buyer Types</span>
-                        </div>
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria_buyer_types}</p>
-                      </div>
-                    )}
-                  </div>
-                  {tracker.fit_criteria && !tracker.fit_criteria_size && !tracker.fit_criteria_service && !tracker.fit_criteria_geography && !tracker.fit_criteria_buyer_types && (
-                    <div className="bg-muted/30 rounded-lg p-3 border mt-3">
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{tracker.fit_criteria}</p>
-                    </div>
-                  )}
-                </>
+              {hasExistingCriteria() ? (
+                <StructuredCriteriaPanel sizeCriteria={tracker.size_criteria} serviceCriteria={tracker.service_criteria} geographyCriteria={tracker.geography_criteria} buyerTypesCriteria={tracker.buyer_types_criteria} />
               ) : (
                 <div className="mt-3 space-y-3">
-                  <p className="text-sm text-muted-foreground italic">
-                    No fit criteria defined. Use the tools below to generate criteria or click Edit to add manually.
-                  </p>
-                  
-                  {/* AI Criteria Generation Tools */}
-                  <div className="space-y-3">
-                    <TrackerNotesSection onApply={handleApplyCriteria} />
-                    <AIResearchSection 
-                      industryName={tracker.industry_name} 
-                      trackerId={id}
-                      onApply={handleApplyCriteria}
-                    />
+                  <p className="text-sm text-muted-foreground italic">No fit criteria defined.</p>
+                  <TrackerNotesSection onApply={handleApplyCriteria} />
+                  <AIResearchSection industryName={tracker.industry_name} trackerId={id} onApply={handleApplyCriteria} />
+                </div>
+              )}
+
+              {/* Documents Section */}
+              <div className="mt-4 pt-4 border-t">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Supporting Documents</span>
+                    {tracker.documents?.length > 0 && <Badge variant="outline" className="text-xs">{tracker.documents.length}</Badge>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="file" ref={docFileInputRef} onChange={(e) => e.target.files && uploadDocuments(e.target.files)} multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" className="hidden" />
+                    <Button variant="outline" size="sm" onClick={() => docFileInputRef.current?.click()} disabled={isUploadingDocs}>
+                      {isUploadingDocs ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1" />}Add Documents
+                    </Button>
+                    {tracker.documents?.length > 0 && (
+                      <Button variant="outline" size="sm" onClick={handleAnalyzeDocuments} disabled={isAnalyzingDocuments}>
+                        {isAnalyzingDocuments ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <FileSearch className="w-3.5 h-3.5 mr-1" />}
+                        {tracker.documents_analyzed_at ? 'Re-analyze' : 'Analyze'}
+                      </Button>
+                    )}
                   </div>
                 </div>
-              )}
-            </>
-          )}
-          
-          
-          {/* Documents Section */}
-          {!isCriteriaCollapsed && (
-            <div className="mt-4 pt-4 border-t">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Supporting Documents</span>
-                  {tracker.documents && (tracker.documents as any[]).length > 0 && (
-                    <Badge variant="outline" className="text-xs">
-                      {(tracker.documents as any[]).length}
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  {tracker.documents_analyzed_at && (
-                    <span className="text-xs text-muted-foreground">
-                      Analyzed {new Date(tracker.documents_analyzed_at).toLocaleDateString()}
-                    </span>
-                  )}
-                  <input
-                    type="file"
-                    ref={docFileInputRef}
-                    onChange={(e) => e.target.files && uploadDocuments(e.target.files)}
-                    multiple
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
-                    className="hidden"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => docFileInputRef.current?.click()}
-                    disabled={isUploadingDocs}
-                  >
-                    {isUploadingDocs ? (
-                      <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-                    ) : (
-                      <Upload className="w-3.5 h-3.5 mr-1" />
-                    )}
-                    Add Documents
-                  </Button>
-                  {tracker.documents && (tracker.documents as any[]).length > 0 && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleAnalyzeDocuments}
-                      disabled={isAnalyzingDocuments}
-                    >
-                      {isAnalyzingDocuments ? (
-                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-                      ) : (
-                        <FileSearch className="w-3.5 h-3.5 mr-1" />
-                      )}
-                      {tracker.documents_analyzed_at ? 'Re-analyze' : 'Analyze'}
-                    </Button>
-                  )}
-                </div>
-              </div>
-              {tracker.documents && (tracker.documents as any[]).length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {(tracker.documents as { name: string; path: string; size: number }[]).map((doc, idx) => (
-                    <div
-                      key={idx}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-muted/50 rounded-md text-sm group"
-                    >
-                      <FileText className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="truncate max-w-[200px]">{doc.name}</span>
-                      <button
-                        onClick={() => downloadDocument(doc)}
-                        className="p-0.5 hover:bg-muted rounded transition-colors"
-                        title="Download"
-                      >
-                        <Download className="w-3 h-3 text-muted-foreground" />
-                      </button>
-                      <button
-                        onClick={() => removeDocument(doc)}
-                        className="p-0.5 hover:bg-destructive/20 rounded transition-colors"
-                        title="Remove"
-                      >
-                        <X className="w-3 h-3 text-muted-foreground hover:text-destructive" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground italic">
-                  No documents uploaded. Add documents to analyze and extract criteria.
-                </p>
-              )}
-            </div>
-          )}
-          
-          {/* KPI Configuration Section */}
-          {!isCriteriaCollapsed && (
-            <div className="mt-4 pt-4 border-t">
-              <KPIConfigPanel
-                config={tracker.kpi_scoring_config as any}
-                industryName={tracker.industry_name}
-                onChange={async (newConfig) => {
-                  const { error } = await supabase
-                    .from("industry_trackers")
-                    .update({ 
-                      kpi_scoring_config: newConfig as any,
-                      updated_at: new Date().toISOString() 
-                    })
-                    .eq("id", id);
-                  
-                  if (error) {
-                    toast({ title: "Error", description: "Failed to save KPI config", variant: "destructive" });
-                  } else {
-                    setTracker({ ...tracker, kpi_scoring_config: newConfig });
-                    toast({ title: "KPI config saved" });
-                  }
-                }}
-              />
-            </div>
-          )}
-        </div>
-
-        <Tabs defaultValue="buyers">
-          <TabsList><TabsTrigger value="buyers"><Users className="w-4 h-4 mr-2" />Buyers ({buyers.length})</TabsTrigger><TabsTrigger value="deals"><FileText className="w-4 h-4 mr-2" />Deals ({deals.length})</TabsTrigger></TabsList>
-          
-          <TabsContent value="buyers" className="mt-4 space-y-4">
-            {/* Progress bar for bulk enrichment */}
-            <BulkProgressBar
-              current={buyerEnrichmentProgress.current}
-              total={buyerEnrichmentProgress.total}
-              label="Enriching buyers..."
-              isVisible={isBulkEnriching}
-            />
-            
-            {/* Bulk action bar when buyers are highlighted or selected - sticky so it's always visible */}
-            {(highlightedBuyerIds.size > 0 || selectedBuyerIds.size > 0) && (
-              <div className="sticky top-0 z-10 flex items-center gap-3 p-3 bg-primary/5 border border-primary/20 rounded-lg backdrop-blur-sm">
-                <div className="flex items-center gap-2">
-                  {highlightedBuyerIds.size > 0 && (
-                    <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200">
-                      {highlightedBuyerIds.size} highlighted by AI
-                    </Badge>
-                  )}
-                  {selectedBuyerIds.size > 0 && (
-                    <Badge variant="default">
-                      {selectedBuyerIds.size} selected
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 ml-auto">
-                  {highlightedBuyerIds.size > 0 && selectedBuyerIds.size === 0 && (
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setSelectedBuyerIds(new Set(highlightedBuyerIds))}
-                    >
-                      <CheckSquare className="w-4 h-4 mr-1" />
-                      Select All Highlighted
-                    </Button>
-                  )}
-                  {selectedBuyerIds.size > 0 && (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button 
-                          variant="destructive" 
-                          size="sm"
-                          disabled={isDeletingSelected}
-                        >
-                          {isDeletingSelected ? (
-                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4 mr-1" />
-                          )}
-                          Delete Selected ({selectedBuyerIds.size})
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete {selectedBuyerIds.size} Buyer{selectedBuyerIds.size === 1 ? '' : 's'}</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to delete {selectedBuyerIds.size} selected buyer{selectedBuyerIds.size === 1 ? '' : 's'}? This action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction 
-                            onClick={async () => {
-                              setIsDeletingSelected(true);
-                              try {
-                                for (const buyerId of selectedBuyerIds) {
-                                  await deleteBuyerWithRelated(buyerId);
-                                }
-                                toast({ 
-                                  title: "Buyers deleted", 
-                                  description: `${selectedBuyerIds.size} buyer${selectedBuyerIds.size === 1 ? '' : 's'} removed` 
-                                });
-                                setSelectedBuyerIds(new Set());
-                                setHighlightedBuyerIds(new Set());
-                                loadData();
-                              } catch (err) {
-                                toast({ 
-                                  title: "Error", 
-                                  description: err instanceof Error ? err.message : "Failed to delete buyers", 
-                                  variant: "destructive" 
-                                });
-                              } finally {
-                                setIsDeletingSelected(false);
-                              }
-                            }}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          >
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  )}
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => {
-                      setHighlightedBuyerIds(new Set());
-                      setSelectedBuyerIds(new Set());
-                    }}
-                  >
-                    <X className="w-4 h-4 mr-1" />
-                    Clear
-                  </Button>
-                </div>
-              </div>
-            )}
-            
-            {/* Floating bulk delete button - always visible when items selected */}
-            {selectedBuyerIds.size > 0 && (
-              <div className="fixed bottom-6 left-6 z-50">
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button 
-                      variant="destructive" 
-                      size="lg" 
-                      className="shadow-lg"
-                      disabled={isDeletingSelected}
-                    >
-                      {isDeletingSelected ? (
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-5 h-5 mr-2" />
-                      )}
-                      Delete {selectedBuyerIds.size} Selected
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete {selectedBuyerIds.size} Buyer{selectedBuyerIds.size === 1 ? '' : 's'}</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Are you sure you want to delete {selectedBuyerIds.size} selected buyer{selectedBuyerIds.size === 1 ? '' : 's'}? This action cannot be undone.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction 
-                        onClick={async () => {
-                          setIsDeletingSelected(true);
-                          try {
-                            for (const buyerId of selectedBuyerIds) {
-                              await deleteBuyerWithRelated(buyerId);
-                            }
-                            toast({ 
-                              title: "Buyers deleted", 
-                              description: `${selectedBuyerIds.size} buyer${selectedBuyerIds.size === 1 ? '' : 's'} removed` 
-                            });
-                            setSelectedBuyerIds(new Set());
-                            setHighlightedBuyerIds(new Set());
-                            loadData();
-                          } catch (err) {
-                            toast({ 
-                              title: "Error", 
-                              description: err instanceof Error ? err.message : "Failed to delete buyers", 
-                              variant: "destructive" 
-                            });
-                          } finally {
-                            setIsDeletingSelected(false);
-                          }
-                        }}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      >
-                        Delete
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </div>
-            )}
-            
-            {/* Interrupted enrichment session banner */}
-            {hasInterruptedSession && interruptedSessionInfo && !isBulkEnriching && (
-              <div className="flex items-center justify-between p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                <div className="flex items-center gap-2 text-sm">
-                  <Info className="w-4 h-4 text-amber-500" />
-                  <span className="text-amber-700 dark:text-amber-400">
-                    Previous enrichment was interrupted. {interruptedSessionInfo.remaining} buyers still need enrichment.
-                  </span>
-                </div>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={clearEnrichmentProgress}
-                  >
-                    Dismiss
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    onClick={retryUnenrichedBuyers}
-                    className="bg-amber-500 hover:bg-amber-600 text-white"
-                  >
-                    <Sparkles className="w-4 h-4 mr-1" />
-                    Resume Enrichment
-                  </Button>
-                </div>
-              </div>
-            )}
-            
-            {/* Enrichment in progress warning banner */}
-            {isBulkEnriching && (
-              <div className="flex items-center gap-3 p-3 bg-primary/10 border border-primary/20 rounded-lg">
-                <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                <span className="text-sm font-medium">
-                  Enriching {buyerEnrichmentProgress.current} of {buyerEnrichmentProgress.total} buyers — Keep this tab open
-                </span>
-              </div>
-            )}
-            
-            <div className="flex gap-4 items-center">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input placeholder="Search buyers..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
-              </div>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button 
-                      variant="outline" 
-                      onClick={enrichAllBuyers}
-                      disabled={isBulkEnriching || buyers.filter(hasWebsite).length === 0}
-                    >
-                      {isBulkEnriching ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-4 h-4 mr-2" />
-                      )}
-                      Enrich All
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Scrape websites and extract data for all buyers</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              
-              {/* Retry Unenriched button - only show when there are unenriched buyers */}
-              {unenrichedBuyerCount > 0 && !isBulkEnriching && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button 
-                        variant="secondary" 
-                        onClick={retryUnenrichedBuyers}
-                      >
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Retry {unenrichedBuyerCount} Unenriched
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Retry enrichment for buyers without extracted data</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button 
-                      variant="outline" 
-                      onClick={checkForDuplicates}
-                      disabled={isDeduping || buyers.length < 2}
-                    >
-                      {isDeduping ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <GitMerge className="w-4 h-4 mr-2" />
-                      )}
-                      Deduplicate
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Find and merge duplicate platform entries</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              
-              {/* Dedupe Confirmation Dialog */}
-              <Dialog open={dedupeDialogOpen} onOpenChange={setDedupeDialogOpen}>
-                <DialogContent className="max-w-lg">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <GitMerge className="w-5 h-5" />
-                      Duplicate Buyers Found
-                    </DialogTitle>
-                    <DialogDescription>
-                      {dedupePreview?.stats.groupsFound} duplicate group{dedupePreview?.stats.groupsFound === 1 ? '' : 's'} found ({dedupePreview?.stats.totalDuplicates} redundant record{dedupePreview?.stats.totalDuplicates === 1 ? '' : 's'} will be removed)
-                    </DialogDescription>
-                  </DialogHeader>
-                  
-                  <div className="max-h-[300px] overflow-y-auto space-y-3 py-2">
-                    {dedupePreview?.duplicateGroups.map((group, idx) => (
-                      <div key={idx} className="p-3 bg-muted/50 rounded-lg border">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium">{group.keeperName}</span>
-                          <Badge variant="secondary" className="text-xs">
-                            {group.count} records → 1
-                          </Badge>
-                        </div>
-                        <div className="text-xs text-muted-foreground space-y-1">
-                          <div className="flex items-center gap-1">
-                            <span className="font-medium">Match by:</span>
-                            <Badge variant="outline" className="text-xs px-1.5 py-0">
-                              {group.matchType === 'domain' ? 'Domain' : 'Name'}
-                            </Badge>
-                            <span className="text-muted-foreground/70">{group.key}</span>
-                          </div>
-                          <div>
-                            <span className="font-medium">PE Firms:</span> {group.peFirmNames.join(', ')}
-                          </div>
-                          <div>
-                            <span className="font-medium">Will merge to:</span> {group.mergedPeFirmName}
-                          </div>
-                        </div>
+                {tracker.documents?.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {(tracker.documents as any[]).map((doc, idx) => (
+                      <div key={idx} className="inline-flex items-center gap-2 px-3 py-1.5 bg-muted/50 rounded-md text-sm">
+                        <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                        <span className="truncate max-w-[200px]">{doc.name}</span>
+                        <button onClick={() => downloadDocument(doc)} className="p-0.5 hover:bg-muted rounded"><Download className="w-3 h-3 text-muted-foreground" /></button>
+                        <button onClick={() => removeDocument(doc)} className="p-0.5 hover:bg-destructive/20 rounded"><X className="w-3 h-3 text-muted-foreground hover:text-destructive" /></button>
                       </div>
                     ))}
                   </div>
-                  
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setDedupeDialogOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button onClick={executeDedupe} disabled={isDeduping}>
-                      {isDeduping ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <GitMerge className="w-4 h-4 mr-2" />
-                      )}
-                      Merge Duplicates
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-              
-              <CSVImport trackerId={id!} onComplete={loadData} />
-              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogTrigger asChild><Button><Plus className="w-4 h-4 mr-2" />Add Buyer</Button></DialogTrigger>
-                <DialogContent>
-                  <DialogHeader><DialogTitle>Add New Buyer</DialogTitle></DialogHeader>
-                  <div className="space-y-4 pt-4">
-                    <div><Label>PE Firm Name *</Label><Input value={newBuyer.pe_firm_name} onChange={(e) => setNewBuyer({ ...newBuyer, pe_firm_name: e.target.value })} placeholder="e.g., Blackstone" className="mt-1" /></div>
-                    <div><Label>PE Firm Website</Label><Input value={newBuyer.pe_firm_website} onChange={(e) => setNewBuyer({ ...newBuyer, pe_firm_website: e.target.value })} placeholder="e.g., https://blackstone.com" className="mt-1" /></div>
-                    <div><Label>Platform Company</Label><Input value={newBuyer.platform_company_name} onChange={(e) => setNewBuyer({ ...newBuyer, platform_company_name: e.target.value })} placeholder="e.g., ABC Services" className="mt-1" /></div>
-                    <div><Label>Platform Company Website</Label><Input value={newBuyer.platform_website} onChange={(e) => setNewBuyer({ ...newBuyer, platform_website: e.target.value })} placeholder="e.g., https://abcservices.com" className="mt-1" /></div>
-                    <Button onClick={addBuyer} disabled={!newBuyer.pe_firm_name.trim()} className="w-full">Add Buyer</Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-            
-            <div className="bg-card rounded-lg border overflow-hidden">
-              {filteredBuyers.length === 0 ? (
-                <div className="p-8 text-center text-muted-foreground">
-                  {search ? "No buyers match your search" : "No buyers yet. Add buyers manually or import from CSV."}
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead className="w-[40px]">
-                        <Checkbox 
-                          checked={selectedBuyerIds.size > 0 && selectedBuyerIds.size === sortedBuyers.length}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setSelectedBuyerIds(new Set(sortedBuyers.map(b => b.id)));
-                            } else {
-                              setSelectedBuyerIds(new Set());
-                            }
-                          }}
-                        />
-                      </TableHead>
-                      <TableHead 
-                        className="w-[220px] cursor-pointer hover:bg-muted/50 select-none"
-                        onClick={() => handleBuyerSort("platform_company_name")}
-                      >
-                        <div className="flex items-center gap-1">
-                          Platform Company 
-                          {buyerSortColumn === "platform_company_name" ? (
-                            buyerSortDirection === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-muted-foreground" />
-                          )}
-                        </div>
-                      </TableHead>
-                      <TableHead 
-                        className="w-[180px] cursor-pointer hover:bg-muted/50 select-none"
-                        onClick={() => handleBuyerSort("pe_firm_name")}
-                      >
-                        <div className="flex items-center gap-1">
-                          PE Firm 
-                          {buyerSortColumn === "pe_firm_name" ? (
-                            buyerSortDirection === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-muted-foreground" />
-                          )}
-                        </div>
-                      </TableHead>
-                      <TableHead className="w-[300px]">Description</TableHead>
-                      <TableHead className="w-[120px] text-center">Intelligence</TableHead>
-                      <TableHead className="w-[100px]"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedBuyers.map((buyer) => {
-                      const isHighlighted = highlightedBuyerIds.has(buyer.id);
-                      const isSelected = selectedBuyerIds.has(buyer.id);
-                      return (
-                        <TableRow 
-                          key={buyer.id} 
-                          className={`cursor-pointer hover:bg-muted/30 transition-colors ${isHighlighted ? 'bg-amber-50 dark:bg-amber-950/30 border-l-4 border-l-amber-400' : ''} ${isSelected ? 'bg-primary/10' : ''}`}
-                          onClick={() => navigate(`/buyers/${buyer.id}`)}
-                        >
-                          <TableCell onClick={(e) => e.stopPropagation()}>
-                            <Checkbox 
-                              checked={isSelected}
-                              onCheckedChange={(checked) => {
-                                setSelectedBuyerIds(prev => {
-                                  const next = new Set(prev);
-                                  if (checked) {
-                                    next.add(buyer.id);
-                                  } else {
-                                    next.delete(buyer.id);
-                                  }
-                                  return next;
-                                });
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">{buyer.platform_company_name || buyer.pe_firm_name}</span>
-                                {isHighlighted && (
-                                  <Badge variant="outline" className="text-xs px-1.5 py-0 bg-amber-100 text-amber-800 border-amber-300">
-                                    AI Match
-                                  </Badge>
-                                )}
-                                {buyer.platform_website ? (
-                                  <a 
-                                    href={getWebsiteUrl(buyer.platform_website)!} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="text-primary hover:text-primary/80"
-                                    title="Visit website"
-                                  >
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                  </a>
-                                ) : (
-                                  <span className="text-muted-foreground/40" title="Website not set">
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1.5 mt-1">
-                                {isActuallyEnriched(buyer) && (
-                                  <Badge variant="outline" className="text-xs px-1.5 py-0 bg-primary/10 text-primary border-primary/20">
-                                    <Sparkles className="w-3 h-3 mr-1" />
-                                    Enriched
-                                  </Badge>
-                                )}
-                                {(buyer.has_fee_agreement || (buyer.fee_agreement_status && buyer.fee_agreement_status !== 'None')) && (
-                                  <Badge variant="outline" className="text-xs px-1.5 py-0 bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
-                                    <DollarSign className="w-3 h-3 mr-1" />
-                                    Fee Agreed
-                                  </Badge>
-                                )}
-                              </div>
-                              <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                                <MapPin className="w-3 h-3" />
-                                {getHQ(buyer) || <span className="italic">Location not set</span>}
-                              </span>
-                            </div>
-                          </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
-                            {buyer.pe_firm_website ? (
-                              <a 
-                                href={getWebsiteUrl(buyer.pe_firm_website)!} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-primary hover:underline flex items-center gap-1"
-                              >
-                                {buyer.pe_firm_name}
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            ) : (
-                              <span>{buyer.pe_firm_name}</span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm text-muted-foreground line-clamp-3">{getDescription(buyer) || "—"}</span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <IntelligenceBadge buyer={buyer} />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="h-8 w-8 text-muted-foreground hover:text-primary"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      enrichBuyer(buyer.id, buyer.platform_company_name || buyer.pe_firm_name);
-                                    }}
-                                    disabled={enrichingBuyers.has(buyer.id) || !hasWebsite(buyer)}
-                                  >
-                                    {enrichingBuyers.has(buyer.id) ? (
-                                      <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                      <Sparkles className="w-4 h-4" />
-                                    )}
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>{hasWebsite(buyer) ? "Enrich with AI" : "No website to scrape"}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon" 
-                                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Buyer</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to delete {buyer.platform_company_name || buyer.pe_firm_name}? This action cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction 
-                                    onClick={() => deleteBuyer(buyer.id, buyer.platform_company_name || buyer.pe_firm_name)}
-                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              )}
-            </div>
-          </TabsContent>
+                ) : <p className="text-sm text-muted-foreground italic">No documents uploaded.</p>}
+              </div>
 
-          <TabsContent value="deals" className="mt-4 space-y-4">
-            <div className="flex justify-between items-center gap-2 mb-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">
-                  {deals.length} deals
-                </span>
+              {/* KPI Config */}
+              <div className="mt-4 pt-4 border-t">
+                <KPIConfigPanel
+                  config={tracker.kpi_scoring_config as any}
+                  industryName={tracker.industry_name}
+                  onChange={async (newConfig) => {
+                    await supabase.from("industry_trackers").update({ kpi_scoring_config: newConfig as any, updated_at: new Date().toISOString() }).eq("id", id);
+                    setTracker({ ...tracker, kpi_scoring_config: newConfig });
+                    toast({ title: "KPI config saved" });
+                  }}
+                />
               </div>
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  onClick={scoreAllDeals}
-                  disabled={isScoringAll || deals.length === 0}
-                >
-                  {isScoringAll ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Scoring {scoringProgress.current} of {scoringProgress.total}...
-                    </>
-                  ) : (
-                    <>
-                      <TrendingUp className="w-4 h-4 mr-2" />
-                      Score All Deals
-                    </>
-                  )}
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={enrichAllDeals}
-                  disabled={isBulkEnrichingDeals || deals.length === 0}
-                >
-                  {isBulkEnrichingDeals ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Enriching {dealEnrichmentProgress.current} of {dealEnrichmentProgress.total}...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Enrich All Deals
-                    </>
-                  )}
-                </Button>
-                <DealCSVImport trackerId={id!} onComplete={loadData} />
-              </div>
-            </div>
-            {deals.length === 0 ? (
-              <div className="bg-card rounded-lg border p-8 text-center text-muted-foreground">
-                No deals yet. List a deal to match it with buyers.
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <SortableHeader column="deal_name" className="w-[200px]">Deal Name</SortableHeader>
-                    <SortableHeader column="geography" className="w-[150px]">Service Area</SortableHeader>
-                    <SortableHeader column="approved" className="w-[80px] text-center">Approved</SortableHeader>
-                    <SortableHeader column="interested" className="w-[80px] text-center">Interested</SortableHeader>
-                    <SortableHeader column="passed" className="w-[80px] text-center">Passed</SortableHeader>
-                    <SortableHeader column="created_at" className="w-[100px]">Date Added</SortableHeader>
-                    <SortableHeader column="revenue" className="w-[90px] text-right">Revenue</SortableHeader>
-                    <SortableHeader column="ebitda" className="w-[90px] text-right">EBITDA</SortableHeader>
-                    <SortableHeader column="deal_score" className="w-[90px] text-center">Score</SortableHeader>
-                    <TableHead className="w-[120px]">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedAndFilteredDeals.map((deal) => {
-                    const counts = dealBuyerCounts[deal.id] || { approved: 0, interested: 0, passed: 0 };
-                    const geographyStr = deal.geography?.join(", ") || "—";
-                    const dateAdded = new Date(deal.created_at).toLocaleDateString("en-US", { 
-                      month: "short", 
-                      day: "numeric", 
-                      year: "numeric" 
-                    });
-                    
-                    return (
-                      <TableRow key={deal.id} className="hover:bg-muted/50">
-                        <TableCell>
-                          <Link to={`/deals/${deal.id}`} className="flex items-center gap-2 hover:underline">
-                            <span className="font-medium">{deal.deal_name}</span>
-                            {isDealEnriched(deal) && (
-                              <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-200">
-                                <Sparkles className="w-3 h-3 mr-1" />
-                                Enriched
-                              </Badge>
-                            )}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{geographyStr}</TableCell>
-                        <TableCell className="text-center">
-                          {counts.approved > 0 ? (
-                            <Badge variant="outline" className="text-xs bg-primary/10 text-primary">
-                              {counts.approved}
-                            </Badge>
-                          ) : "—"}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {counts.interested > 0 ? (
-                            <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600">
-                              {counts.interested}
-                            </Badge>
-                          ) : "—"}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {counts.passed > 0 ? (
-                            <Badge variant="outline" className="text-xs bg-destructive/10 text-destructive">
-                              {counts.passed}
-                            </Badge>
-                          ) : "—"}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{dateAdded}</TableCell>
-                        <TableCell className="text-right text-sm">
-                          {deal.revenue ? `$${deal.revenue}M` : "—"}
-                        </TableCell>
-                        <TableCell className="text-right text-sm">
-                          {deal.ebitda_amount ? `$${deal.ebitda_amount.toFixed(1)}M` : deal.ebitda_percentage ? `${deal.ebitda_percentage}%` : "—"}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {deal.deal_score ? <DealScoreBadge score={deal.deal_score} size="sm" /> : "—"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Badge variant={deal.status === "Active" ? "active" : deal.status === "Closed" ? "closed" : "dead"} className="mr-1">
-                              {deal.status}
-                            </Badge>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                    onClick={() => enrichDeal(deal.id, deal.deal_name)}
-                                    disabled={enrichingDeals.has(deal.id) || !canEnrichDeal(deal)}
-                                  >
-                                    {enrichingDeals.has(deal.id) ? (
-                                      <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                      <Sparkles className="w-4 h-4" />
-                                    )}
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>{canEnrichDeal(deal) ? "Enrich deal" : "No data sources to enrich from"}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                    onClick={() => archiveDeal(deal.id, deal.deal_name)}
-                                    disabled={deal.status === "Archived"}
-                                  >
-                                    <Archive className="w-4 h-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>{deal.status === "Archived" ? "Already archived" : "Archive deal"}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon" 
-                                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Deal?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    This will permanently delete "{deal.deal_name}" and all related data. This action cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => deleteDeal(deal.id, deal.deal_name)}
-                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
+            </>
+          )}
+        </div>
+
+        {/* Tabs for Buyers and Deals */}
+        <Tabs defaultValue="buyers">
+          <TabsList>
+            <TabsTrigger value="buyers"><Users className="w-4 h-4 mr-2" />Buyers ({buyers.length})</TabsTrigger>
+            <TabsTrigger value="deals"><FileText className="w-4 h-4 mr-2" />Deals ({deals.length})</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="buyers" className="mt-4">
+            <TrackerBuyersTab
+              trackerId={id!}
+              buyers={buyers}
+              search={search}
+              onSearchChange={setSearch}
+              enrichingBuyers={enrichingBuyers}
+              isBulkEnriching={isBulkEnriching}
+              buyerEnrichmentProgress={buyerEnrichmentProgress}
+              selectedBuyerIds={selectedBuyerIds}
+              highlightedBuyerIds={highlightedBuyerIds}
+              onSelectBuyer={(buyerId, selected) => {
+                setSelectedBuyerIds(prev => {
+                  const next = new Set(prev);
+                  if (selected) next.add(buyerId); else next.delete(buyerId);
+                  return next;
+                });
+              }}
+              onSelectAll={(selected) => {
+                if (selected) setSelectedBuyerIds(new Set(buyers.map(b => b.id)));
+                else setSelectedBuyerIds(new Set());
+              }}
+              onEnrichBuyer={enrichBuyer}
+              onEnrichAll={enrichAllBuyers}
+              onDeleteBuyer={deleteBuyer}
+              onDeleteSelected={deleteSelectedBuyers}
+              onAddBuyer={addBuyer}
+              onImportComplete={loadData}
+              onCheckDuplicates={checkForDuplicates}
+              onExecuteDedupe={executeDedupe}
+              isDeduping={isDeduping}
+              dedupeDialogOpen={dedupeDialogOpen}
+              onDedupeDialogOpenChange={setDedupeDialogOpen}
+              dedupePreview={dedupePreview}
+              hasInterruptedSession={hasInterruptedSession}
+              interruptedSessionInfo={interruptedSessionInfo}
+              onResumeEnrichment={() => { clearEnrichmentProgress(); enrichAllBuyers(); }}
+              onDismissSession={clearEnrichmentProgress}
+              buyerSortColumn={buyerSortColumn}
+              buyerSortDirection={buyerSortDirection}
+              onSort={handleBuyerSort}
+            />
+          </TabsContent>
+          
+          <TabsContent value="deals" className="mt-4">
+            <TrackerDealsTab
+              trackerId={id!}
+              deals={deals}
+              dealBuyerCounts={dealBuyerCounts}
+              enrichingDeals={enrichingDeals}
+              isBulkEnrichingDeals={isBulkEnrichingDeals}
+              dealEnrichmentProgress={dealEnrichmentProgress}
+              isScoringAll={isScoringAll}
+              scoringProgress={scoringProgress}
+              dealSortColumn={dealSortColumn}
+              dealSortDirection={dealSortDirection}
+              onSort={handleDealSort}
+              onEnrichDeal={enrichDeal}
+              onEnrichAllDeals={enrichAllDeals}
+              onScoreAllDeals={scoreAllDeals}
+              onArchiveDeal={archiveDeal}
+              onDeleteDeal={deleteDeal}
+              onImportComplete={loadData}
+            />
           </TabsContent>
         </Tabs>
       </div>
@@ -2924,11 +797,8 @@ PE Platforms: New platform seekers, $1.5M-3M EBITDA..."
         totalBuyerCount={buyers.length}
         onHighlightBuyers={(buyerIds) => {
           setHighlightedBuyerIds(new Set(buyerIds));
-          setSelectedBuyerIds(new Set()); // Clear selections when new highlighting happens
-          toast({
-            title: `${buyerIds.length} buyer${buyerIds.length === 1 ? '' : 's'} highlighted`,
-            description: "These buyers are now highlighted in the table below",
-          });
+          setSelectedBuyerIds(new Set());
+          toast({ title: `${buyerIds.length} buyer${buyerIds.length === 1 ? '' : 's'} highlighted` });
         }}
       />
     </AppLayout>
