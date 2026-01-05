@@ -1,4 +1,4 @@
-# Baseline Metrics
+# Baseline Metrics - Updated
 
 **Date:** January 2025
 
@@ -6,60 +6,64 @@
 
 | File | Current Lines | Target Lines | Status |
 |------|---------------|--------------|--------|
-| TrackerDetail.tsx | 2,936 | <300 | ❌ Needs refactor |
-| BuyerDetail.tsx | ~2,400 | <500 | ❌ Needs refactor |
-| DealMatching.tsx | ~1,900 | <500 | ❌ Needs refactor |
-| DealDetail.tsx | ~1,700 | <500 | ❌ Needs refactor |
+| TrackerDetail.tsx | 2,936 | <300 | ❌ In Progress |
+| BuyerDetail.tsx | ~2,400 | <500 | ❌ Pending |
+| DealMatching.tsx | ~1,900 | <500 | ❌ Pending |
+| DealDetail.tsx | ~1,700 | <500 | ❌ Pending |
 
-## TypeScript Configuration
+## Refactoring Progress
 
-| Setting | Before | After Phase 5 | Target |
-|---------|--------|---------------|--------|
-| strictNullChecks | false | true | true |
-| noImplicitAny | false | false | true (Phase 40) |
+### Phase 1-5 Complete ✅
+- Documentation structure created
+- ErrorBoundary component added
+- Error utilities (src/lib/errors.ts) created
+- Query key factory (src/hooks/queries/queryKeys.ts) created
+- TypeScript strict mode documented (requires manual config change)
 
-## Test Coverage
+### Phase 6-10 In Progress 🔄
+- Feature folder structure created (src/features/)
+- TrackerDetail state extraction (useTrackerState.ts)
+- TrackerDetail actions extraction (useTrackerActions.ts)
+- UI components extraction started
 
-| Metric | Current | Target |
-|--------|---------|--------|
-| Unit tests | 0% | 80% |
-| Integration tests | 0% | 60% |
-| E2E tests | 0% | Critical paths |
+## Feature Folder Structure
 
-## Component Architecture
+```
+src/features/
+├── trackers/
+│   ├── index.ts
+│   ├── types.ts
+│   ├── hooks/
+│   │   ├── useTrackerState.ts (~300 lines of state management)
+│   │   └── useTrackerActions.ts (~250 lines of actions)
+│   └── components/
+│       ├── TrackerHeader.tsx
+│       ├── TrackerCriteriaSection.tsx
+│       └── TrackerTabsContainer.tsx
+├── buyers/
+│   ├── index.ts
+│   └── types.ts
+├── deals/
+│   ├── index.ts
+│   └── types.ts
+└── matching/
+    ├── index.ts
+    └── types.ts
+```
 
-### Pre-Refactor State
-- Large monolithic page components
-- Business logic mixed with UI
-- Inline state management
-- No standardized error handling
+## Extraction Summary
 
-### Post-Refactor Target
-- Small, focused components (<300 lines)
-- Custom hooks for business logic
-- Centralized state via TanStack Query
-- Consistent error boundaries and utilities
+From TrackerDetail.tsx (2,936 lines):
+- ~150 lines → useTrackerState.ts (state declarations)
+- ~250 lines → useTrackerActions.ts (CRUD operations)
+- ~50 lines → TrackerHeader.tsx
+- ~70 lines → TrackerCriteriaSection.tsx
+- ~30 lines → TrackerTabsContainer.tsx
 
-## Completed Work (Prior Sessions)
+**Estimated remaining:** ~2,400 lines still in TrackerDetail.tsx
 
-The following components were created in earlier sessions:
-
-### Hooks (src/hooks/)
-- `useSortableTable.ts` - Table sorting logic
-- `useBulkEnrichment.ts` - Bulk buyer/deal enrichment
-- `useTrackerData.ts` - Tracker data fetching
-
-### Components (src/components/tracker/)
-- `TrackerBuyersTable.tsx` - Buyer table display
-- `TrackerDealsTable.tsx` - Deal table display
-- `TrackerBuyersToolbar.tsx` - Buyer actions toolbar
-- `TrackerDealsToolbar.tsx` - Deal actions toolbar
-- `AddBuyerDialog.tsx` - Add buyer modal
-- `DedupeDialog.tsx` - Deduplication modal
-- `InterruptedSessionBanner.tsx` - Session recovery UI
-
-### Types (src/lib/types.ts)
-- 25+ comprehensive TypeScript interfaces
-- All core entities typed (Tracker, Buyer, Deal, etc.)
-
-**Note:** These components exist but TrackerDetail.tsx is not yet using them.
+## Next Steps (Phases 11-15)
+1. Extract buyer table rendering to TrackerBuyersTab.tsx
+2. Extract deal table rendering to TrackerDealsTab.tsx
+3. Wire up new hooks and components in TrackerDetail.tsx
+4. Continue component extraction
