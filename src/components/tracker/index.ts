@@ -6,6 +6,8 @@ export { TrackerDealsToolbar } from './TrackerDealsToolbar';
 export { AddBuyerDialog } from './AddBuyerDialog';
 export { DedupeDialog } from './DedupeDialog';
 export { InterruptedSessionBanner } from './InterruptedSessionBanner';
+export { TrackerBuyersTab } from './TrackerBuyersTab';
+export { TrackerDealsTab } from './TrackerDealsTab';
 
 // Re-export types
 export type { TrackerBuyersTableProps } from './TrackerBuyersTable';
