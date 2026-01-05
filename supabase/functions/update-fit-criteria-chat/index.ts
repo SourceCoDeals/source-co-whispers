@@ -1,7 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -85,26 +85,30 @@ USER INSTRUCTION: "${instruction}"
 
 Update the criteria according to the instruction and return the complete updated criteria as JSON.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    if (!anthropicApiKey) {
+      throw new Error('ANTHROPIC_API_KEY not configured');
+    }
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
+        'x-api-key': anthropicApiKey,
         'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        system: systemPrompt,
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage }
+          { role: 'user', content: userMessage + '\n\nRespond with ONLY the JSON object, no other text.' }
         ],
-        temperature: 0.3,
-        response_format: { type: "json_object" }
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[update-fit-criteria-chat] OpenAI error:', response.status, errorText);
+      console.error('[update-fit-criteria-chat] Claude error:', response.status, errorText);
       return new Response(
         JSON.stringify({ success: false, error: `AI request failed: ${response.status}` }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -112,7 +116,7 @@ Update the criteria according to the instruction and return the complete updated
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    const content = data.content?.[0]?.text;
     
     if (!content) {
       return new Response(
@@ -123,7 +127,9 @@ Update the criteria according to the instruction and return the complete updated
 
     console.log('[update-fit-criteria-chat] AI response:', content);
 
-    const parsed = JSON.parse(content);
+    // Parse JSON from response
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(content);
 
     return new Response(
       JSON.stringify({ 

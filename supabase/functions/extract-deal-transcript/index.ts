@@ -355,7 +355,7 @@ async function scrapeTranscriptUrl(firecrawlApiKey: string, url: string): Promis
   return data.data?.markdown || '';
 }
 
-async function extractDealInfo(openaiApiKey: string, transcriptContent: string): Promise<any> {
+async function extractDealInfo(anthropicApiKey: string, transcriptContent: string): Promise<any> {
   const userPrompt = `Analyze the following call transcript and extract all relevant deal information.
 
 Apply the M&A financial extraction framework strictly:
@@ -394,47 +394,48 @@ IMPORTANT - Also extract Additional Intelligence:
 - real_estate: Property ownership, lease terms, facility details
 - growth_trajectory: Historical growth, future outlook, expansion plans`;
 
-  console.log('Calling AI with M&A extraction prompt...');
+  console.log('Calling Claude with M&A extraction prompt...');
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${openaiApiKey}`,
+      'x-api-key': anthropicApiKey,
       'Content-Type': 'application/json',
+      'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8192,
+      system: MA_ANALYST_SYSTEM_PROMPT,
+      tools: [{
+        name: extractDealInfoTool.function.name,
+        description: extractDealInfoTool.function.description,
+        input_schema: extractDealInfoTool.function.parameters
+      }],
+      tool_choice: { type: 'tool', name: 'extract_deal_info' },
       messages: [
-        { role: 'system', content: MA_ANALYST_SYSTEM_PROMPT },
         { role: 'user', content: userPrompt }
       ],
-      tools: [extractDealInfoTool],
-      tool_choice: { type: 'function', function: { name: 'extract_deal_info' } },
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('AI call failed:', response.status, errorText);
+    console.error('Claude call failed:', response.status, errorText);
     throw new Error(`AI extraction failed: ${response.status}`);
   }
 
   const data = await response.json();
-  const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+  const toolUse = data.content?.find((block: any) => block.type === 'tool_use');
   
-  if (!toolCall) {
-    console.log('No tool call in response');
+  if (!toolUse) {
+    console.log('No tool use in response');
     return {};
   }
 
-  try {
-    const result = JSON.parse(toolCall.function.arguments);
-    console.log('Extracted deal info:', JSON.stringify(result, null, 2));
-    return result;
-  } catch (e) {
-    console.error('Failed to parse tool call arguments:', e);
-    return {};
-  }
+  const result = toolUse.input || {};
+  console.log('Extracted deal info:', JSON.stringify(result, null, 2));
+  return result;
 }
 
 Deno.serve(async (req) => {
@@ -457,14 +458,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
     const firecrawlApiKey = Deno.env.get('FIRECRAWL_API_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    if (!openaiApiKey) {
+    if (!anthropicApiKey) {
       return new Response(
-        JSON.stringify({ success: false, error: 'OpenAI API key not configured' }),
+        JSON.stringify({ success: false, error: 'Anthropic API key not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -665,7 +666,7 @@ Deno.serve(async (req) => {
     console.log('Transcript content ready, length:', transcriptContent.length);
 
     // Extract deal info using AI with M&A framework
-    const extractedInfo = await extractDealInfo(openaiApiKey, transcriptContent);
+    const extractedInfo = await extractDealInfo(anthropicApiKey, transcriptContent);
     console.log('Extracted deal info with financial metadata');
 
     // Build update object with enhanced financial metadata

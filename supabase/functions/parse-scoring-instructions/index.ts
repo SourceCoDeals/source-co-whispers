@@ -7,7 +7,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
 
 interface ParsedRule {
   type: 'service_adjustment' | 'geography_adjustment' | 'size_adjustment' | 'owner_goals_adjustment' | 'disqualify' | 'bonus';
@@ -84,37 +84,42 @@ Be specific about conditions. Extract all relevant rules from the instructions.`
 
     console.log(`Parsing instructions for deal ${dealId}: "${instructions}"`);
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    if (!anthropicApiKey) {
+      throw new Error('ANTHROPIC_API_KEY not configured');
+    }
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
+        'x-api-key': anthropicApiKey,
         'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2048,
+        system: systemPrompt,
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: instructions }
+          { role: 'user', content: instructions + '\n\nReturn ONLY a valid JSON object.' }
         ],
-        response_format: { type: 'json_object' },
-        temperature: 0.3,
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenAI API error:', errorText);
-      throw new Error(`OpenAI API error: ${response.status}`);
+      console.error('Claude API error:', errorText);
+      throw new Error(`Claude API error: ${response.status}`);
     }
 
     const data = await response.json();
-    const parsedContent = data.choices[0].message.content;
+    const parsedContent = data.content?.[0]?.text;
     
     let parsed: ParsedInstructions;
     try {
-      parsed = JSON.parse(parsedContent);
+      const jsonMatch = parsedContent.match(/\{[\s\S]*\}/);
+      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(parsedContent);
     } catch (e) {
-      console.error('Failed to parse OpenAI response:', parsedContent);
+      console.error('Failed to parse Claude response:', parsedContent);
       throw new Error('Failed to parse AI response');
     }
 

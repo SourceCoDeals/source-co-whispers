@@ -171,7 +171,7 @@ async function scrapeWebsite(firecrawlApiKey: string, url: string): Promise<stri
   return markdown;
 }
 
-async function extractWebsiteInfo(openaiApiKey: string, websiteContent: string, companyName: string): Promise<any> {
+async function extractWebsiteInfo(anthropicApiKey: string, websiteContent: string, companyName: string): Promise<any> {
   const systemPrompt = `You are an AI assistant that extracts business information from company websites for M&A deal research.
 
 Your job is to find:
@@ -204,47 +204,48 @@ Pay special attention to geographic presence - find ALL states where they operat
 Website Content:
 ${websiteContent.slice(0, 15000)}`;
 
-  console.log('[enrich-deal] Calling AI to extract website info...');
+  console.log('[enrich-deal] Calling Claude to extract website info...');
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${openaiApiKey}`,
+      'x-api-key': anthropicApiKey,
       'Content-Type': 'application/json',
+      'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      system: systemPrompt,
+      tools: [{
+        name: extractWebsiteInfoTool.function.name,
+        description: extractWebsiteInfoTool.function.description,
+        input_schema: extractWebsiteInfoTool.function.parameters
+      }],
+      tool_choice: { type: 'tool', name: 'extract_website_info' },
       messages: [
-        { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      tools: [extractWebsiteInfoTool],
-      tool_choice: { type: 'function', function: { name: 'extract_website_info' } },
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('[enrich-deal] AI call failed:', response.status, errorText);
+    console.error('[enrich-deal] Claude call failed:', response.status, errorText);
     throw new Error(`AI extraction failed: ${response.status}`);
   }
 
   const data = await response.json();
-  const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+  const toolUse = data.content?.find((block: any) => block.type === 'tool_use');
   
-  if (!toolCall) {
-    console.log('[enrich-deal] No tool call in response');
+  if (!toolUse) {
+    console.log('[enrich-deal] No tool use in response');
     return {};
   }
 
-  try {
-    const result = JSON.parse(toolCall.function.arguments);
-    console.log('[enrich-deal] Extracted info:', JSON.stringify(result, null, 2));
-    return result;
-  } catch (e) {
-    console.error('[enrich-deal] Failed to parse tool call arguments:', e);
-    return {};
-  }
+  const result = toolUse.input || {};
+  console.log('[enrich-deal] Extracted info:', JSON.stringify(result, null, 2));
+  return result;
 }
 
 Deno.serve(async (req) => {
@@ -266,14 +267,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
     const firecrawlApiKey = Deno.env.get('FIRECRAWL_API_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    if (!openaiApiKey) {
+    if (!anthropicApiKey) {
       return new Response(
-        JSON.stringify({ success: false, error: 'OpenAI API key not configured' }),
+        JSON.stringify({ success: false, error: 'Anthropic API key not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -345,7 +346,7 @@ Deno.serve(async (req) => {
     }
 
     // Extract info using AI
-    const extracted = await extractWebsiteInfo(openaiApiKey, websiteContent, deal.deal_name);
+    const extracted = await extractWebsiteInfo(anthropicApiKey, websiteContent, deal.deal_name);
 
     // Build update object - respect data priority: Transcript > Notes > Website
     const updateData: Record<string, any> = {};

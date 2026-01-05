@@ -55,9 +55,9 @@ serve(async (req) => {
       throw new Error('Headers array is required');
     }
 
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-    if (!OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY is not configured');
+    const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY is not configured');
     }
 
     const fieldsList = BUYER_FIELDS.map(f => `- ${f.key}: ${f.description}`).join('\n');
@@ -85,20 +85,21 @@ IMPORTANT: If the sample data shows values like "City, ST" format (e.g., "Dallas
 Return ONLY valid JSON, no explanation. Example format:
 {"Company Name": "platform_company_name", "PE Sponsor": "pe_firm_name", "Location": "hq_city_state"}`;
 
-    console.log('Calling OpenAI for column mapping...');
+    console.log('Calling Claude for column mapping...');
     
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'x-api-key': ANTHROPIC_API_KEY,
         'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
         messages: [
           { role: 'user', content: prompt }
         ],
-        temperature: 0.1,
       }),
     });
 
@@ -122,9 +123,9 @@ Return ONLY valid JSON, no explanation. Example format:
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
+    const content = data.content?.[0]?.text || '';
     
-    console.log('AI response:', content);
+    console.log('Claude response:', content);
     
     // Extract JSON from response (handle markdown code blocks)
     let jsonStr = content;

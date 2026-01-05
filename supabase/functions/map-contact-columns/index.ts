@@ -59,11 +59,11 @@ serve(async (req) => {
       });
     }
 
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openAIApiKey) {
-      console.error('OPENAI_API_KEY not configured');
+    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!anthropicApiKey) {
+      console.error('ANTHROPIC_API_KEY not configured');
       return new Response(JSON.stringify({ 
-        error: 'OpenAI API key not configured',
+        error: 'Anthropic API key not configured',
         mapping: createFallbackMapping(headers),
         availableFields: CONTACT_FIELDS
       }), {
@@ -94,30 +94,27 @@ For each CSV header, determine the best matching database field. Consider:
 Return ONLY a JSON object mapping each CSV header to a field key, like:
 {"Header 1": "name", "Header 2": "email", ...}`;
 
-    console.log('Calling OpenAI for contact column mapping');
+    console.log('Calling Claude for contact column mapping');
     
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
+        'x-api-key': anthropicApiKey,
         'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: 'You are a data mapping assistant. Return only valid JSON.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.1,
-        max_tokens: 500,
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }],
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenAI API error:', errorText);
+      console.error('Claude API error:', errorText);
       return new Response(JSON.stringify({ 
-        error: 'OpenAI API error',
+        error: 'Claude API error',
         mapping: createFallbackMapping(headers),
         availableFields: CONTACT_FIELDS
       }), {
@@ -126,9 +123,9 @@ Return ONLY a JSON object mapping each CSV header to a field key, like:
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
+    const content = data.content?.[0]?.text || '';
     
-    console.log('OpenAI response:', content);
+    console.log('Claude response:', content);
 
     // Parse the JSON response
     let mapping: Record<string, string> = {};
