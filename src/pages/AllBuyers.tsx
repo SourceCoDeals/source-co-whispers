@@ -9,10 +9,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Loader2, Users, Search, FileCheck, ArrowUp, ArrowDown, ArrowUpDown, Building2, Layers } from "lucide-react";
 import { usePEFirmsHierarchy } from "@/hooks/usePEFirmsHierarchy";
+import type { ViewMode } from "@/lib/types";
 
-type ViewMode = "all" | "pe_firms" | "platforms";
 type SortColumn = "name" | "pe_firm" | "industry" | "confidence" | "platforms_count";
 type SortDirection = "asc" | "desc";
+
+interface LegacyBuyer {
+  id: string;
+  pe_firm_name: string;
+  platform_company_name: string | null;
+  platform_website: string | null;
+  thesis_summary: string | null;
+  thesis_confidence: string | null;
+  industry_vertical: string | null;
+  tracker_id: string;
+  has_fee_agreement: boolean | null;
+  fee_agreement_status: string | null;
+}
 
 interface FlatBuyer {
   id: string;
@@ -51,7 +64,7 @@ const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
 
 export default function AllBuyers() {
   const { peFirms, isLoading: isLoadingNew } = usePEFirmsHierarchy();
-  const [legacyBuyers, setLegacyBuyers] = useState<any[]>([]);
+  const [legacyBuyers, setLegacyBuyers] = useState<LegacyBuyer[]>([]);
   const [trackers, setTrackers] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");

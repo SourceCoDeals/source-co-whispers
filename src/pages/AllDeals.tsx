@@ -15,9 +15,15 @@ import { deleteDealWithRelated } from "@/lib/cascadeDelete";
 import { DealScoreBadge } from "@/components/DealScoreBadge";
 import { DealFiltersBar } from "@/components/DealFiltersBar";
 import { TimeframeOption, getDateRange } from "@/components/TimeframeFilter";
+import type { Tables } from "@/integrations/supabase/types";
 
 type SortColumn = "deal_name" | "tracker" | "geography" | "revenue" | "ebitda" | "score" | "date";
 type SortDirection = "asc" | "desc";
+
+interface TrackerInfo {
+  id: string;
+  industry_name: string;
+}
 
 interface BuyerCounts {
   approved: number;
@@ -39,9 +45,11 @@ const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   actions: 50,
 };
 
+type DealRow = Tables<"deals">;
+
 export default function AllDeals() {
-  const [deals, setDeals] = useState<any[]>([]);
-  const [trackers, setTrackers] = useState<Record<string, any>>({});
+  const [deals, setDeals] = useState<DealRow[]>([]);
+  const [trackers, setTrackers] = useState<Record<string, TrackerInfo>>({});
   const [buyerCounts, setBuyerCounts] = useState<Record<string, BuyerCounts>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [dealDeleteDialogOpen, setDealDeleteDialogOpen] = useState(false);

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Building2, Loader2, Sparkles, Users, FileText, ArrowUpDown, Archive, ArchiveRestore, MoreHorizontal, Trash2 } from "lucide-react";
 import { IntelligenceCoverageBar } from "@/components/IntelligenceBadge";
-import { getIntelligenceCoverage } from "@/lib/types";
+import { getIntelligenceCoverage, type Buyer } from "@/lib/types";
 import { seedSampleData } from "@/lib/seedData";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { deleteTrackerWithRelated } from "@/lib/cascadeDelete";
+import type { Tables } from "@/integrations/supabase/types";
 import {
   Table,
   TableBody,
@@ -23,13 +24,21 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+type TrackerRow = Tables<"industry_trackers">;
+
+interface TrackerWithStats extends TrackerRow {
+  buyer_count: number;
+  deal_count: number;
+  intelligent_count: number;
+}
+
 export default function Trackers() {
-  const [trackers, setTrackers] = useState<any[]>([]);
+  const [trackers, setTrackers] = useState<TrackerWithStats[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSeeding, setIsSeeding] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [trackerToDelete, setTrackerToDelete] = useState<any | null>(null);
+  const [trackerToDelete, setTrackerToDelete] = useState<TrackerWithStats | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -50,8 +59,8 @@ export default function Trackers() {
           supabase.from("deals").select("id").eq("tracker_id", tracker.id),
         ]);
         const buyers = buyersRes.data || [];
-        const intelligent = buyers.filter((b) => getIntelligenceCoverage(b as any) !== "low").length;
-        return { ...tracker, buyer_count: buyers.length, deal_count: dealsRes.data?.length || 0, intelligent_count: intelligent };
+        const intelligent = buyers.filter((b) => getIntelligenceCoverage(b as unknown as Partial<Buyer>) !== "low").length;
+        return { ...tracker, buyer_count: buyers.length, deal_count: dealsRes.data?.length || 0, intelligent_count: intelligent } as TrackerWithStats;
       })
     );
     setTrackers(withStats);
@@ -64,14 +73,14 @@ export default function Trackers() {
       await seedSampleData();
       toast({ title: "Sample data loaded!", description: "Residential HVAC buyer universe created with 27 buyers." });
       loadTrackers();
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (error) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Unknown error", variant: "destructive" });
     } finally {
       setIsSeeding(false);
     }
   };
 
-  const handleArchiveToggle = async (e: React.MouseEvent, tracker: any) => {
+  const handleArchiveToggle = async (e: React.MouseEvent, tracker: TrackerWithStats) => {
     e.stopPropagation();
     const { error } = await supabase
       .from("industry_trackers")
@@ -86,7 +95,7 @@ export default function Trackers() {
     }
   };
 
-  const confirmDeleteTracker = (e: React.MouseEvent, tracker: any) => {
+  const confirmDeleteTracker = (e: React.MouseEvent, tracker: TrackerWithStats) => {
     e.stopPropagation();
     setTrackerToDelete(tracker);
     setDeleteDialogOpen(true);
