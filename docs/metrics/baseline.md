@@ -7,7 +7,7 @@
 | File | Original Lines | Current Lines | Target Lines | Status |
 |------|----------------|---------------|--------------|--------|
 | TrackerDetail.tsx | 2,936 | ~450 | <300 | ✅ Near Target |
-| BuyerDetail.tsx | ~2,400 | ~2,400 | <500 | ❌ Pending |
+| BuyerDetail.tsx | 1,621 | ~340 | <500 | ✅ Complete |
 | DealMatching.tsx | ~1,900 | ~1,900 | <500 | ❌ Pending |
 | DealDetail.tsx | ~1,700 | ~1,700 | <500 | ❌ Pending |
 
@@ -34,12 +34,18 @@
 - Supporting components (AddBuyerDialog, DedupeDialog, InterruptedSessionBanner)
 
 ### Phase 16-20 Complete ✅
-- **TrackerBuyersTab wired into TrackerDetail.tsx**
-- **TrackerDealsTab wired into TrackerDetail.tsx**
-- **TrackerDetail.tsx reduced from 2,936 → ~450 lines (85% reduction)**
+- TrackerBuyersTab wired into TrackerDetail.tsx
+- TrackerDealsTab wired into TrackerDetail.tsx
+- TrackerDetail.tsx reduced from 2,936 → ~450 lines (85% reduction)
 - Criteria editing inline in TrackerDetail (simple dialog)
 - Document management inline (lightweight)
-- All functionality preserved and working
+
+### Phase 21-25 Complete ✅
+- **BuyerHeader.tsx extracted** (~190 lines) - Header with edit dialog
+- **BuyerTranscriptsSection.tsx extracted** (~150 lines) - Transcripts & AI processing
+- **BuyerDealHistoryTab.tsx extracted** (~100 lines) - Deal history tab
+- **BuyerContactsTab.tsx extracted** (~120 lines) - Contacts tab
+- **BuyerDetail.tsx reduced from 1,621 → ~340 lines (79% reduction)**
 
 ## Feature Folder Structure
 
@@ -57,7 +63,13 @@ src/features/
 │       └── TrackerTabsContainer.tsx (~39 lines)
 ├── buyers/
 │   ├── index.ts
-│   └── types.ts
+│   ├── types.ts
+│   └── components/
+│       ├── index.ts (barrel exports)
+│       ├── BuyerHeader.tsx (~190 lines) ← NEW
+│       ├── BuyerTranscriptsSection.tsx (~150 lines) ← NEW
+│       ├── BuyerDealHistoryTab.tsx (~100 lines) ← NEW
+│       └── BuyerContactsTab.tsx (~120 lines) ← NEW
 ├── deals/
 │   ├── index.ts
 │   └── types.ts
@@ -82,20 +94,19 @@ src/components/tracker/
 └── InterruptedSessionBanner.tsx
 ```
 
-## Final Extraction Summary
+## Extraction Summary
 
-From TrackerDetail.tsx (original 2,936 lines):
-- ~450 lines → TrackerBuyersTab.tsx (complete buyers UI)
-- ~380 lines → TrackerDealsTab.tsx (complete deals UI)
-- ~377 lines → useTrackerState.ts (available but not used)
-- ~355 lines → useTrackerActions.ts (available but not used)
-- Various smaller components extracted
+### TrackerDetail.tsx (original 2,936 lines → ~450 lines)
+- 85% reduction achieved
+- Wired TrackerBuyersTab and TrackerDealsTab
 
-**Final TrackerDetail.tsx:** ~450 lines (85% reduction achieved)
+### BuyerDetail.tsx (original 1,621 lines → ~340 lines)
+- 79% reduction achieved
+- Extracted BuyerHeader, BuyerTranscriptsSection, BuyerDealHistoryTab, BuyerContactsTab
 
-## Next Steps (Future Phases)
-1. Apply same pattern to BuyerDetail.tsx (~2,400 lines)
-2. Apply same pattern to DealMatching.tsx (~1,900 lines)
-3. Apply same pattern to DealDetail.tsx (~1,700 lines)
-4. Consider migrating TrackerDetail to use extracted hooks (useTrackerState, useTrackerActions)
-5. Add unit tests for extracted components
+## Next Steps (Future Phases 26-30)
+1. Apply same pattern to DealMatching.tsx (~1,900 lines)
+2. Apply same pattern to DealDetail.tsx (~1,700 lines)
+3. Consolidate shared utilities across features
+4. Add unit tests for extracted components
+5. Consider migrating to TanStack Query for data fetching
