@@ -15,8 +15,7 @@ import {
   Plus,
   ArrowRight,
   Loader2,
-  Sparkles,
-  Download
+  Sparkles
 } from "lucide-react";
 import { getIntelligenceCoverage } from "@/lib/types";
 import { seedSampleData } from "@/lib/seedData";
@@ -28,7 +27,6 @@ import { PipelineFunnel } from "@/components/dashboard/PipelineFunnel";
 import { DealActivityChart } from "@/components/dashboard/DealActivityChart";
 import { ConversionMetrics } from "@/components/dashboard/ConversionMetrics";
 import { ScoreDistribution } from "@/components/dashboard/ScoreDistribution";
-import { downloadDocumentation } from "@/lib/documentationContent";
 
 interface TrackerWithStats {
   id: string;
@@ -161,10 +159,6 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-3">
             <TimeframeFilter value={timeframe} onChange={setTimeframe} />
-            <Button variant="outline" onClick={downloadDocumentation}>
-              <Download className="w-4 h-4 mr-2" />
-              Documentation
-            </Button>
             {trackers.length === 0 && (
               <Button variant="outline" onClick={handleSeedData} disabled={isSeeding}>
                 {isSeeding ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
