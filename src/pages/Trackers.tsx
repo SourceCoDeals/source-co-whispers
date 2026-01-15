@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { deleteTrackerWithRelated } from "@/lib/cascadeDelete";
+import { ExportPlatformDialog } from "@/components/ExportPlatformDialog";
 import type { Tables } from "@/integrations/supabase/types";
 import {
   Table,
@@ -139,6 +140,7 @@ export default function Trackers() {
                 Load Sample Data
               </Button>
             )}
+            {trackers.length > 0 && <ExportPlatformDialog />}
             <Button onClick={() => navigate("/trackers/new")}><Plus className="w-4 h-4 mr-2" />New Buyer Universe</Button>
           </div>
         </div>
