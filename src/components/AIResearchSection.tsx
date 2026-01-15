@@ -8,9 +8,20 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Sparkles, ChevronDown, ChevronRight, Check, RotateCcw, DollarSign, MapPin, Users, Briefcase, Download, AlertTriangle, CheckCircle2, XCircle, Table2, FileText, Hash, Wand2, ThumbsUp } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
-import { saveAs } from "file-saver";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+// Helper to save files without external dependencies
+function saveFile(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 import { supabase } from "@/integrations/supabase/client";
 import { validateBeforeSave, detectPlaceholders } from "@/lib/criteriaValidation";
 import { parseCriteria, TrackerCriteria } from "@/lib/criteriaSchema";
@@ -683,7 +694,7 @@ export function AIResearchSection({ industryName, trackerId, onApply, onGuideGen
     const doc = new Document({ sections: [{ properties: {}, children }] });
     const blob = await Packer.toBlob(doc);
     const fileName = `${industryName.replace(/[^a-zA-Z0-9]/g, '_')}_MA_Guide.docx`;
-    saveAs(blob, fileName);
+    saveFile(blob, fileName);
     toast({ title: "Downloaded", description: fileName });
   };
 
