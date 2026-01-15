@@ -114,11 +114,15 @@ export function ExportPlatformDialog() {
               <ul className="text-sm text-muted-foreground space-y-1">
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-primary rounded-full" />
-                  <code className="text-xs bg-muted px-1 rounded">schema.sql</code> - Complete database DDL
+                  <code className="text-xs bg-muted px-1 rounded">schema.sql</code> - Complete database DDL with triggers & functions
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-primary rounded-full" />
-                  <code className="text-xs bg-muted px-1 rounded">IMPORT_INSTRUCTIONS.md</code> - Detailed import guide
+                  <code className="text-xs bg-muted px-1 rounded">SYSTEM_ARCHITECTURE.md</code> - Full rebuild guide
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-primary rounded-full" />
+                  <code className="text-xs bg-muted px-1 rounded">IMPORT_INSTRUCTIONS.md</code> - Step-by-step data import
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-primary rounded-full" />

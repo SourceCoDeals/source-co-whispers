@@ -131,10 +131,602 @@ export async function fetchPlatformExportData(): Promise<PlatformExportData> {
 }
 
 /**
+ * Generate comprehensive system architecture documentation
+ */
+export function generateSystemArchitectureMD(): string {
+  return `# SourceCo Platform - Complete System Architecture
+
+## Overview
+
+SourceCo is an M&A deal management platform that helps investment bankers and PE firms track industry-specific buyer universes, score buyer-deal fit, and manage outreach campaigns.
+
+---
+
+## 1. Technology Stack
+
+### Frontend
+| Technology | Purpose | Version |
+|------------|---------|---------|
+| **React** | UI framework | 18.x |
+| **Vite** | Build tool | 5.x |
+| **TypeScript** | Type safety | 5.x |
+| **Tailwind CSS** | Styling | 3.x |
+| **shadcn/ui** | Component library | Latest |
+| **TanStack Query** | Data fetching/caching | 5.x |
+| **React Router** | Routing | 6.x |
+| **Recharts** | Charting | 2.x |
+
+### Backend (Supabase)
+| Technology | Purpose |
+|------------|---------|
+| **PostgreSQL** | Database |
+| **Supabase Auth** | Authentication |
+| **Supabase Edge Functions** | Serverless backend (Deno) |
+| **Supabase Storage** | File storage (transcripts, documents) |
+| **Row Level Security (RLS)** | Data access control |
+
+### External APIs
+| Service | Purpose | Required Secret |
+|---------|---------|-----------------|
+| **Anthropic Claude** | AI extraction, scoring, analysis | ANTHROPIC_API_KEY |
+| **Firecrawl** | Website scraping | FIRECRAWL_API_KEY |
+| **OpenAI** (optional) | Alternative AI provider | OPENAI_API_KEY |
+
+---
+
+## 2. Environment Variables
+
+### Required for Frontend (.env)
+\`\`\`env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbGci...
+VITE_SUPABASE_PROJECT_ID=your-project-id
+\`\`\`
+
+### Required for Edge Functions (Supabase Secrets)
+\`\`\`env
+# Core
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=eyJhbGci...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGci...
+
+# AI Services
+ANTHROPIC_API_KEY=sk-ant-...        # Claude AI for extraction/scoring
+FIRECRAWL_API_KEY=fc-...            # Website scraping
+OPENAI_API_KEY=sk-...               # Optional fallback
+
+# Internal
+LOVABLE_API_KEY=...                  # Lovable AI integration
+\`\`\`
+
+---
+
+## 3. Database Setup Steps
+
+### Step 1: Create Supabase Project
+1. Go to supabase.com and create a new project
+2. Note down the project URL and anon key
+
+### Step 2: Run Schema Migration
+\`\`\`bash
+# Option A: Using psql
+psql -h db.your-project.supabase.co -U postgres -d postgres -f schema.sql
+
+# Option B: Supabase SQL Editor
+# Copy schema.sql contents and execute
+\`\`\`
+
+### Step 3: Configure Authentication
+1. Enable Email/Password authentication
+2. Enable Auto-confirm for email signups (for development)
+3. Set Site URL to your frontend URL
+
+### Step 4: Create Storage Buckets
+\`\`\`sql
+-- Create required buckets
+INSERT INTO storage.buckets (id, name, public) VALUES ('call-transcripts', 'call-transcripts', false);
+INSERT INTO storage.buckets (id, name, public) VALUES ('tracker-documents', 'tracker-documents', false);
+INSERT INTO storage.buckets (id, name, public) VALUES ('deal-transcripts', 'deal-transcripts', false);
+
+-- Add storage policies
+CREATE POLICY "Authenticated users can upload" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id IN ('call-transcripts', 'tracker-documents', 'deal-transcripts'));
+
+CREATE POLICY "Users can view own uploads" ON storage.objects
+  FOR SELECT TO authenticated
+  USING (bucket_id IN ('call-transcripts', 'tracker-documents', 'deal-transcripts'));
+\`\`\`
+
+### Step 5: Set Secrets
+In Supabase Dashboard → Settings → Edge Functions → Secrets:
+- Add ANTHROPIC_API_KEY
+- Add FIRECRAWL_API_KEY
+- Add OPENAI_API_KEY (optional)
+
+---
+
+## 4. Edge Functions Reference
+
+### Criteria & Parsing Functions
+| Function | Purpose | Endpoint | Required Secrets |
+|----------|---------|----------|------------------|
+| \`parse-fit-criteria\` | Convert natural language criteria to structured JSONB | POST /parse-fit-criteria | ANTHROPIC_API_KEY |
+| \`validate-criteria\` | Validate criteria structure and completeness | POST /validate-criteria | ANTHROPIC_API_KEY |
+| \`parse-scoring-instructions\` | Parse custom scoring rules to structured format | POST /parse-scoring-instructions | ANTHROPIC_API_KEY |
+| \`parse-tracker-documents\` | Extract criteria from uploaded documents | POST /parse-tracker-documents | ANTHROPIC_API_KEY |
+| \`update-fit-criteria-chat\` | Update criteria via natural language chat | POST /update-fit-criteria-chat | ANTHROPIC_API_KEY |
+
+### Enrichment Functions
+| Function | Purpose | Endpoint | Required Secrets |
+|----------|---------|----------|------------------|
+| \`enrich-buyer\` | Scrape website and extract buyer profile data | POST /enrich-buyer | ANTHROPIC_API_KEY, FIRECRAWL_API_KEY |
+| \`enrich-deal\` | Scrape deal company website for enrichment | POST /enrich-deal | ANTHROPIC_API_KEY, FIRECRAWL_API_KEY |
+| \`find-buyer-contacts\` | Find contacts for a buyer from web sources | POST /find-buyer-contacts | ANTHROPIC_API_KEY, FIRECRAWL_API_KEY |
+| \`firecrawl-scrape\` | Raw website scraping proxy | POST /firecrawl-scrape | FIRECRAWL_API_KEY |
+| \`verify-platform-website\` | Classify website as platform vs PE firm | POST /verify-platform-website | ANTHROPIC_API_KEY, FIRECRAWL_API_KEY |
+
+### Scoring Functions
+| Function | Purpose | Endpoint | Required Secrets |
+|----------|---------|----------|------------------|
+| \`score-buyer-deal\` | Calculate composite buyer-deal match score | POST /score-buyer-deal | ANTHROPIC_API_KEY |
+| \`score-buyer-geography\` | Score geographic fit for buyer | POST /score-buyer-geography | ANTHROPIC_API_KEY |
+| \`score-service-fit\` | Score service offering alignment | POST /score-service-fit | ANTHROPIC_API_KEY |
+| \`score-deal\` | Generate overall deal quality score | POST /score-deal | ANTHROPIC_API_KEY |
+| \`recalculate-deal-weights\` | Adjust scoring weights based on feedback | POST /recalculate-deal-weights | - |
+
+### Transcript Extraction Functions
+| Function | Purpose | Endpoint | Required Secrets |
+|----------|---------|----------|------------------|
+| \`extract-transcript\` | Extract buyer data from call transcripts | POST /extract-transcript | ANTHROPIC_API_KEY |
+| \`extract-deal-transcript\` | Extract deal data from call transcripts | POST /extract-deal-transcript | ANTHROPIC_API_KEY |
+
+### Query & Research Functions
+| Function | Purpose | Endpoint | Required Secrets |
+|----------|---------|----------|------------------|
+| \`query-buyer-universe\` | Natural language query over buyer data | POST /query-buyer-universe | ANTHROPIC_API_KEY |
+| \`query-tracker-universe\` | Natural language query for tracker insights | POST /query-tracker-universe | ANTHROPIC_API_KEY |
+| \`generate-research-questions\` | Generate M&A research questions for industry | POST /generate-research-questions | ANTHROPIC_API_KEY |
+| \`generate-ma-guide\` | Generate comprehensive M&A industry guide | POST /generate-ma-guide | ANTHROPIC_API_KEY |
+| \`analyze-deal-notes\` | Analyze deal notes for insights | POST /analyze-deal-notes | ANTHROPIC_API_KEY |
+| \`analyze-tracker-notes\` | Analyze tracker notes for patterns | POST /analyze-tracker-notes | ANTHROPIC_API_KEY |
+
+### Migration & Utility Functions
+| Function | Purpose | Endpoint | Required Secrets |
+|----------|---------|----------|------------------|
+| \`map-csv-columns\` | AI-assisted CSV column mapping for buyer import | POST /map-csv-columns | ANTHROPIC_API_KEY |
+| \`map-deal-csv-columns\` | AI-assisted CSV column mapping for deal import | POST /map-deal-csv-columns | ANTHROPIC_API_KEY |
+| \`map-contact-columns\` | AI-assisted CSV column mapping for contacts | POST /map-contact-columns | ANTHROPIC_API_KEY |
+| \`dedupe-buyers\` | Identify and merge duplicate buyers | POST /dedupe-buyers | ANTHROPIC_API_KEY |
+| \`migrate-buyers-to-hierarchy\` | Migrate flat buyers to PE firm hierarchy | POST /migrate-buyers-to-hierarchy | - |
+| \`migrate-deals-to-companies\` | Link deals to global companies table | POST /migrate-deals-to-companies | - |
+
+---
+
+## 5. Core Business Logic
+
+### 5.1 Tracker Criteria System
+
+Trackers store buyer fit criteria in two formats:
+
+1. **Text Criteria** (human-readable):
+   - \`fit_criteria\` - General criteria text
+   - \`fit_criteria_size\` - Size requirements
+   - \`fit_criteria_service\` - Service preferences
+   - \`fit_criteria_geography\` - Geographic requirements
+   - \`fit_criteria_buyer_types\` - Buyer type preferences
+
+2. **Structured Criteria** (JSONB for scoring):
+   \`\`\`json
+   // size_criteria
+   {
+     "min_revenue": 1000000,
+     "max_revenue": 50000000,
+     "min_ebitda": 250000,
+     "preferred_revenue": 10000000,
+     "min_locations": 2
+   }
+   
+   // service_criteria
+   {
+     "primary_focus": ["HVAC", "Plumbing"],
+     "secondary_acceptable": ["Electrical"],
+     "excluded": ["Solar"]
+   }
+   
+   // geography_criteria
+   {
+     "preferred_regions": ["Southeast", "Texas"],
+     "preferred_states": ["TX", "FL", "GA"],
+     "excluded_states": ["CA", "NY"],
+     "headquarters_required": false
+   }
+   \`\`\`
+
+**Flow**: User enters text criteria → \`parse-fit-criteria\` edge function → AI extracts structured JSONB → Stored for scoring
+
+### 5.2 Buyer-Deal Scoring Algorithm
+
+The scoring system calculates a **composite score** (0-100) based on weighted dimensions:
+
+\`\`\`
+Composite Score = 
+  (Geography Score × geography_weight) +
+  (Service Score × service_mix_weight) +
+  (Size Score × size_weight) +
+  (Thesis Bonus)
+  / Total Weights
+\`\`\`
+
+**Score Components**:
+
+| Component | Measures | Range |
+|-----------|----------|-------|
+| Geography Score | HQ location, operating regions, acquisition geography | 0-100 |
+| Service Score | Service mix alignment with target services | 0-100 |
+| Size Score | Revenue/EBITDA fit within buyer's ranges | 0-100 |
+| Portfolio Score | Similar companies in portfolio | 0-100 |
+| Acquisition Score | Active acquisition appetite | 0-100 |
+| Business Model Score | Model compatibility | 0-100 |
+| Thesis Bonus | Strategic alignment boost | 0-20 |
+
+**Stored in**: \`buyer_deal_scores\` table
+
+### 5.3 Extraction Source Priority System
+
+Data extraction tracks provenance with priority hierarchy:
+
+| Source | Priority | Can Overwrite |
+|--------|----------|---------------|
+| Transcript | 100 | All |
+| Notes | 80 | Website, CSV, Manual |
+| Website | 60 | CSV, Manual |
+| CSV Import | 40 | Manual |
+| Manual Entry | 20 | None |
+
+**Implementation**: Higher priority sources can overwrite lower priority. Tracked in \`extraction_sources\` JSONB column on buyers/deals.
+
+### 5.4 PE Firm Hierarchy
+
+The system supports two buyer models:
+
+1. **Legacy Model** (\`buyers\` table):
+   - Flat structure, tracker-specific
+   - Contains both PE firm and platform data
+   - Used for backwards compatibility
+
+2. **Hierarchy Model** (recommended):
+   - \`pe_firms\` → parent level (investment firm)
+   - \`platforms\` → portfolio companies under PE firms
+   - \`tracker_buyers\` → links PE firms/platforms to trackers
+   - Enables cross-tracker buyer reuse
+
+---
+
+## 6. Key File Locations
+
+\`\`\`
+src/
+├── components/
+│   ├── ui/                    # shadcn/ui components
+│   ├── tracker/               # Tracker-specific components
+│   ├── layout/                # AppLayout, navigation
+│   ├── dashboard/             # Dashboard widgets/charts
+│   └── skeletons/             # Loading skeletons
+│
+├── features/
+│   ├── trackers/              # Tracker feature module
+│   │   ├── components/        # TrackerHeader, TrackerCriteriaSection
+│   │   ├── hooks/             # useTrackerState, useTrackerActions
+│   │   └── types.ts           # TrackerState, TrackerActions
+│   ├── buyers/                # Buyer feature module
+│   ├── deals/                 # Deal feature module
+│   └── matching/              # Buyer-deal matching
+│
+├── hooks/
+│   ├── queries/               # TanStack Query hooks
+│   │   ├── queryKeys.ts       # Centralized query key factory
+│   │   └── index.ts           # Query hook exports
+│   ├── useTrackerData.ts      # Main tracker data hook
+│   ├── useBulkEnrichment.ts   # Bulk operations
+│   └── useSortableTable.ts    # Table sorting logic
+│
+├── lib/
+│   ├── types.ts               # Core TypeScript interfaces
+│   ├── exportPlatform.ts      # Platform export functions
+│   ├── exportTracker.ts       # Tracker export functions
+│   ├── criteriaSchema.ts      # Criteria type definitions
+│   ├── criteriaValidation.ts  # Criteria validation
+│   ├── normalizeDomain.ts     # URL/domain normalization
+│   ├── normalizeGeography.ts  # Geography standardization
+│   └── industryTemplates.ts   # Industry-specific templates
+│
+├── pages/
+│   ├── Index.tsx              # Dashboard
+│   ├── Trackers.tsx           # Tracker list
+│   ├── TrackerDetail.tsx      # Single tracker view
+│   ├── BuyerDetail.tsx        # Single buyer view
+│   ├── DealDetail.tsx         # Single deal view
+│   ├── DealMatching.tsx       # Deal-buyer matching view
+│   └── Auth.tsx               # Authentication
+│
+└── integrations/
+    └── supabase/
+        ├── client.ts          # Supabase client (auto-generated)
+        └── types.ts           # Database types (auto-generated)
+
+supabase/
+├── functions/                 # Edge functions (Deno)
+│   ├── _shared/               # Shared utilities
+│   ├── parse-fit-criteria/    # Criteria parsing
+│   ├── enrich-buyer/          # Buyer enrichment
+│   ├── score-buyer-deal/      # Scoring logic
+│   └── [25+ more functions]
+│
+├── migrations/                # Database migrations
+└── config.toml                # Supabase config
+\`\`\`
+
+---
+
+## 7. Data Flow Diagrams
+
+### 7.1 Tracker Creation Flow
+\`\`\`
+User creates tracker → Enter industry name
+  → Enter text criteria (size, service, geography)
+  → Call parse-fit-criteria edge function
+  → AI extracts structured JSONB
+  → Save tracker with both text and structured criteria
+  → Optionally upload documents
+  → Call parse-tracker-documents to extract additional criteria
+\`\`\`
+
+### 7.2 Buyer Enrichment Flow
+\`\`\`
+User adds buyer (PE firm name + website)
+  → Call enrich-buyer edge function
+  → firecrawl-scrape fetches website content
+  → Claude AI extracts buyer profile data
+  → Data merged with existing (respecting source priority)
+  → Buyer record updated
+  → Optional: find-buyer-contacts for contact enrichment
+\`\`\`
+
+### 7.3 Deal Scoring Flow
+\`\`\`
+User creates/updates deal
+  → For each buyer in tracker:
+    → Call score-buyer-deal edge function
+    → Calculate geography match (HQ, operating regions)
+    → Calculate service match (services vs target_services)
+    → Calculate size match (revenue/EBITDA vs ranges)
+    → Calculate portfolio match (similar acquisitions)
+    → Apply tracker weights
+    → Generate fit_reasoning text
+    → Save score to buyer_deal_scores
+  → Sort buyers by composite score
+  → Display ranked buyer list
+\`\`\`
+
+### 7.4 Transcript Extraction Flow
+\`\`\`
+User uploads transcript (Fireflies link or paste)
+  → Create transcript record
+  → Call extract-transcript edge function
+  → AI identifies all data points with quotes
+  → Return extracted_data and extraction_evidence
+  → User reviews/approves extractions
+  → Approved data merged to buyer (with 100 priority)
+  → extraction_sources updated with transcript reference
+\`\`\`
+
+---
+
+## 8. Deployment Instructions
+
+### Deploy Edge Functions
+\`\`\`bash
+# Install Supabase CLI
+npm install -g supabase
+
+# Login and link project
+supabase login
+supabase link --project-ref your-project-id
+
+# Deploy all functions
+supabase functions deploy
+
+# Or deploy individual function
+supabase functions deploy parse-fit-criteria
+\`\`\`
+
+### Deploy Frontend
+\`\`\`bash
+# Build
+npm run build
+
+# Deploy to Lovable (automatic on push)
+# Or deploy to Vercel/Netlify with these settings:
+# Build command: npm run build
+# Output directory: dist
+# Environment variables: VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY
+\`\`\`
+
+---
+
+## 9. Security Considerations
+
+### Row Level Security (RLS)
+All tables have RLS enabled. Users can only access:
+- Trackers they own (user_id = auth.uid())
+- Buyers/deals in their trackers
+- Contacts under their buyers
+
+### API Key Security
+- Never expose service role key in frontend
+- Edge functions use service role for admin operations
+- Frontend uses anon key with RLS
+
+### Data Validation
+- All edge functions validate input
+- Criteria parsing has validation triggers
+- Scores are always recalculated, never trusted from import
+
+---
+
+*Generated by SourceCo Platform Export*
+*For questions, refer to the codebase or contact the development team*
+`;
+}
+
+/**
+ * Generate database functions and triggers SQL
+ */
+function generateDatabaseFunctionsSQL(): string {
+  return `
+-- ============================================================
+-- DATABASE FUNCTIONS
+-- ============================================================
+
+-- Function: Check if user has a specific role
+CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role app_role)
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles
+    WHERE user_id = _user_id
+      AND role = _role
+  )
+$$;
+
+-- Function: Update updated_at timestamp automatically
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public'
+AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+-- Function: Handle new user registration
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  user_count INTEGER;
+BEGIN
+  INSERT INTO public.profiles (user_id, full_name)
+  VALUES (NEW.id, NEW.raw_user_meta_data ->> 'full_name');
+  
+  SELECT COUNT(*) INTO user_count FROM auth.users;
+  
+  IF user_count = 1 THEN
+    INSERT INTO public.user_roles (user_id, role)
+    VALUES (NEW.id, 'admin');
+  ELSE
+    INSERT INTO public.user_roles (user_id, role)
+    VALUES (NEW.id, 'member');
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
+
+-- Function: Validate tracker criteria (non-blocking warnings)
+CREATE OR REPLACE FUNCTION public.validate_tracker_criteria()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public'
+AS $$
+DECLARE
+  has_primary_focus boolean := false;
+  has_size_criteria boolean := false;
+  service_criteria jsonb;
+  size_criteria jsonb;
+BEGIN
+  service_criteria := NEW.service_criteria;
+  IF service_criteria IS NOT NULL AND service_criteria ? 'primary_focus' THEN
+    IF jsonb_typeof(service_criteria->'primary_focus') = 'array' AND 
+       jsonb_array_length(service_criteria->'primary_focus') > 0 THEN
+      has_primary_focus := true;
+    END IF;
+  END IF;
+  
+  size_criteria := NEW.size_criteria;
+  IF size_criteria IS NOT NULL THEN
+    IF (size_criteria->>'min_revenue' IS NOT NULL) OR
+       (size_criteria->>'min_ebitda' IS NOT NULL) OR
+       (size_criteria->>'min_locations' IS NOT NULL) THEN
+      has_size_criteria := true;
+    END IF;
+  END IF;
+  
+  IF NOT has_primary_focus THEN
+    RAISE WARNING 'Tracker % missing primary_focus', NEW.id;
+  END IF;
+  
+  IF NOT has_size_criteria THEN
+    RAISE WARNING 'Tracker % missing size thresholds', NEW.id;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
+
+-- ============================================================
+-- TRIGGERS
+-- ============================================================
+
+CREATE TRIGGER update_industry_trackers_updated_at
+  BEFORE UPDATE ON industry_trackers
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_companies_updated_at
+  BEFORE UPDATE ON companies
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_deals_updated_at
+  BEFORE UPDATE ON deals
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_pe_firms_updated_at
+  BEFORE UPDATE ON pe_firms
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_platforms_updated_at
+  BEFORE UPDATE ON platforms
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_profiles_updated_at
+  BEFORE UPDATE ON profiles
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER validate_tracker_criteria_trigger
+  BEFORE INSERT OR UPDATE ON industry_trackers
+  FOR EACH ROW EXECUTE FUNCTION validate_tracker_criteria();
+
+-- NOTE: Auth user trigger must be created via Supabase Dashboard
+-- CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users
+--   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+`;
+}
+
+/**
  * Generate complete SQL schema for all tables
  */
 export function generateSchemaSQL(): string {
-  return `-- ============================================================
+  const schemaSQL = `-- ============================================================
 -- COMPLETE DATABASE SCHEMA FOR SOURCECO PLATFORM
 -- Generated: ${new Date().toISOString()}
 -- ============================================================
@@ -848,6 +1440,8 @@ CREATE POLICY "Users can manage buyers in own trackers" ON buyers
 -- END OF SCHEMA
 -- ============================================================
 `;
+
+  return schemaSQL + generateDatabaseFunctionsSQL();
 }
 
 /**
@@ -1290,6 +1884,9 @@ export async function exportPlatformToZIP(): Promise<void> {
 
   // Add schema SQL
   zip.file("schema.sql", generateSchemaSQL());
+
+  // Add system architecture documentation
+  zip.file("SYSTEM_ARCHITECTURE.md", generateSystemArchitectureMD());
 
   // Add import instructions
   zip.file("IMPORT_INSTRUCTIONS.md", generateImportInstructionsMD(data));
