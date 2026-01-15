@@ -1,7 +1,17 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
-import JSZip from "jszip";
-import { saveAs } from "file-saver";
+
+// Helper to save files without external dependencies
+function saveFile(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 // Types for export data
 export interface TrackerExportData {
@@ -111,7 +121,7 @@ export function exportTrackerToJSON(data: TrackerExportData): void {
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: "application/json" });
   const filename = `${sanitizeFilename(data.tracker.industry_name)}_export_${formatDate(new Date())}.json`;
-  saveAs(blob, filename);
+  saveFile(blob, filename);
 }
 
 /**
@@ -533,6 +543,9 @@ The following data requires manual recreation or is intentionally not exported:
  * Export complete package as ZIP file
  */
 export async function exportFullPackage(trackerId: string): Promise<void> {
+  // Dynamic import JSZip to avoid bundling issues
+  const JSZip = (await import("jszip")).default;
+  
   const data = await fetchTrackerExportData(trackerId);
   const zip = new JSZip();
 
@@ -577,7 +590,7 @@ export async function exportFullPackage(trackerId: string): Promise<void> {
   // Generate and download ZIP
   const content = await zip.generateAsync({ type: "blob" });
   const filename = `${sanitizeFilename(data.tracker.industry_name)}_export_${formatDate(new Date())}.zip`;
-  saveAs(content, filename);
+  saveFile(content, filename);
 }
 
 // Helper functions

@@ -13,7 +13,18 @@ import {
   exportFullPackage,
   type TrackerExportData,
 } from "@/lib/exportTracker";
-import { saveAs } from "file-saver";
+
+// Helper to save files without external dependencies
+function saveFile(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 interface ExportTrackerDialogProps {
   trackerId: string;
@@ -71,7 +82,7 @@ export function ExportTrackerDialog({ trackerId, trackerName }: ExportTrackerDia
           if (previewData) {
             const csv = exportBuyersToCSV(previewData.buyers);
             const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-            saveAs(blob, `${sanitizedName}_buyers_${dateStr}.csv`);
+            saveFile(blob, `${sanitizedName}_buyers_${dateStr}.csv`);
             toast({ title: "Export complete", description: "Buyers CSV downloaded" });
           }
           break;
@@ -80,7 +91,7 @@ export function ExportTrackerDialog({ trackerId, trackerName }: ExportTrackerDia
           if (previewData) {
             const csv = exportDealsToCSV(previewData.deals);
             const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-            saveAs(blob, `${sanitizedName}_deals_${dateStr}.csv`);
+            saveFile(blob, `${sanitizedName}_deals_${dateStr}.csv`);
             toast({ title: "Export complete", description: "Deals CSV downloaded" });
           }
           break;
