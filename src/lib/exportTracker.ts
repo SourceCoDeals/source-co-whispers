@@ -46,25 +46,11 @@ interface ExportStats {
  * Fetch all tracker data for export
  */
 export async function fetchTrackerExportData(trackerId: string): Promise<TrackerExportData> {
-  // Fetch all data in parallel
-  const [
-    trackerRes,
-    buyersRes,
-    dealsRes,
-    buyerContactsRes,
-    buyerTranscriptsRes,
-    dealTranscriptsRes,
-    scoresRes,
-    scoringAdjustmentsRes,
-  ] = await Promise.all([
+  // Step 1: Fetch tracker, buyers, and deals first
+  const [trackerRes, buyersRes, dealsRes] = await Promise.all([
     supabase.from("industry_trackers").select("*").eq("id", trackerId).single(),
     supabase.from("buyers").select("*").eq("tracker_id", trackerId),
     supabase.from("deals").select("*").eq("tracker_id", trackerId),
-    supabase.from("buyer_contacts").select("*"),
-    supabase.from("buyer_transcripts").select("*"),
-    supabase.from("deal_transcripts").select("*"),
-    supabase.from("buyer_deal_scores").select("*"),
-    supabase.from("deal_scoring_adjustments").select("*"),
   ]);
 
   if (trackerRes.error) throw new Error(trackerRes.error.message);
@@ -76,12 +62,31 @@ export async function fetchTrackerExportData(trackerId: string): Promise<Tracker
   const buyerIds = buyers.map(b => b.id);
   const dealIds = deals.map(d => d.id);
 
-  // Filter related data by buyer/deal IDs
-  const buyerContacts = (buyerContactsRes.data || []).filter(c => buyerIds.includes(c.buyer_id));
-  const buyerTranscripts = (buyerTranscriptsRes.data || []).filter(t => buyerIds.includes(t.buyer_id));
-  const dealTranscripts = (dealTranscriptsRes.data || []).filter(t => dealIds.includes(t.deal_id));
-  const scores = (scoresRes.data || []).filter(s => dealIds.includes(s.deal_id));
-  const scoringAdjustments = (scoringAdjustmentsRes.data || []).filter(s => s.deal_id && dealIds.includes(s.deal_id));
+  // Step 2: Fetch related data using .in() to avoid 1000-row limit issues
+  // Only fetch if there are IDs to query (empty .in() causes errors)
+  const [buyerContactsRes, buyerTranscriptsRes, dealTranscriptsRes, scoresRes, scoringAdjustmentsRes] = await Promise.all([
+    buyerIds.length > 0
+      ? supabase.from("buyer_contacts").select("*").in("buyer_id", buyerIds)
+      : Promise.resolve({ data: [], error: null }),
+    buyerIds.length > 0
+      ? supabase.from("buyer_transcripts").select("*").in("buyer_id", buyerIds)
+      : Promise.resolve({ data: [], error: null }),
+    dealIds.length > 0
+      ? supabase.from("deal_transcripts").select("*").in("deal_id", dealIds)
+      : Promise.resolve({ data: [], error: null }),
+    dealIds.length > 0
+      ? supabase.from("buyer_deal_scores").select("*").in("deal_id", dealIds)
+      : Promise.resolve({ data: [], error: null }),
+    dealIds.length > 0
+      ? supabase.from("deal_scoring_adjustments").select("*").in("deal_id", dealIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  const buyerContacts = buyerContactsRes.data || [];
+  const buyerTranscripts = buyerTranscriptsRes.data || [];
+  const dealTranscripts = dealTranscriptsRes.data || [];
+  const scores = scoresRes.data || [];
+  const scoringAdjustments = scoringAdjustmentsRes.data || [];
 
   // Nest contacts and transcripts into buyers
   const buyersWithRelated: BuyerExportData[] = buyers.map(buyer => ({
