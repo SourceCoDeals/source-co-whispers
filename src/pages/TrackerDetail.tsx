@@ -10,6 +10,7 @@ import { ScoringBehaviorPanel } from "@/components/ScoringBehaviorPanel";
 import { TrackerQueryChat } from "@/components/TrackerQueryChat";
 import { TrackerNotesSection } from "@/components/TrackerNotesSection";
 import { AIResearchSection } from "@/components/AIResearchSection";
+import { ExportTrackerDialog } from "@/components/ExportTrackerDialog";
 import { Loader2, Plus, ArrowLeft, FileText, Users, Info, Wand2, ChevronRight, ChevronDown, FileSearch, Download, Upload, BookOpen, X, Pencil, Check, Send, MessageSquare, DollarSign, Briefcase, MapPin, Target } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
@@ -576,6 +577,7 @@ export default function TrackerDetail() {
             <h1 className="text-2xl font-display font-bold">{tracker.industry_name}</h1>
             <p className="text-muted-foreground">{buyers.length} buyers · {deals.length} deals</p>
           </div>
+          <ExportTrackerDialog trackerId={id!} trackerName={tracker.industry_name} />
           <Button onClick={() => navigate(`/trackers/${id}/deals/new`)}><Plus className="w-4 h-4 mr-2" />List New Deal</Button>
         </div>
 
